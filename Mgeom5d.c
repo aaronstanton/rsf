@@ -43,223 +43,278 @@ mode=6: imx/imy/ih/iaz  -> sx/sy/gx/gy
 int main(int argc, char* argv[])
 {
     int mode; 
-    int nk;
-    int n1, n2, i2, itrace[SF_MAXKEYS];
-    const char *label, *headname;
-    float sx, sy, gx, gy; 
-    sf_file hdr;
+    int ik,nk_in,nk_out;
+    int n2, i2;
+    char *hdr_in_name;
+    char *hdr_out_name;
+    float *sx, *sy, *gx, *gy, *mx, *my, *hx, *hy, *h, *az; 
+    int *isx, *isy, *igx, *igy, *imx, *imy, *ihx, *ihy, *ih, *iaz; 
+    float osx, osy, ogx, ogy, omx, omy, ohx, ohy, oh, oaz; 
+    float dsx, dsy, dgx, dgy, dmx, dmy, dhx, dhy, dh, daz; 
+    int *hdr_in_array, *hdr_out_array;
+    sf_file hdr_in,hdr_out;
     sf_init (argc,argv);
 
-    if (!sf_getint("mode",&mode) mode=1; /* mode of geometry computation */
+    if (!sf_getint("mode",&mode)) mode=1; /* mode of geometry computation */
     if (!sf_getfloat("osx",&osx)) osx=0;
     if (!sf_getfloat("osy",&osy)) osy=0;
     if (!sf_getfloat("dsx",&dsx)) dsx=1;
     if (!sf_getfloat("dsy",&dsy)) dsy=1;
+    if (!sf_getfloat("ogx",&ogx)) ogx=0;
+    if (!sf_getfloat("ogy",&ogy)) ogy=0;
+    if (!sf_getfloat("dgx",&dgx)) dgx=1;
+    if (!sf_getfloat("dgy",&dgy)) dgy=1;
     if (!sf_getfloat("omx",&omx)) omx=0;
     if (!sf_getfloat("omy",&omy)) omy=0;
     if (!sf_getfloat("dmx",&dmx)) dmx=1;
     if (!sf_getfloat("dmy",&dmy)) dmy=1;
+    if (!sf_getfloat("ohx",&ohx)) ohx=0;
+    if (!sf_getfloat("ohy",&ohy)) ohy=0;
     if (!sf_getfloat("dhx",&dhx)) dhx=1;
     if (!sf_getfloat("dhy",&dhy)) dhy=1;
+    if (!sf_getfloat("oh",&oh))   oh=0;
+    if (!sf_getfloat("oaz",&oaz)) oaz=0;
     if (!sf_getfloat("dh",&dh))   dh=1;
     if (!sf_getfloat("daz",&daz)) daz=1;
 
-    header = sf_getstring("head");
-    /* header file */
-    if (NULL == header) { 
-	header = sf_histstring(in,"head");
-	if (NULL == header) sf_error("Need head=");
-    }
+    hdr_in_name = sf_getstring("headin");
+    if (NULL == hdr_in_name) sf_error("Need headin=");
+    hdr_in = sf_input(hdr_in_name);
 
-    head = sf_input(header);
-
-    if (SF_INT != sf_gettype(head)) sf_error("Need int header");
-    if (!sf_histint(head,"n1",&nk)) sf_error("No n1= in head");
-    n2 = sf_leftsize(head,1);
-
-    segy_init(nk,head);
-
-    hdr = sf_intalloc(nk);
-    sx = sf_floatalloc(n2);
-    sy = sf_floatalloc(n2);
-    gx = sf_floatalloc(n2);
-    gy = sf_floatalloc(n2);
-
-    for (i2=0; i2<n2; i2++) {	
-	sf_intread (hdr,nk,head);
-	sx[i2] = (float) hdr[segykey("sx")];
-	sy[i2] = (float) hdr[segykey("sy")];
-	gx[i2] = (float) hdr[segykey("gx")];
-	gy[i2] = (float) hdr[segykey("gy")];
-    }
-    sf_fileclose (head);
-
-
-
-    if      (mode==1) geom_mode1(sx,sy,gx,gy,
-	  		         isx,isy,igx,igy,
-			         osx,osy,ogx,ogy,
-			         dsx,dsy,dgx,dgy,n2);
-    else if (mode==2) geom_mode2(mx,my,hx,hy,
-	  		         imx,imy,ihx,ihy,
-			         omx,omy,ohx,ohy,
-			         dmx,dmy,dhx,dhy,n2);
-    
-
-
-
-
-
-
-
-
-
-
-    if (!sf_stdin()) { /* no input file in stdin */
-	din = NULL;
-    } else {
-	din = sf_input("in");
-    }
-
-    dout = sf_output("out");
-    
-    if (NULL == din) {
-	sf_setformat(dout,"native_float");
-    } else if (SF_FLOAT != sf_gettype(din)) {
-	sf_error("Need float input");
-    }
-    
-    if (NULL != (label = sf_getstring("title")))
-	sf_putstring(dout,"title",label);
-    /* title for plots */
-
-    /******/
-    if (!sf_getint("nevent",&nevent)) nevent=1;
-    if (!sf_getint("n1",&n1)) n1=100;
-    if (!sf_getint("n2",&n2)) n2=4;
-    if (!sf_getint("n3",&n3)) n3=4;
-    if (!sf_getint("n4",&n4)) n4=10;
-    if (!sf_getint("n5",&n5)) n5=10;
-    if (!sf_getfloat("o1",&o1)) o1=0;
-    if (!sf_getfloat("o2",&o2)) o2=100;
-    if (!sf_getfloat("o3",&o3)) o3=100;
-    if (!sf_getfloat("o4",&o4)) o4=50;
-    if (!sf_getfloat("o5",&o5)) o5=50;
-    if (!sf_getfloat("d1",&d1)) d1=0.004;
-    if (!sf_getfloat("d2",&d2)) d2=10;
-    if (!sf_getfloat("d3",&d3)) d3=10;
-    if (!sf_getfloat("d4",&d4)) d4=20;
-    if (!sf_getfloat("d5",&d5)) d5=5;
-
-    sf_putfloat(dout,"o1",o1);
-    sf_putfloat(dout,"o2",o2);
-    sf_putfloat(dout,"o3",o3);
-    sf_putfloat(dout,"o4",o4);
-    sf_putfloat(dout,"o5",o5);
-    sf_putfloat(dout,"d1",d1);
-    sf_putfloat(dout,"d2",d2);
-    sf_putfloat(dout,"d3",d3);
-    sf_putfloat(dout,"d4",d4);
-    sf_putfloat(dout,"d5",d5);
-    sf_putfloat(dout,"n1",n1);
-    sf_putfloat(dout,"n2",n2);
-    sf_putfloat(dout,"n3",n3);
-    sf_putfloat(dout,"n4",n4);
-    sf_putfloat(dout,"n5",n5);
-    sf_putstring(dout,"label1","Time");
-    sf_putstring(dout,"label2","Source-x");
-    sf_putstring(dout,"label3","Source-y");
-    sf_putstring(dout,"label4","Receiver-x");
-    sf_putstring(dout,"label5","Receiver-y");
-    sf_putstring(dout,"unit1","s");
-    sf_putstring(dout,"unit2","m");
-    sf_putstring(dout,"unit3","m");
-    sf_putstring(dout,"unit4","m");
-    sf_putstring(dout,"unit5","m"); 
+    if (SF_INT != sf_gettype(hdr_in)) sf_error("Need int headin file");
+    if (!sf_histint(hdr_in,"n1",&nk_in)) sf_error("No n1= in headin");
+    n2 = sf_leftsize(hdr_in,1);
 
     /* write header */
-    nkeys = SF_NKEYS; /* adding one new header */
-    /* example for adding a non-standard header: nkeys = SF_NKEYS+1;*/
+    nk_out = SF_NKEYS + 16; /* adding new headers */
     /* initialize standard headers */
-    segy_init(nkeys,NULL); 
+    segy_init(nk_out,NULL); 
     /* initialize a non-standard header */
-    /*nonstandard_header_init("hello",2,nkeys-1); */
-    hdr = sf_output("tfile");
-    sf_putint(hdr,"n1",nkeys);
-    sf_putint(hdr,"n2",n2*n3*n4*n5);
-    sf_setformat(hdr,"native_int");
-    segy2hist(hdr,nkeys);
+    nonstandard_header_init("mx",2,SF_NKEYS+1);
+    nonstandard_header_init("my",2,SF_NKEYS+2);
+    nonstandard_header_init("hx",2,SF_NKEYS+3);
+    nonstandard_header_init("hy",2,SF_NKEYS+4);
+    nonstandard_header_init("h", 2,SF_NKEYS+5);
+    nonstandard_header_init("az",2,SF_NKEYS+6);
+    nonstandard_header_init("isx",2,SF_NKEYS+7);
+    nonstandard_header_init("isy",2,SF_NKEYS+8);
+    nonstandard_header_init("igx",2,SF_NKEYS+9);
+    nonstandard_header_init("igy",2,SF_NKEYS+10);
+    nonstandard_header_init("imx",2,SF_NKEYS+11);
+    nonstandard_header_init("imy",2,SF_NKEYS+12);
+    nonstandard_header_init("ihx",2,SF_NKEYS+13);
+    nonstandard_header_init("ihy",2,SF_NKEYS+14);
+    nonstandard_header_init("ih", 2,SF_NKEYS+15);
+    nonstandard_header_init("iaz",2,SF_NKEYS+16);
+    hdr_out_name = sf_getstring("headout");
+    if (NULL == hdr_out_name) sf_error("Need headout=");
+    hdr_out = sf_output(hdr_out_name);
+    sf_putint(hdr_out,"n1",nk_out);
+    sf_putint(hdr_out,"n2",n2);
+    sf_setformat(hdr_out,"native_int");
+    segy2hist(hdr_out,nk_out);
 
-    if (NULL == (headname = sf_getstring("tfile"))) headname = "tfile";
-    /* output trace header file name in data rsf file*/
-    if (NULL != dout) sf_putstring(dout,"head",headname);
+    hdr_in_array = sf_intalloc(nk_in);
+    hdr_out_array = sf_intalloc(nk_out);
+
+    for (i2=0; i2<n2; i2++) {	
+	sf_intread (hdr_in_array,nk_in,hdr_in);
+	if (mode<=3){
+	  sx = (float) hdr_in_array[segykey("sx")];
+	  sy = (float) hdr_in_array[segykey("sy")];
+	  gx = (float) hdr_in_array[segykey("gx")];
+	  gy = (float) hdr_in_array[segykey("gy")];
+	}
+	else if (mode==4){
+	  isx = hdr_in_array[segykey("isx")];
+	  isy = hdr_in_array[segykey("isy")];
+	  igx = hdr_in_array[segykey("igx")];
+	  igy = hdr_in_array[segykey("igy")];
+	}
+	else if (mode==5){
+	  imx = hdr_in_array[segykey("imx")];
+	  imy = hdr_in_array[segykey("imy")];
+	  ihx = hdr_in_array[segykey("ihx")];
+	  ihy = hdr_in_array[segykey("ihy")];
+	}
+	else if (mode==6){
+	  imx = hdr_in_array[segykey("imx")];
+	  imy = hdr_in_array[segykey("imy")];
+	  ih  = hdr_in_array[segykey("ih")];
+	  iaz = hdr_in_array[segykey("iaz")];
+	}
 
 
-    amp = sf_floatalloc(nevent);
-    if (!sf_getfloats("amp",amp,nevent)) {
-      /* amplitude of events */
-      for (ievent=0; ievent < nevent; ievent++) {
-        amp[ievent]=1;
-      }
+    if (mode==1){      /* binning sx/sy/gx/gy */
+      geom_calc_header(sx,sy,gx,gy,
+		        mx,my,hx,hy,
+	                h,az);
+      geom_bin_header(sx,sy,gx,gy,
+	               isx,isy,igx,igy,
+		       osx,osy,ogx,ogy,
+		       dsx,dsy,dgx,dgy,1);
     }
-    f0 = sf_floatalloc(nevent);
-    if (!sf_getfloats("f0",f0,nevent)) {
-      /* peak frequency of events in Hz */
-      for (ievent=0; ievent < nevent; ievent++) {
-        f0[ievent]=20;
-      }
+    else if (mode==2){ /* binning mx/my/hx/hy */
+      geom_calc_header(sx,sy,gx,gy,
+		        mx,my,hx,hy,
+	                h,az);
+      geom_bin_header(mx,my,hx,hy,
+	               imx,imy,ihx,ihy,
+		       omx,omy,ohx,ohy,
+		       dmx,dmy,dhx,dhy,1);
     }
-    t0 = sf_floatalloc(nevent);
-    if (!sf_getfloats("t0",t0,nevent)) {
-      /* zero offset time of events in seconds */
-      for (ievent=0; ievent < nevent; ievent++) {
-        t0[ievent]=0.1;
-      }
+    else if (mode==3){ /* binning mx/my/h/az */
+      geom_calc_header(sx,sy,gx,gy,
+		        mx,my,hx,hy,
+	                h,az);
+      geom_bin_header(mx,my,h,az,
+	               imx,imy,ih,iaz,
+		       omx,omy,oh,oaz,
+		       dmx,dmy,dh,daz,1);
     }
-    vx = sf_floatalloc(nevent);
-    if (!sf_getfloats("vx",vx,nevent)) {
-      /* velocity of events in the x direction */
-      for (ievent=0; ievent < nevent; ievent++) {
-        vx[ievent]=1500;
-      }
+    else if (mode==4){ /* use binned isx/isy/igx/igy to get headers */
+      geom_bin_header(sx,sy,gx,gy,
+	               isx,isy,igx,igy,
+		       osx,osy,ogx,ogy,
+		       dsx,dsy,dgx,dgy,0);
+      geom_calc_header(sx,sy,gx,gy,
+		        mx,my,hx,hy,
+	                h,az);
     }
-    vy = sf_floatalloc(nevent);
-    if (!sf_getfloats("vy",vy,nevent)) {
-      /* velocity of events in the y direction */
-      for (ievent=0; ievent < nevent; ievent++) {
-        vy[ievent]=1500;
-      }
+    else if (mode==5){ /* use binned imx/imy/ihx/ihy to get headers */
+      geom_bin_header(mx,my,hx,hy,
+	               imx,imy,ihx,ihy,
+		       omx,omy,ohx,ohy,
+		       dmx,dmy,dhx,dhy,0);
+      geom_calc_sxsygxgy_from_mxmyhxhy(mx,my,hx,hy,sx,sy,gx,gy,n2);
+      geom_calc_header(sx,sy,gx,gy,
+		        mx,my,hx,hy,
+	                h,az);
     }
+    else if (mode==6){ /* use binned imx/imy/ih/iaz to get headers */
+      geom_bin_header(mx,my,h,az,
+	               imx,imy,ih,iaz,
+		       omx,omy,oh,oaz,
+		       dmx,dmy,dh,daz,0);
+      geom_calc_sxsygxgy_from_mxmyhaz(mx,my,h,az,sx,sy,gx,gy,n2);
+      geom_calc_header(sx,sy,gx,gy,
+		        mx,my,hx,hy,
+	                h,az);
+    }
+ 
+    /* zero all headers that were not present on input */ 
+    for (ik=0;ik<nk_out;ik++) hdr_out_array[ik] = 0;
 
-
-    fprintf(stderr,"n1=%d,n2=%d,n3=%d,n4=%d,n5=%d \n",n1,n2,n3,n4,n5);
-
-    for (ih=0;ih<nkeys;ih++) itrace[ih] = 0;  
-
-    trace = sf_floatalloc (n1);
-    ix = 0;
-    for (i2=0;i2<n2;i2++){ 
-      for (i3=0;i3<n3;i3++){ 
-        for (i4=0;i4<n4;i4++){ 
-          for (i5=0;i5<n5;i5++){ 
-            sx = o2 + i2*d2;
-            sy = o3 + i3*d3;
-            gx = o4 + i4*d4;
-            gy = o5 + i5*d5;
-            my_event(trace,d1,n1,sx,sy,gx,gy,nevent,amp,f0,t0,vx,vy);
-	    sf_floatwrite(trace,n1,dout);
-            itrace[21] = sx;
-            itrace[22] = sy;
-            itrace[23] = gx;
-            itrace[24] = gy;
-            /* example for adding a non-standard header: itrace[nkeys-1] = 1; */
-	    sf_intwrite(itrace, nkeys, hdr);
-            ix++;
-	  }
-        }
+      /* pass on all input headers */
+      /*for (ik=0;ik<nk_in;ik++) itrace[ik] = hdrin[i2][ik];*/
+      /* update the new non-standard headers*/  
+      if (mode<=3){ 
+        hdr_out_array[segykey("sx")] = (int) sx;
+        hdr_out_array[segykey("sy")] = (int) sx;
+        hdr_out_array[segykey("gx")] = (int) gx;
+        hdr_out_array[segykey("gy")] = (int) gy;
+        hdr_out_array[segykey("mx")] = (int) mx;
+        hdr_out_array[segykey("my")] = (int) my;
+        hdr_out_array[segykey("hx")] = (int) hx;
+        hdr_out_array[segykey("hy")] = (int) hy;
+        hdr_out_array[segykey("h")]  = (int) h;
+        hdr_out_array[segykey("az")] = (int) az;
       }
+      if (mode==1){
+        hdr_out_array[segykey("isx")] = (int) isx;
+        hdr_out_array[segykey("isy")] = (int) isx;
+        hdr_out_array[segykey("igx")] = (int) igx;
+        hdr_out_array[segykey("igy")] = (int) igy;
+      }
+      if (mode==2){
+        hdr_out_array[segykey("imx")] = (int) imx;
+        hdr_out_array[segykey("imy")] = (int) imy;
+        hdr_out_array[segykey("ihx")] = (int) ihx;
+        hdr_out_array[segykey("ihy")] = (int) ihy;
+      }
+      if (mode==3){
+        hdr_out_array[segykey("imx")] = (int) imx;
+        hdr_out_array[segykey("imy")] = (int) imy;
+        hdr_out_array[segykey("ih")]  = (int) ih;
+        hdr_out_array[segykey("iaz")] = (int) iaz;
+      }
+      sf_intwrite(hdr_out_array, nk_out, hdr_out);
     }
+    sf_fileclose (hdr_in);
+    sf_fileclose (hdr_out);
+
     exit (0);
+}
+void geom_bin_headers(float x1,float x2,float x3,float x4,
+	              int ix1,int ix2,int ix3,int ixy,
+		      float ox1,float ox2,float ox3,float ox4,
+		      float dx1,float dx2,float dx3,float dx4,float ang,
+		      int fwd,int haz_flag)
+{
+  float rad2deg,deg2rad,ang2,x1_rot,x2_rot,x3_rot,x4_rot;
+  rad2deg = 180/PI;
+  deg2rad = PI/180;
+
+  if (fwd){
+    if (ang > 90) ang2=-deg2rad*(ang-90);
+    else ang2=deg2rad*(90-ang);
+    x1_rot = (x1-ox1)*cos(ang2) - (x2-ox2)*sin(ang2) + ox1;
+    x2_rot = (x1-ox1)*sin(ang2) + (x2-ox2)*cos(ang2) + ox2;
+    x3_rot = (x3-ox3)*cos(ang2) - (x4-ox4)*sin(ang2) + ox3;
+    x4_rot = (x3-ox3)*sin(ang2) + (x4-ox4)*cos(ang2) + ox4;
+    ix1 = (int) round((x1_rot-ox1)/dx1);
+    ix2 = (int) round((x2_rot-ox2)/dx2);
+    if (haz_flag==0){
+      ix3 = (int) round((x3_rot-ox3)/dx3);
+      ix4 = (int) round((x4_rot-ox4)/dx4);
+    }
+    else{
+      ix3 = (int) round((x3-ox3)/dx3);
+      ix4 = (int) round((x4-ox4)/dx4);
+    }
+  }
+  else{
+    x1_rot = (float) ix1*dx1 + ox1;
+    x2_rot = (float) ix2*dx2 + ox2;
+    x3_rot = (float) ix3*dx3 + ox3;
+    x4_rot = (float) ix4*dx4 + ox4;
+    x1 =  (x1_rot-ox1)*cos(ang2) + (x2_rot-ox2)*sin(ang2) + ox1;
+    x2 = -(x1_rot-ox1)*sin(ang2) + (x2_rot-ox2)*cos(ang2) + ox2;
+    if (haz_flag==0){
+      x3 =  (x3_rot-ox3)*cos(ang2) + (x4_rot-ox4)*sin(ang2) + ox3;
+      x4 = -(x3_rot-ox3)*sin(ang2) + (x4_rot-ox4)*cos(ang2) + ox4;
+    }
+    else{
+      x3 = x3_rot;
+      x4 = x4_rot;
+    }
+  }
+
+  return;
+}
+void geom_calc_sxsygxgy_from_mxmyhxhy(float mx,float my,float hx,float hy,
+				      float sx,float sy,float gx,float gy)
+{
+  return;
+}
+void geom_calc_headers(float sx,float sy,float gx,float gy,
+		       float mx,float my,float hx,float hy,
+	               float h,float az,float gamma)
+{
+  float gammainv;
+  gammainv = 1/gamma;	 		
+
+  hx = gx - sx;
+  hy = gy - sy;
+  h  = sqrt(hx*hx + hy*hy);
+  /* azimuth measured from source to receiver
+     CC from East and ranges from 0 to 359.999 degrees*/
+  az = rad2deg*atan2((gy-sy),(gx-sx));
+  if (az < 0.) az += 360.0;
+  mx = sx + hx/(1 + gammainv);
+  my = sy + hy/(1 + gammainv);
+
+  return;
 }
 
 
