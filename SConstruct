@@ -5,6 +5,7 @@ import bldutil
 progs = ''' 
 syn5d
 geom5d
+pad5d
 '''
 
 try:  # distributed version

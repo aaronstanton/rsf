@@ -5,6 +5,8 @@ mode=3: sx/sy/gx/gy     -> imx/imy/ih/iaz
 mode=4: isx/isy/igx/igy -> sx/sy/gx/gy
 mode=5: imx/imy/ihx/ihy -> sx/sy/gx/gy
 mode=6: imx/imy/ih/iaz  -> sx/sy/gx/gy
+
+TO BE FIXED: problem with mode=1 & 4 and mode=3 & 6 : azimuth calculation problematic. mode=2 & 5 appears to work well.
 */
 /*
   Copyright (C) 2013 University of Alberta
@@ -40,6 +42,23 @@ mode=6: imx/imy/ih/iaz  -> sx/sy/gx/gy
 #define PI (3.141592653589793)
 #endif
 
+void geom_bin_header(float *x1,float *x2,float *x3,float *x4,
+	              int *ix1,int *ix2,int *ix3,int *ix4,
+		      float ox1,float ox2,float ox3,float ox4,
+		      float dx1,float dx2,float dx3,float dx4,float ang,
+		      int fwd,int haz_flag);
+void geom_calc_header(float *sx,float *sy,float *gx,float *gy,
+		       float *mx,float *my,float *hx,float *hy,
+	               float *h,float *az,float gamma);
+
+void geom_calc_sxsygxgy_from_mxmyhxhy(float *mx,float *my,float *hx,float *hy,
+				      float *sx,float *sy,float *gx,float *gy,
+				      float gamma);
+
+void geom_calc_sxsygxgy_from_mxmyhaz(float *mx,float *my,float *h,float *az,
+				      float *sx,float *sy,float *gx,float *gy,
+				      float gamma);
+
 int main(int argc, char* argv[])
 {
     int mode; 
@@ -50,8 +69,9 @@ int main(int argc, char* argv[])
     float *sx, *sy, *gx, *gy, *mx, *my, *hx, *hy, *h, *az; 
     int *isx, *isy, *igx, *igy, *imx, *imy, *ihx, *ihy, *ih, *iaz; 
     float osx, osy, ogx, ogy, omx, omy, ohx, ohy, oh, oaz; 
-    float dsx, dsy, dgx, dgy, dmx, dmy, dhx, dhy, dh, daz; 
-    int *hdr_in_array, *hdr_out_array;
+    float dsx, dsy, dgx, dgy, dmx, dmy, dhx, dhy, dh, daz;
+    float gamma,ang; 
+    int *hdr_in_array, *hdr_out_array, **hdr_in_all;
     sf_file hdr_in,hdr_out;
     sf_init (argc,argv);
 
@@ -76,6 +96,8 @@ int main(int argc, char* argv[])
     if (!sf_getfloat("oaz",&oaz)) oaz=0;
     if (!sf_getfloat("dh",&dh))   dh=1;
     if (!sf_getfloat("daz",&daz)) daz=1;
+    if (!sf_getfloat("gamma",&gamma)) gamma=1; /* vp/vs ratio, can be used for converted wave binning */
+    if (!sf_getfloat("ang",&ang)) ang=90; /* azimuth of constant inline direction (commonly defined as the direction that receiver lines run) measured in degrees CC from East */
 
     hdr_in_name = sf_getstring("headin");
     if (NULL == hdr_in_name) sf_error("Need headin=");
@@ -117,204 +139,270 @@ int main(int argc, char* argv[])
     hdr_in_array = sf_intalloc(nk_in);
     hdr_out_array = sf_intalloc(nk_out);
 
+    sx = sf_floatalloc(1);
+    sy = sf_floatalloc(1);
+    gx = sf_floatalloc(1);
+    gy = sf_floatalloc(1);
+    mx = sf_floatalloc(1);
+    my = sf_floatalloc(1);
+    hx = sf_floatalloc(1);
+    hy = sf_floatalloc(1);
+    h  = sf_floatalloc(1);
+    az = sf_floatalloc(1);
+    isx = sf_intalloc(1);
+    isy = sf_intalloc(1);
+    igx = sf_intalloc(1);
+    igy = sf_intalloc(1);
+    imx = sf_intalloc(1);
+    imy = sf_intalloc(1);
+    ihx = sf_intalloc(1);
+    ihy = sf_intalloc(1);
+    ih  = sf_intalloc(1);
+    iaz = sf_intalloc(1);
+    hdr_in_all = sf_intalloc2(n2,nk_in);
+
+    sx[0]=0;sy[0]=0;gx[0]=0;gy[0]=0;
+    mx[0]=0;my[0]=0;hx[0]=0;hy[0]=0;h[0]=0;az[0]=0;
+    isx[0]=0;isy[0]=0;igx[0]=0;igy[0]=0;
+    imx[0]=0;imy[0]=0;ihx[0]=0;ihy[0]=0;ih[0]=0;iaz[0]=0;
+
     for (i2=0; i2<n2; i2++) {	
 	sf_intread (hdr_in_array,nk_in,hdr_in);
+	for (ik=0;ik<nk_in;ik++) hdr_in_all[ik][i2]=hdr_in_array[ik];
 	if (mode<=3){
-	  sx = (float) hdr_in_array[segykey("sx")];
-	  sy = (float) hdr_in_array[segykey("sy")];
-	  gx = (float) hdr_in_array[segykey("gx")];
-	  gy = (float) hdr_in_array[segykey("gy")];
+	  sx[0] = (float) hdr_in_array[segykey("sx")];
+	  sy[0] = (float) hdr_in_array[segykey("sy")];
+	  gx[0] = (float) hdr_in_array[segykey("gx")];
+	  gy[0] = (float) hdr_in_array[segykey("gy")];
 	}
 	else if (mode==4){
-	  isx = hdr_in_array[segykey("isx")];
-	  isy = hdr_in_array[segykey("isy")];
-	  igx = hdr_in_array[segykey("igx")];
-	  igy = hdr_in_array[segykey("igy")];
+	  isx[0] = hdr_in_array[segykey("isx")];
+	  isy[0] = hdr_in_array[segykey("isy")];
+	  igx[0] = hdr_in_array[segykey("igx")];
+	  igy[0] = hdr_in_array[segykey("igy")];
 	}
 	else if (mode==5){
-	  imx = hdr_in_array[segykey("imx")];
-	  imy = hdr_in_array[segykey("imy")];
-	  ihx = hdr_in_array[segykey("ihx")];
-	  ihy = hdr_in_array[segykey("ihy")];
+	  imx[0] = hdr_in_array[segykey("imx")];
+	  imy[0] = hdr_in_array[segykey("imy")];
+	  ihx[0] = hdr_in_array[segykey("ihx")];
+	  ihy[0] = hdr_in_array[segykey("ihy")];
 	}
 	else if (mode==6){
-	  imx = hdr_in_array[segykey("imx")];
-	  imy = hdr_in_array[segykey("imy")];
-	  ih  = hdr_in_array[segykey("ih")];
-	  iaz = hdr_in_array[segykey("iaz")];
+	  imx[0] = hdr_in_array[segykey("imx")];
+	  imy[0] = hdr_in_array[segykey("imy")];
+	  ih[0]  = hdr_in_array[segykey("ih")];
+	  iaz[0] = hdr_in_array[segykey("iaz")];
 	}
-
 
     if (mode==1){      /* binning sx/sy/gx/gy */
       geom_calc_header(sx,sy,gx,gy,
-		        mx,my,hx,hy,
-	                h,az);
+		       mx,my,hx,hy,
+	               h,az,gamma);
       geom_bin_header(sx,sy,gx,gy,
-	               isx,isy,igx,igy,
-		       osx,osy,ogx,ogy,
-		       dsx,dsy,dgx,dgy,1);
+	              isx,isy,igx,igy,
+		      osx,osy,ogx,ogy,
+		      dsx,dsy,dgx,dgy,ang,1,0);
     }
     else if (mode==2){ /* binning mx/my/hx/hy */
       geom_calc_header(sx,sy,gx,gy,
-		        mx,my,hx,hy,
-	                h,az);
+		       mx,my,hx,hy,
+	               h,az,gamma);
       geom_bin_header(mx,my,hx,hy,
-	               imx,imy,ihx,ihy,
-		       omx,omy,ohx,ohy,
-		       dmx,dmy,dhx,dhy,1);
+	              imx,imy,ihx,ihy,
+		      omx,omy,ohx,ohy,
+		      dmx,dmy,dhx,dhy,ang,1,0);
     }
     else if (mode==3){ /* binning mx/my/h/az */
       geom_calc_header(sx,sy,gx,gy,
-		        mx,my,hx,hy,
-	                h,az);
+		       mx,my,hx,hy,
+	               h,az,gamma);
       geom_bin_header(mx,my,h,az,
-	               imx,imy,ih,iaz,
-		       omx,omy,oh,oaz,
-		       dmx,dmy,dh,daz,1);
+	              imx,imy,ih,iaz,
+		      omx,omy,oh,oaz,
+		      dmx,dmy,dh,daz,ang,1,1);
     }
     else if (mode==4){ /* use binned isx/isy/igx/igy to get headers */
       geom_bin_header(sx,sy,gx,gy,
-	               isx,isy,igx,igy,
-		       osx,osy,ogx,ogy,
-		       dsx,dsy,dgx,dgy,0);
+	              isx,isy,igx,igy,
+		      osx,osy,ogx,ogy,
+		      dsx,dsy,dgx,dgy,ang,0,0);
       geom_calc_header(sx,sy,gx,gy,
-		        mx,my,hx,hy,
-	                h,az);
+		       mx,my,hx,hy,
+	               h,az,gamma);
     }
     else if (mode==5){ /* use binned imx/imy/ihx/ihy to get headers */
       geom_bin_header(mx,my,hx,hy,
-	               imx,imy,ihx,ihy,
-		       omx,omy,ohx,ohy,
-		       dmx,dmy,dhx,dhy,0);
-      geom_calc_sxsygxgy_from_mxmyhxhy(mx,my,hx,hy,sx,sy,gx,gy,n2);
+	              imx,imy,ihx,ihy,
+		      omx,omy,ohx,ohy,
+		      dmx,dmy,dhx,dhy,ang,0,0);
+      geom_calc_sxsygxgy_from_mxmyhxhy(mx,my,hx,hy,sx,sy,gx,gy,gamma);
       geom_calc_header(sx,sy,gx,gy,
-		        mx,my,hx,hy,
-	                h,az);
+		       mx,my,hx,hy,
+	               h,az,gamma);
     }
     else if (mode==6){ /* use binned imx/imy/ih/iaz to get headers */
       geom_bin_header(mx,my,h,az,
-	               imx,imy,ih,iaz,
-		       omx,omy,oh,oaz,
-		       dmx,dmy,dh,daz,0);
-      geom_calc_sxsygxgy_from_mxmyhaz(mx,my,h,az,sx,sy,gx,gy,n2);
+	              imx,imy,ih,iaz,
+		      omx,omy,oh,oaz,
+		      dmx,dmy,dh,daz,ang,0,1);
+      geom_calc_sxsygxgy_from_mxmyhaz(mx,my,h,az,sx,sy,gx,gy,gamma);
       geom_calc_header(sx,sy,gx,gy,
-		        mx,my,hx,hy,
-	                h,az);
-    }
- 
+		       mx,my,hx,hy,
+	               h,az,gamma);
+    } 
     /* zero all headers that were not present on input */ 
     for (ik=0;ik<nk_out;ik++) hdr_out_array[ik] = 0;
-
-      /* pass on all input headers */
-      /*for (ik=0;ik<nk_in;ik++) itrace[ik] = hdrin[i2][ik];*/
-      /* update the new non-standard headers*/  
-      if (mode<=3){ 
-        hdr_out_array[segykey("sx")] = (int) sx;
-        hdr_out_array[segykey("sy")] = (int) sx;
-        hdr_out_array[segykey("gx")] = (int) gx;
-        hdr_out_array[segykey("gy")] = (int) gy;
-        hdr_out_array[segykey("mx")] = (int) mx;
-        hdr_out_array[segykey("my")] = (int) my;
-        hdr_out_array[segykey("hx")] = (int) hx;
-        hdr_out_array[segykey("hy")] = (int) hy;
-        hdr_out_array[segykey("h")]  = (int) h;
-        hdr_out_array[segykey("az")] = (int) az;
-      }
-      if (mode==1){
-        hdr_out_array[segykey("isx")] = (int) isx;
-        hdr_out_array[segykey("isy")] = (int) isx;
-        hdr_out_array[segykey("igx")] = (int) igx;
-        hdr_out_array[segykey("igy")] = (int) igy;
-      }
-      if (mode==2){
-        hdr_out_array[segykey("imx")] = (int) imx;
-        hdr_out_array[segykey("imy")] = (int) imy;
-        hdr_out_array[segykey("ihx")] = (int) ihx;
-        hdr_out_array[segykey("ihy")] = (int) ihy;
-      }
-      if (mode==3){
-        hdr_out_array[segykey("imx")] = (int) imx;
-        hdr_out_array[segykey("imy")] = (int) imy;
-        hdr_out_array[segykey("ih")]  = (int) ih;
-        hdr_out_array[segykey("iaz")] = (int) iaz;
-      }
-      sf_intwrite(hdr_out_array, nk_out, hdr_out);
+    /* pass on all input headers */
+    for (ik=0;ik<nk_in;ik++) hdr_out_array[ik]=hdr_in_all[ik][i2];
+    /* update the new non-standard headers*/ 
+    hdr_out_array[segykey("sx")] = (int) sx[0];
+    hdr_out_array[segykey("sy")] = (int) sy[0];
+    hdr_out_array[segykey("gx")] = (int) gx[0];
+    hdr_out_array[segykey("gy")] = (int) gy[0];
+    hdr_out_array[segykey("mx")] = (int) mx[0];
+    hdr_out_array[segykey("my")] = (int) my[0];
+    hdr_out_array[segykey("hx")] = (int) hx[0];
+    hdr_out_array[segykey("hy")] = (int) hy[0];
+    hdr_out_array[segykey("h")]  = (int) h[0];
+    hdr_out_array[segykey("az")] = (int) az[0];
+    if (mode==1 || mode==4){
+      hdr_out_array[segykey("isx")] = (int) isx[0];
+      hdr_out_array[segykey("isy")] = (int) isy[0];
+      hdr_out_array[segykey("igx")] = (int) igx[0];
+      hdr_out_array[segykey("igy")] = (int) igy[0];
+    }
+    if (mode==2 || mode==5){
+      hdr_out_array[segykey("imx")] = (int) imx[0];
+      hdr_out_array[segykey("imy")] = (int) imy[0];
+      hdr_out_array[segykey("ihx")] = (int) ihx[0];
+      hdr_out_array[segykey("ihy")] = (int) ihy[0];
+    }
+    if (mode==3 || mode==6){
+      hdr_out_array[segykey("imx")] = (int) imx[0];
+      hdr_out_array[segykey("imy")] = (int) imy[0];
+      hdr_out_array[segykey("ih")]  = (int) ih[0];
+      hdr_out_array[segykey("iaz")] = (int) iaz[0];
+    }
+    sf_intwrite(hdr_out_array, nk_out, hdr_out);
     }
     sf_fileclose (hdr_in);
     sf_fileclose (hdr_out);
 
     exit (0);
 }
-void geom_bin_headers(float x1,float x2,float x3,float x4,
-	              int ix1,int ix2,int ix3,int ixy,
+void geom_bin_header(float *x1,float *x2,float *x3,float *x4,
+	              int *ix1,int *ix2,int *ix3,int *ix4,
 		      float ox1,float ox2,float ox3,float ox4,
 		      float dx1,float dx2,float dx3,float dx4,float ang,
 		      int fwd,int haz_flag)
 {
-  float rad2deg,deg2rad,ang2,x1_rot,x2_rot,x3_rot,x4_rot;
-  rad2deg = 180/PI;
+  float deg2rad,ang2,x1_rot,x2_rot,x3_rot,x4_rot;
   deg2rad = PI/180;
 
   if (fwd){
     if (ang > 90) ang2=-deg2rad*(ang-90);
     else ang2=deg2rad*(90-ang);
-    x1_rot = (x1-ox1)*cos(ang2) - (x2-ox2)*sin(ang2) + ox1;
-    x2_rot = (x1-ox1)*sin(ang2) + (x2-ox2)*cos(ang2) + ox2;
-    x3_rot = (x3-ox3)*cos(ang2) - (x4-ox4)*sin(ang2) + ox3;
-    x4_rot = (x3-ox3)*sin(ang2) + (x4-ox4)*cos(ang2) + ox4;
-    ix1 = (int) round((x1_rot-ox1)/dx1);
-    ix2 = (int) round((x2_rot-ox2)/dx2);
+    x1_rot = (x1[0]-ox1)*cos(ang2) - (x2[0]-ox2)*sin(ang2) + ox1;
+    x2_rot = (x1[0]-ox1)*sin(ang2) + (x2[0]-ox2)*cos(ang2) + ox2;
+    x3_rot = (x3[0]-ox3)*cos(ang2) - (x4[0]-ox4)*sin(ang2) + ox3;
+    x4_rot = (x3[0]-ox3)*sin(ang2) + (x4[0]-ox4)*cos(ang2) + ox4;
+    ix1[0] = (int) round((x1_rot-ox1)/dx1);
+    ix2[0] = (int) round((x2_rot-ox2)/dx2);
     if (haz_flag==0){
-      ix3 = (int) round((x3_rot-ox3)/dx3);
-      ix4 = (int) round((x4_rot-ox4)/dx4);
+      ix3[0] = (int) round((x3_rot-ox3)/dx3);
+      ix4[0] = (int) round((x4_rot-ox4)/dx4);
     }
     else{
-      ix3 = (int) round((x3-ox3)/dx3);
-      ix4 = (int) round((x4-ox4)/dx4);
+      ix3[0] = (int) round((x3[0]-ox3)/dx3);
+      ix4[0] = (int) round((x4[0]-ox4)/dx4);
     }
   }
   else{
-    x1_rot = (float) ix1*dx1 + ox1;
-    x2_rot = (float) ix2*dx2 + ox2;
-    x3_rot = (float) ix3*dx3 + ox3;
-    x4_rot = (float) ix4*dx4 + ox4;
-    x1 =  (x1_rot-ox1)*cos(ang2) + (x2_rot-ox2)*sin(ang2) + ox1;
-    x2 = -(x1_rot-ox1)*sin(ang2) + (x2_rot-ox2)*cos(ang2) + ox2;
+    if (ang > 90) ang2=-deg2rad*(ang-90);
+    else ang2=deg2rad*(90-ang);
+    x1_rot = (float) ix1[0]*dx1 + ox1;
+    x2_rot = (float) ix2[0]*dx2 + ox2;
+    x3_rot = (float) ix3[0]*dx3 + ox3;
+    x4_rot = (float) ix4[0]*dx4 + ox4;
+    x1[0] =  (x1_rot-ox1)*cos(ang2) + (x2_rot-ox2)*sin(ang2) + ox1;
+    x2[0] = -(x1_rot-ox1)*sin(ang2) + (x2_rot-ox2)*cos(ang2) + ox2;
     if (haz_flag==0){
-      x3 =  (x3_rot-ox3)*cos(ang2) + (x4_rot-ox4)*sin(ang2) + ox3;
-      x4 = -(x3_rot-ox3)*sin(ang2) + (x4_rot-ox4)*cos(ang2) + ox4;
+      x3[0] =  (x3_rot-ox3)*cos(ang2) + (x4_rot-ox4)*sin(ang2) + ox3;
+      x4[0] = -(x3_rot-ox3)*sin(ang2) + (x4_rot-ox4)*cos(ang2) + ox4;
     }
     else{
-      x3 = x3_rot;
-      x4 = x4_rot;
+      x3[0] = x3_rot;
+      x4[0] = x4_rot;
     }
   }
 
   return;
 }
-void geom_calc_sxsygxgy_from_mxmyhxhy(float mx,float my,float hx,float hy,
-				      float sx,float sy,float gx,float gy)
-{
-  return;
-}
-void geom_calc_headers(float sx,float sy,float gx,float gy,
-		       float mx,float my,float hx,float hy,
-	               float h,float az,float gamma)
-{
-  float gammainv;
-  gammainv = 1/gamma;	 		
 
-  hx = gx - sx;
-  hy = gy - sy;
-  h  = sqrt(hx*hx + hy*hy);
+void geom_calc_header(float *sx,float *sy,float *gx,float *gy,
+		       float *mx,float *my,float *hx,float *hy,
+	               float *h,float *az,float gamma)
+{
+  float gammainv, rad2deg;
+  rad2deg = 180/PI;
+  gammainv = 1/gamma;
+
+  hx[0] = gx[0] - sx[0];
+  hy[0] = gy[0] - sy[0];
+  h[0]  = sqrt(hx[0]*hx[0] + hy[0]*hy[0]);
   /* azimuth measured from source to receiver
      CC from East and ranges from 0 to 359.999 degrees*/
-  az = rad2deg*atan2((gy-sy),(gx-sx));
-  if (az < 0.) az += 360.0;
-  mx = sx + hx/(1 + gammainv);
-  my = sy + hy/(1 + gammainv);
+  az[0] = rad2deg*atan2((gy[0]-sy[0]),(gx[0]-sx[0]));
+  if (az[0] < 0.) az[0] += 360.0;
+  mx[0] = sx[0] + hx[0]/(1 + gammainv);
+  my[0] = sy[0] + hy[0]/(1 + gammainv);
 
   return;
 }
 
+void geom_calc_sxsygxgy_from_mxmyhxhy(float *mx,float *my,float *hx,float *hy,
+				      float *sx,float *sy,float *gx,float *gy,
+				      float gamma)
+{
+  float gammainv;
+  gammainv = 1/gamma;
+  sx[0] = mx[0] - hx[0]/(1 + gammainv);
+  sy[0] = my[0] - hy[0]/(1 + gammainv);
+  gx[0] = mx[0] + hx[0]*(1-(1/(1 + gammainv)));
+  gy[0] = my[0] + hy[0]*(1-(1/(1 + gammainv)));
+
+  return;
+}
+
+void geom_calc_sxsygxgy_from_mxmyhaz(float *mx,float *my,float *h,float *az,
+				      float *sx,float *sy,float *gx,float *gy,
+				      float gamma)
+{
+  float gammainv, deg2rad, hx, hy;
+  deg2rad = PI/180;
+  gammainv = 1/gamma;
+
+  if (az[0] <= 90){
+    hx = h[0]*cos(deg2rad*az[0]);
+    hy = h[0]*sin(deg2rad*az[0]);
+  }
+  else if (az[0] > 90 && az[0] <= 180) {
+    hx =-h[0]*cos(PI-(deg2rad*az[0]));
+    hy = h[0]*sin(PI-(deg2rad*az[0]));
+  }
+  else if (az[0] > 180 && az[0] <= 270) {
+    hx =-h[0]*cos((deg2rad*az[0])-PI);
+    hy =-h[0]*sin((deg2rad*az[0])-PI);
+  }
+  else {
+    hx = h[0]*cos(2*PI-(deg2rad*az[0]));
+    hy =-h[0]*sin(2*PI-(deg2rad*az[0]));
+  }
+  sx[0] = mx[0] - hx/(1 + gammainv);
+  sy[0] = my[0] - hy/(1 + gammainv);
+  gx[0] = mx[0] + hx*(1-(1/(1 + gammainv)));
+  gy[0] = my[0] + hy*(1-(1/(1 + gammainv)));
+
+  return;
+}
 
