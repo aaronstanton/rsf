@@ -6,6 +6,9 @@ progs = '''
 syn5d
 geom5d
 pad5d
+decimate
+static
+pocs5d
 '''
 
 try:  # distributed version
