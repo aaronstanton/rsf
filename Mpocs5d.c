@@ -18,6 +18,10 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
+#ifndef MARK
+#define MARK fprintf(stderr,"%s @ %u\n",__FILE__,__LINE__);fflush(stderr);
+#endif
+
 #ifndef _LARGEFILE_SOURCE
 #define _LARGEFILE_SOURCE
 #endif
@@ -34,13 +38,19 @@
 #define PI (3.141592653589793)
 #endif
 
-
 void process_time_windows(float **d,
-			  int nt,int nx1,int nx2,int nx3,int nx4,
+			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
                           float *wd_no_pad,int iter,float alphai,float alphaf,
                           float fmax, int verbose);
+void process1c(float **d,
+	       int verbose,int nt,int nx,float dt,
+               int *x1h,int *x2h,int *x3h,int *x4h,
+               int nx1,int nx2,int nx3,int nx4,
+               float *wd,int iter,float alphai,float alphaf,float fmax);
+
+void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf);
 
 int main(int argc, char* argv[])
 { 
@@ -49,6 +59,7 @@ int main(int argc, char* argv[])
     int i1,i2,i3,i4,i5;
     int nx1,nx2,nx3,nx4;
     int *ix1_in,*ix2_in,*ix3_in,*ix4_in;
+    int *ix1,*ix2,*ix3,*ix4;
     float *wd,*trace,**d;
     float d1,o1,d2,o2,d3,o3,d4,o4,d5,o5;
     float sum;
@@ -56,6 +67,7 @@ int main(int argc, char* argv[])
     sf_init (argc,argv);
     int tw_length, tw_overlap, iter;
     float alphai, alphaf, fmax;
+    int sum_wd;
     int verbose;
  
     in = sf_input("in");
@@ -136,9 +148,36 @@ int main(int argc, char* argv[])
     nx = ix;
     nx1 = n2; nx2 = n3; nx3 = n4; nx4 = n5;
 
+    ix1 = sf_intalloc (n2*n3*n4*n5);
+    ix2 = sf_intalloc (n2*n3*n4*n5);
+    ix3 = sf_intalloc (n2*n3*n4*n5);
+    ix4 = sf_intalloc (n2*n3*n4*n5);
+
+    ix = 0;
+    for (i2=0; i2<n2; i2++) {	
+      for (i3=0; i3<n3; i3++) {	
+        for (i4=0; i4<n4; i4++) {	
+          for (i5=0; i5<n5; i5++) {	
+            ix1[ix] = i2;
+            ix2[ix] = i3;
+            ix3[ix] = i4;
+            ix4[ix] = i5;
+            ix++;
+          }
+        }
+      }
+    }
+
     trace = sf_floatalloc (n1);
     d = sf_floatalloc2 (n1,nx);
-    wd    = sf_floatalloc (n1);
+    wd    = sf_floatalloc (nx);
+
+    for (i2=0; i2<nx; i2++){
+      for (i1=0; i1<n1; i1++) d[i2][i1] = 0; 
+      wd[i2] = 0;
+    }
+
+    sum_wd = 0;
     for (i2=0; i2<nx; i2++) {
       sf_floatread(trace,n1,in);
       ix =   ix1_in[i2]*nx2*nx3*nx4 
@@ -150,50 +189,52 @@ int main(int argc, char* argv[])
         sum      += trace[i1]*trace[i1]; 
         d[ix][i1] = trace[i1];
       }
-      if (sum>0.001) wd[i2] = 1;
-      else           wd[i2] = 0; 	
+      if (sum>0.001){ 
+        wd[ix] = 1;
+        sum_wd++;
+      }      
     }
 
+  if (verbose) fprintf(stderr,"the block has %6.2f %% missing traces.\n", (float) 100 - 100*sum_wd/(nx1*nx2*nx3*nx4));
+
     process_time_windows(d,
-			 n1,nx1,nx2,nx3,nx4,
+			 n1,d1,nx1,nx2,nx3,nx4,
                          tw_length,tw_overlap,
-                         ix1_in,ix2_in,ix3_in,ix4_in,
+                         ix1,ix2,ix3,ix4,
                          wd,iter,alphai,alphaf,
                          fmax,verbose);
 
     for (i2=0; i2<nx; i2++) {
-      ix =   ix4_in[i2]*nx3*nx2*nx1 
-           + ix3_in[i2]*nx2*nx1 
-           + ix2_in[i2]*nx1 
-           + ix1_in[i2];
+      ix =   ix4[i2]*nx3*nx2*nx1 
+           + ix3[i2]*nx2*nx1 
+           + ix2[i2]*nx1 
+           + ix1[i2];
       for (i1=0; i1<n1; i1++) trace[i1] = d[ix][i1];	
       sf_floatwrite(trace,n1,out);
     }
-
 
     exit (0);
 }
 
 void process_time_windows(float **d,
-			  int nt,int nx1,int nx2,int nx3,int nx4,
+			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd_no_pad,int iter,float alphai,float alphaf,
+                          float *wd,int iter,float alphai,float alphaf,
                           float fmax, int verbose)
 /***********************************************************************/
 /* process with overlapping time windows */
 /***********************************************************************/
 {
   int ix,itw,Itw,Ntw,nx,twstart,taper;
-  float **din_tw, **dout_tw;
+  float **d_tw;
 
   Ntw = 9999;	
   nx = nx1*nx2*nx3*nx4;
   twstart = 0;
   taper = 0;
 
-  din_tw = sf_floatalloc2 (nt,nx);
-  dout_tw = sf_floatalloc2 (nt,nx);
+  d_tw = sf_floatalloc2 (nt,nx);
 
   for (Itw=0;Itw<Ntw;Itw++){	
     if (Itw == 0){
@@ -207,21 +248,22 @@ void process_time_windows(float **d,
     }
     for (ix=0;ix<nx;ix++){ 
       for (itw=0;itw<Ltw;itw++){
-        din_tw[ix][itw] = d[ix][twstart+itw]*wd_no_pad[ix];
+        d_tw[ix][itw] = d[ix][twstart+itw]*wd[ix];
       } 
     }
-    fprintf(stderr,"processing time window %d of %d\n",Itw+1,Ntw);
 
-    process1c(din_tw,dout_tw,
+    if (verbose) fprintf(stderr,"processing time window %d of %d\n",Itw+1,Ntw);
+
+    process1c(d_tw,
               verbose,Ltw,nx,dt,
               ix1_in,ix2_in,ix3_in,ix4_in,
               nx1,nx2,nx3,nx4,
-              wd_no_pad,iter,alphai,alphaf,fmax);
+              wd,iter,alphai,alphaf,fmax);
 
     if (Itw==0){ 
       for (ix=0;ix<nx;ix++){ 
         for (itw=0;itw<Ltw;itw++){   
-	  d[ix][twstart+itw] = dout_tw[ix][itw];
+	  d[ix][twstart+itw] = d_tw[ix][itw];
         }
       }	 	 
     }
@@ -230,10 +272,10 @@ void process_time_windows(float **d,
         for (itw=0;itw<Dtw;itw++){   
 	  taper = (float) ((Dtw-1) - itw)/(Dtw-1); 
 	  d[ix][twstart+itw] = d[ix][twstart+itw]*(taper) 
-                             + dout_tw[ix][itw]*(1-taper);
+                             + d_tw[ix][itw]*(1-taper);
         }
         for (itw=Dtw;itw<Ltw;itw++){   
-	  d[ix][twstart+itw] = dout_tw[ix][itw];
+	  d[ix][twstart+itw] = d_tw[ix][itw];
         }
       }	 	 
     }
@@ -242,27 +284,26 @@ void process_time_windows(float **d,
   return;
 }
 
-void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt,int *x1h,int *x2h,int *x3h,int *x4h,int nx1,int nx2,int nx3,int nx4,float *wd_no_pad,int iter,int iter_external,float alphai,float alphaf,float bandi,float bandf,float fmax,int method,int ranki,int rankf)
+void process1c(float **d,
+	       int verbose,int nt,int nx,float dt,
+               int *x1h,int *x2h,int *x3h,int *x4h,
+               int nx1,int nx2,int nx3,int nx4,
+               float *wd_no_pad,int iter,float alphai,float alphaf,float fmax)
 {  
   int it, ix, iw;
-  complex czero;
+  sf_complex czero;
   int ntfft,nx1fft,nx2fft,nx3fft,nx4fft,nw,nk;
   float perci;
   float percf;
   int padfactor;
   float *wd;
   float **pfft; 
-  complex **cpfft;
+  sf_complex **cpfft;
   int N; 
-  complex *out;
+  sf_complex *out;
   fftwf_plan p1;
   int *mapping_vector;
   int ix_no_pad;
-  float *k_n_1;  
-  float *k_n_2;  
-  float *k_n_3;  
-  float *k_n_4; 
-  int sum_wd;
   int ix1,ix2,ix3,ix4;
   float  f_low;
   float  f_high;
@@ -270,17 +311,19 @@ void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt
   int if_high;
   float *out2;
   fftwf_plan p4;
-  complex* in2;
-  complex* freqslice;
+  sf_complex* in2;
+  sf_complex* freqslice;
   float* in;
-  complex* freqslice2;
+  sf_complex* freqslice2;
 
-  czero.r=czero.i=0;
+  __real__ czero = 0;
+  __imag__ czero = 0;
+
   perci = 0.999;
   percf = 0.001;
   padfactor = 2;
   /* copy data from input to FFT array and pad with zeros */
-  ntfft = npfar(padfactor*nt);
+  ntfft = padfactor*nt;
   /* DANGER: YOU MIGHT WANT TO PAD THE SPATIAL DIRECTIONS TOO.*/
   nx1fft = nx1;
   nx2fft = nx2;
@@ -292,27 +335,28 @@ void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt
   if(nx4==1) nx4fft = 1;
   nw=ntfft/2+1;
   nk=nx1fft*nx2fft*nx3fft*nx4fft;
-  wd = ealloc1float(nx1fft*nx2fft*nx3fft*nx4fft);
-  freqslice = ealloc1complex(nx1fft*nx2fft*nx3fft*nx4fft);
+
+  wd = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);
+  freqslice = sf_complexalloc(nx1fft*nx2fft*nx3fft*nx4fft);
   
   if (nx > nx1*nx2*nx3*nx4) {
-  pfft  = ealloc2float(ntfft,nx); 
-  cpfft = ealloc2complex(nw,nx);
+  pfft  = sf_floatalloc2(ntfft,nx); /* trace oriented (Hale's reversed convention for alloc)*/
+  cpfft = sf_complexalloc2(nw,nx);     /* trace oriented*/
   }
   else{
-  pfft  = ealloc2float(ntfft,nx1*nx2*nx3*nx4);
-  cpfft = ealloc2complex(nw,nx1*nx2*nx3*nx4);
+  pfft  = sf_floatalloc2(ntfft,nx1*nx2*nx3*nx4); /* trace oriented (Hale's reversed convention for alloc)*/
+  cpfft = sf_complexalloc2(nw,nx1*nx2*nx3*nx4);     /* trace oriented*/
   }
   /* copy data from input to FFT array and pad with zeros in time dimension*/
   for (ix=0;ix<nx;ix++){
-    for (it=0; it<nt; it++) pfft[ix][it]=datain[ix][it];
+    for (it=0; it<nt; it++) pfft[ix][it]=d[ix][it];
     for (it=nt; it< ntfft;it++) pfft[ix][it] = 0.0;
   }
   /******************************************************************************************** TX to FX
   transform data from t-x to w-x using FFTW */
   N = ntfft; 
-  out = ealloc1complex(nw);
-  in = ealloc1float(N);
+  out = sf_complexalloc(nw);
+  in = sf_floatalloc(N);
   p1 = fftwf_plan_dft_r2c_1d(N, in, (fftwf_complex*)out, FFTW_ESTIMATE);
 
   for (ix=0;ix<nx;ix++){
@@ -327,7 +371,7 @@ void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt
   fftwf_destroy_plan(p1);
   fftwf_free(in); fftwf_free(out);
   /********************************************************************************************/
-  mapping_vector = ealloc1int(nk+1);
+  mapping_vector = sf_intalloc(nk+1);
   for (ix=0;ix<nk;ix++){
 	wd[ix] = 0;  
 	mapping_vector[ix] = 0;
@@ -343,54 +387,8 @@ void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt
       }	
   }
 	
-  /* algorithm starts*/
-  freqslice2= ealloc1complex(nx1fft*nx2fft*nx3fft*nx4fft);
+  freqslice2= sf_complexalloc(nx1fft*nx2fft*nx3fft*nx4fft);
   
-  /* make long vectors of normalized wavenumbers (for each of the 4 dimensions). */
-  /* (to be used in the band limitation) */
-  k_n_1 = ealloc1float(nx1fft*nx2fft*nx3fft*nx4fft);  
-  k_n_2 = ealloc1float(nx1fft*nx2fft*nx3fft*nx4fft);  
-  k_n_3 = ealloc1float(nx1fft*nx2fft*nx3fft*nx4fft);  
-  k_n_4 = ealloc1float(nx1fft*nx2fft*nx3fft*nx4fft); 
-  sum_wd = 0;
-  ix        = 0;
-  for (ix1=0;ix1<nx1fft;ix1++){
-    for (ix2=0;ix2<nx2fft;ix2++){
-      for (ix3=0;ix3<nx3fft;ix3++){
-	for (ix4=0;ix4<nx4fft;ix4++){
-	  if (ix1>nx1fft/2) {
-	    k_n_1[ix] = 1 - (float) (ix1-nx1fft/2)/(nx1fft/2);
-	  }
-	  else {
-	    k_n_1[ix] = 1 - (float) (nx1fft/2-ix1)/(nx1fft/2);
-	  }
-	  if (ix2>nx2fft/2) {
-	    k_n_2[ix] = 1 - (float) (ix2-nx2fft/2)/(nx2fft/2);
-	  }
-	  else {
-	    k_n_2[ix] = 1 - (float) (nx2fft/2-ix2)/(nx2fft/2);
-	  }
-	  if (ix3>nx3fft/2) {
-	    k_n_3[ix] = 1 - (float) (ix3-nx3fft/2)/(nx3fft/2);
-	  }
-	  else {
-	    k_n_3[ix] = 1 - (float) (nx3fft/2-ix3)/(nx3fft/2);
-	  }
-	  if (ix4>nx4fft/2) {
-	    k_n_4[ix] = 1 - (float) (ix4-nx4fft/2)/(nx4fft/2);
-	  }
-	  else {
-	    k_n_4[ix] = 1 - (float) (nx4fft/2-ix4)/(nx4fft/2);
-	  }
-	  if (wd[ix]>0) sum_wd++;
-	  ix++;
-	}
-      }
-    }
-  }
-  if (verbose) fprintf(stderr,"out of %d input traces %d traces fall in repeated bins (%f %%).\n",nx,nx-sum_wd,(float) 100*(nx-sum_wd)/nx);
-  if (verbose) fprintf(stderr,"the block has %f %% missing traces.\n", (float) 100 - 100*sum_wd/(nx1fft*nx2fft*nx3fft*nx4fft));
-
   f_low = 0.1;   /* min frequency to process */
   f_high = fmax; /* max frequency to process */
 
@@ -407,7 +405,7 @@ void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt
     if_high = 0;
   }
 
-  /* freq by freq algorithm */
+  /* process frequency slices */
   for (iw=if_low;iw<if_high;iw++){
     fprintf(stderr,"\r                                         ");
     fprintf(stderr,"\rfrequency slice %d of %d",iw-if_low+1,if_high-if_low);
@@ -422,9 +420,8 @@ void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt
 	freqslice[ix] = freqslice2[ix] = cpfft[ix_no_pad][iw];
       }	
     }
-
     /* The reconstruction engine: */
-      pocs5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,perci,percf,alphai,alphaf,bandi,bandf,k_n_1,k_n_2,k_n_3,k_n_4);
+    pocs5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,perci,percf,alphai,alphaf);
 
     ix        = 0;
     ix_no_pad = 0;
@@ -452,17 +449,11 @@ void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt
     }
   }
 
-  free1complex(freqslice2);
-  free1complex(freqslice);
-  free1float(wd);
-  /* algorithm ends */
-
-
   /******************************************************************************************** FX to TX
   transform data from w-x to t-x using IFFTW*/
   N = ntfft; 
-  out2 = ealloc1float(ntfft);
-  in2 = ealloc1complex(N);
+  out2 = sf_floatalloc(ntfft);
+  in2 = sf_complexalloc(N);
   p4 = fftwf_plan_dft_c2r_1d(N, (fftwf_complex*)in2, out2, FFTW_ESTIMATE);
   for (ix=0;ix<nx1*nx2*nx3*nx4;ix++){
     /*    fprintf(stderr,"ix=%d\n", ix); */
@@ -482,40 +473,41 @@ void process1c(float **datain,float **dataout,int verbose,int nt,int nx,float dt
   /********************************************************************************************/
   /* Fourier transform w to t */
 
-  for (ix=0;ix<nx1*nx2*nx3*nx4;ix++) for (it=0; it<nt; it++) dataout[ix][it]=pfft[ix][it]/ntfft;
+  for (ix=0;ix<nx1*nx2*nx3*nx4;ix++) for (it=0; it<nt; it++) d[ix][it]=pfft[ix][it]/ntfft;
   
-  free2float(pfft);
-  free2complex(cpfft);
   return;
 
 }
 
-void pocs5d(complex *freqslice,complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf,float bandi,float bandf,float *k_n_1,float *k_n_2,float *k_n_3,float *k_n_4)
+void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf)
 {  
 
-  complex czero;
+  sf_complex czero;
   int ix;
   float *mabs;  
   float *mabsiter;
   float sigma;
   float alpha;
-  float band;
   int rank;
   int *n;
   int count;
   int iter;
+  int nclip;
+  float pclip;
   fftwf_plan p2;
   fftwf_plan p3;
 
-  czero.r=czero.i=0;
-  mabs = ealloc1float(nx1fft*nx2fft*nx3fft*nx4fft);  
-  mabsiter = ealloc1float(nx1fft*nx2fft*nx3fft*nx4fft);
+  __real__ czero = 0;
+  __imag__ czero = 0;
+
+  mabs = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);  
+  mabsiter = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);
   /******************************************************************************************** FX1X2 to FK1K2
   make the plan that will be used for each frequency slice
   written as a 4D transform with length =1 for two of the dimensions. 
   This is to make it easier to upgrade to reconstruction of 4 spatial dimensions. */
   rank = 4;
-  n = ealloc1int(4);
+  n = sf_intalloc(4);
   n[0] = nx1fft;
   n[1] = nx2fft;
   n[2] = nx3fft;
@@ -533,39 +525,37 @@ void pocs5d(complex *freqslice,complex *freqslice2,float *wd,int nx1fft,int nx2f
   fftwf_execute(p2); /* FFT x to k */
   
   /* threshold in k */
-  for (ix=0;ix<nk;ix++) mabs[ix]=rcabs(freqslice2[ix]);
+  for (ix=0;ix<nk;ix++) mabs[ix]=sf_cabs(freqslice2[ix]);
   fftwf_execute(p3); /* FFT k to x */
   
-  for (ix=0;ix<nk;ix++) freqslice2[ix]=crmul(freqslice2[ix],1/(float) nk);
+  for (ix=0;ix<nk;ix++) freqslice2[ix]=freqslice2[ix]*(1/(float) nk);
   for (iter=1;iter<Iter;iter++){  /* loop for thresholding */
     fftwf_execute(p2); /* FFT x to k */
     
     count = 0;
     
     /* This is to increase the thresholding within each internal iteration */
-    sigma=quest(perci - (iter-1)*((perci-percf)/(Iter-1)),nk,mabs);
-    
+    /* Shoplifted from plot/lib/gainpar.c: */
+    pclip = 100*(perci - (iter-1)*((perci-percf)/(Iter-1)));
+    nclip = SF_MAX(SF_MIN(nk*pclip/100. + .5,nk-1),0);
+    sigma=sf_quantile(nclip,nk,mabs);
     /* This is to increase alpha at each iteration */
     alpha=alphai + (iter-1)*((alphaf-alphai)/(Iter-1));
     
-    /* This is to increase band at each iteration */
-    band=bandi + (iter-1)*((bandf-bandi)/(Iter-1));
-    
-    for (ix=0;ix<nk;ix++) mabsiter[ix]=rcabs(freqslice2[ix]);
+    for (ix=0;ix<nk;ix++) mabsiter[ix]=sf_cabs(freqslice2[ix]);
     for (ix=0;ix<nk;ix++){
       /* thresholding */
       if (mabsiter[ix]<sigma) freqslice2[ix] = czero;
       /* band limitation */
-      if ((k_n_1[ix] > band) || (k_n_2[ix] > band) || (k_n_3[ix] > band) || (k_n_4[ix] > band)) freqslice2[ix] = czero;
       else{ count++; }
     }
     
     fftwf_execute(p3); /* FFT k to x */
     
-    for (ix=0;ix<nk;ix++) freqslice2[ix]=crmul(freqslice2[ix],1/((float) nx1fft*nx2fft*nx3fft*nx4fft));
+    for (ix=0;ix<nk;ix++) freqslice2[ix]=freqslice2[ix]*(1/((float) nx1fft*nx2fft*nx3fft*nx4fft));
     
 	/* reinsertion into original data */
-    for (ix=0;ix<nk;ix++) freqslice2[ix]=cadd(crmul(freqslice[ix],alpha),crmul(freqslice2[ix],1-alpha*wd[ix])); /* x,w */
+    for (ix=0;ix<nk;ix++) freqslice2[ix]=freqslice[ix]*alpha + freqslice2[ix]*(1-alpha*wd[ix]); /* x,w */
     
   }
   
@@ -575,7 +565,4 @@ void pocs5d(complex *freqslice,complex *freqslice2,float *wd,int nx1fft,int nx2f
   return;
 
 }
-
-
-
 
