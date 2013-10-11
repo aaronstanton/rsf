@@ -22,34 +22,22 @@
 #define MARK fprintf(stderr,"%s @ %u\n",__FILE__,__LINE__);fflush(stderr);
 #endif
 
-#ifndef _LARGEFILE_SOURCE
-#define _LARGEFILE_SOURCE
-#endif
-#include <sys/types.h>
-#include <unistd.h>
-
-#include <stdio.h>
-
-#include <time.h>
-
 #include <rsf.h>
 #include <fftw3.h>
 #ifndef PI
 #define PI (3.141592653589793)
 #endif
-
 void process_time_windows(float **d,
 			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd_no_pad,int iter,float alphai,float alphaf,
+                          float *wd,int iter,float alphai,float alphaf,
                           float fmax, int verbose);
 void process1c(float **d,
 	       int verbose,int nt,int nx,float dt,
                int *x1h,int *x2h,int *x3h,int *x4h,
                int nx1,int nx2,int nx3,int nx4,
-               float *wd,int iter,float alphai,float alphaf,float fmax);
-
+               float *wd_no_pad,int iter,float alphai,float alphaf,float fmax);
 void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf);
 
 int main(int argc, char* argv[])
@@ -73,12 +61,6 @@ int main(int argc, char* argv[])
     in = sf_input("in");
     out = sf_output("out");
 
-    if (!sf_getint("tw_length",&tw_length)) tw_length = 100; /* length of time windows in number of samples */
-    if (!sf_getint("tw_overlap",&tw_overlap)) tw_overlap = 10; /* length of time window overlap in number of samples */
-    if (!sf_getint("iter",&iter)) iter = 10; /* number of iterations */
-    if (!sf_getfloat("alphai",&alphai)) alphai = 1; /* denoising parameter for 1st iteration 1=no denoise */
-    if (!sf_getfloat("alphaf",&alphaf)) alphaf = 1; /* denoising parameter for last iteration 1=no denoise */
-    if (!sf_getint("verbose",&verbose)) verbose = 0; /* verbosity 0=quiet 1=loud */
 
     /* read input file parameters */
     if (!sf_histint(in,"n1",&n1)) sf_error("No n1= in input");
@@ -97,6 +79,13 @@ int main(int argc, char* argv[])
     if (!sf_histfloat(in,"d5",&d5)) d5=1;
     if (!sf_histfloat(in,"o5",&o5)) o5=0.;
 
+    if (!sf_getint("tw_length",&tw_length)) tw_length = n1; /* length of time windows in number of samples */
+    if (!sf_getint("tw_overlap",&tw_overlap)) tw_overlap = 10; /* length of time window overlap in number of samples */
+    if (tw_length==n1) tw_overlap=0;
+    if (!sf_getint("iter",&iter)) iter = 10; /* number of iterations */
+    if (!sf_getfloat("alphai",&alphai)) alphai = 1; /* denoising parameter for 1st iteration 1=no denoise */
+    if (!sf_getfloat("alphaf",&alphaf)) alphaf = 1; /* denoising parameter for last iteration 1=no denoise */
+    if (!sf_getint("verbose",&verbose)) verbose = 0; /* verbosity 0=quiet 1=loud */
     if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/d1; /* max frequency to process */
     if (fmax > 0.5/d1) fmax = 0.5/d1;
 
@@ -233,7 +222,6 @@ void process_time_windows(float **d,
   nx = nx1*nx2*nx3*nx4;
   twstart = 0;
   taper = 0;
-
   d_tw = sf_floatalloc2 (nt,nx);
 
   for (Itw=0;Itw<Ntw;Itw++){	
@@ -565,4 +553,7 @@ void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,in
   return;
 
 }
+
+
+
 

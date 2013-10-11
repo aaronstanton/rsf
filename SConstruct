@@ -11,7 +11,11 @@ static
 pocs5d
 '''
 
-
+pyprogs='''
+myclip
+'''
+pymods='''
+'''
 
 try:  # distributed version
     Import('env root pkgdir bindir')
@@ -40,6 +44,19 @@ for prog in mains:
     prog = env.Program(prog,map(lambda x: x + '.c',sources))
     if root:
         env.Install(bindir,prog)
+
+
+######################################################################
+# PYTHON METAPROGRAMS (python API not needed)
+######################################################################
+
+if root: # no compilation, just rename
+	pymains = Split(pyprogs)
+	exe = env.get('PROGSUFFIX','')
+	for prog in pymains:
+		env.InstallAs(os.path.join(bindir,'sf'+prog+exe),'M'+prog+'.py')
+	bldutil.install_py_modules(env,Split(pymods),pkgdir)
+
 
 ######################################################################
 # SELF-DOCUMENTATION
