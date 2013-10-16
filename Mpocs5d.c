@@ -20,7 +20,7 @@
 
 #ifndef MARK
 #define MARK fprintf(stderr,"%s @ %u\n",__FILE__,__LINE__);fflush(stderr);
-#endif
+#endif 
 
 #include <rsf.h>
 #include <fftw3.h>
@@ -31,18 +31,37 @@ void process_time_windows(float **d,
 			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd,int iter,float alphai,float alphaf,
-                          float fmax, int verbose);
+                          float *wd,int iter,int iter_i,float alphai,float alphaf,
+                          float fmax,int method,int verbose);
 void process1c(float **d,
 	       int verbose,int nt,int nx,float dt,
                int *x1h,int *x2h,int *x3h,int *x4h,
                int nx1,int nx2,int nx3,int nx4,
-               float *wd_no_pad,int iter,float alphai,float alphaf,float fmax);
+               float *wd_no_pad,int iter,int iter_i,float alphai,float alphaf,float fmax,int method);
 void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf);
+void mwni5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int itmax_external,int itmax_internal,int verbose);
+float cgdot(sf_complex *x,int nm);
+float max_abs(sf_complex *x, int nm);
+void cg_irls(sf_complex *m,int nm,
+	     sf_complex *d,int nd,
+	     sf_complex *m0,int nm0,
+	     float *wm,int nwm,
+	     float *wd,int nwd,
+	     int *N,int rank,
+	     int itmax_external,
+	     int itmax_internal,
+	     int verbose);  
+void fft_op(sf_complex *m,int nm,
+	   sf_complex *d,int nd,
+           float *wm,int nwm,
+           float *wd,int nwd,
+           fftwf_plan my_plan,
+           int fwd,
+	   int verbose);
 
 int main(int argc, char* argv[])
 { 
-    int ix,nx;
+    int ix,nx,method;
     int n1,n2,n3,n4,n5;
     int i1,i2,i3,i4,i5;
     int nx1,nx2,nx3,nx4;
@@ -53,7 +72,7 @@ int main(int argc, char* argv[])
     float sum;
     sf_file in,out;
     sf_init (argc,argv);
-    int tw_length, tw_overlap, iter;
+    int tw_length, tw_overlap, iter, iter_i;
     float alphai, alphaf, fmax;
     int sum_wd;
     int verbose;
@@ -79,10 +98,12 @@ int main(int argc, char* argv[])
     if (!sf_histfloat(in,"d5",&d5)) d5=1;
     if (!sf_histfloat(in,"o5",&o5)) o5=0.;
 
+    if (!sf_getint("method",&method)) method = 1; /* reconstruction algorithm to choose (1=POCS,2=MWNI) */
     if (!sf_getint("tw_length",&tw_length)) tw_length = n1; /* length of time windows in number of samples */
     if (!sf_getint("tw_overlap",&tw_overlap)) tw_overlap = 10; /* length of time window overlap in number of samples */
     if (tw_length==n1) tw_overlap=0;
     if (!sf_getint("iter",&iter)) iter = 10; /* number of iterations */
+    if (!sf_getint("iter_i",&iter_i)) iter_i = 3; /* number of internal iterations if MWNI is used */
     if (!sf_getfloat("alphai",&alphai)) alphai = 1; /* denoising parameter for 1st iteration 1=no denoise */
     if (!sf_getfloat("alphaf",&alphaf)) alphaf = 1; /* denoising parameter for last iteration 1=no denoise */
     if (!sf_getint("verbose",&verbose)) verbose = 0; /* verbosity 0=quiet 1=loud */
@@ -190,8 +211,8 @@ int main(int argc, char* argv[])
 			 n1,d1,nx1,nx2,nx3,nx4,
                          tw_length,tw_overlap,
                          ix1,ix2,ix3,ix4,
-                         wd,iter,alphai,alphaf,
-                         fmax,verbose);
+                         wd,iter,iter_i,alphai,alphaf,
+                         fmax,method,verbose);
 
     for (i2=0; i2<nx; i2++) {
       ix =   ix4[i2]*nx3*nx2*nx1 
@@ -209,8 +230,8 @@ void process_time_windows(float **d,
 			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd,int iter,float alphai,float alphaf,
-                          float fmax, int verbose)
+                          float *wd,int iter,int iter_i,float alphai,float alphaf,
+                          float fmax,int method, int verbose)
 /***********************************************************************/
 /* process with overlapping time windows */
 /***********************************************************************/
@@ -246,7 +267,7 @@ void process_time_windows(float **d,
               verbose,Ltw,nx,dt,
               ix1_in,ix2_in,ix3_in,ix4_in,
               nx1,nx2,nx3,nx4,
-              wd,iter,alphai,alphaf,fmax);
+              wd,iter,iter_i,alphai,alphaf,fmax,method);
 
     if (Itw==0){ 
       for (ix=0;ix<nx;ix++){ 
@@ -276,7 +297,7 @@ void process1c(float **d,
 	       int verbose,int nt,int nx,float dt,
                int *x1h,int *x2h,int *x3h,int *x4h,
                int nx1,int nx2,int nx3,int nx4,
-               float *wd_no_pad,int iter,float alphai,float alphaf,float fmax)
+               float *wd_no_pad,int iter,int iter_i,float alphai,float alphaf,float fmax,int method)
 {  
   int it, ix, iw;
   sf_complex czero;
@@ -409,8 +430,8 @@ void process1c(float **d,
       }	
     }
     /* The reconstruction engine: */
-    pocs5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,perci,percf,alphai,alphaf);
-
+    if (method==1) pocs5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,perci,percf,alphai,alphaf);
+    else if (method==2) mwni5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,iter_i,verbose);
     ix        = 0;
     ix_no_pad = 0;
     for (ix1=0;ix1<nx1fft;ix1++){
@@ -554,6 +575,220 @@ void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,in
 
 }
 
+void mwni5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int itmax_external,int itmax_internal,int verbose)
+{  
+  sf_complex czero;
+  sf_complex *x1;
+  sf_complex *x2;
+  int rank = 4;
+  int *n;
+  float *wm;
+  fftwf_plan prv;
+  int i;
+  sf_complex* m0;
 
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  wm = sf_floatalloc(nk);
+  x1 = sf_complexalloc(nk);
+  x2 = sf_complexalloc(nk);
+  for (i=0; i<nk; i++) wm[i] = 1;
+  /*********************************************************************/
+  rank = 4;
+  n = sf_intalloc(rank);
+  n[0] = nx1fft;
+  n[1] = nx2fft;
+  n[2] = nx3fft;
+  n[3] = nx4fft;
+  prv = fftwf_plan_dft(rank,n,(fftwf_complex*)x2,(fftwf_complex*)x2,FFTW_BACKWARD,FFTW_ESTIMATE);
+  /*********************************************************************/
+  m0 = sf_complexalloc(nk);
+  for (i=0; i<nk; i++){ 
+	  x1[i] = freqslice[i];
+	  x2[i] = freqslice2[i];
+	  m0[i] = czero;
+  }
+  
+  cg_irls(x2,nk,
+	  x1,nk,
+	  m0,nk,
+	  wm,nk,
+	  wd,nk,
+	  n,rank,
+	  itmax_external,
+	  itmax_internal,
+	  verbose);
+   
+  fftwf_execute(prv); /* FFT (k to x)  (x2 ---> x1) */
+  for (i=0; i<nk; i++){ 
+    freqslice2[i]=x2[i]*(1/sqrt((float) nk));
+  }	
+  fftwf_destroy_plan(prv);
+  return;
+}
+
+float max_abs(sf_complex *x, int nm)
+{   
+  /* Compute Mx = max absolute value of complex vector x */	
+  int i;
+  float Mx;
+  
+  Mx = 0;
+  for (i=0;i<nm;i++){  
+    if(Mx<sf_cabs(x[i])) Mx=sf_cabs(x[i]);
+  }
+  return(Mx);
+}
+
+float cgdot(sf_complex *x,int nm)
+{
+  /*     Compute the inner product */
+  /*     dot=(x,x) for complex x */     
+  int i;
+  float  cgdot; 
+  sf_complex val;
+  
+  __real__ val = 0;
+  __imag__ val = 0;
+  for (i=0;i<nm;i++){  
+    val = val + conjf(x[i])*x[i];
+  }
+  cgdot= crealf(val);
+  return(cgdot);
+}
+
+void cg_irls(sf_complex *m,int nm,
+	     sf_complex *d,int nd,
+	     sf_complex *m0,int nm0,
+	     float *wm,int nwm,
+	     float *wd,int nwd,
+	     int *N,int rank,
+	     int itmax_external,
+	     int itmax_internal,
+	     int verbose)
+/* 
+   Non-quadratic regularization with CG-LS. The inner CG routine is taken from
+   Algorithm 2 from Scales, 1987. Make sure linear operator passes the dot product.
+   In this case (MWNI), the linear operator is the FFT implemented using the FFTW package.
+*/
+
+{
+  sf_complex czero,*v,*Pv,*Ps,*s,*ss,*g,*r;
+  float alpha,beta,delta,gamma,gamma_old,*P,Max_m; 
+  int i,j,k,fwd,adj;
+  fftwf_plan Pv_to_r,r_to_g,Ps_to_ss;
+  fwd=1;adj=0;
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  v  = sf_complexalloc(nm);
+  P  = sf_floatalloc(nm);
+  Pv = sf_complexalloc(nm);
+  Ps = sf_complexalloc(nm);
+  g  = sf_complexalloc(nm);
+  r  = sf_complexalloc(nd);
+  s  = sf_complexalloc(nm);
+  ss = sf_complexalloc(nd);
+  Pv_to_r  = fftwf_plan_dft(rank,N,(fftwf_complex*)Pv,(fftwf_complex*)r,FFTW_BACKWARD,FFTW_ESTIMATE);
+  r_to_g   = fftwf_plan_dft(rank,N,(fftwf_complex*)r,(fftwf_complex*)g,FFTW_FORWARD,FFTW_ESTIMATE);
+  Ps_to_ss = fftwf_plan_dft(rank,N,(fftwf_complex*)Ps,(fftwf_complex*)ss,FFTW_BACKWARD,FFTW_ESTIMATE);
+
+
+  for (i=0;i<nm;i++){
+    m[i] = m0[i];				
+    P[i] = 1;
+    v[i] = m[i];
+  }
+
+  for (i=0;i<nd;i++){
+    r[i] = d[i];				
+  }
+
+  for (j=1;j<=itmax_external;j++){
+    for (i=0;i<nm;i++) Pv[i] = v[i]*P[i];
+
+    /* fft_op(Pv,nm,r,nd,wm,nm,wd,nd,p_fwd,fwd,verbose); */
+    for (i=0;i<nm;i++)  Pv[i] = Pv[i]*wm[i];
+    fftwf_execute(Pv_to_r);
+    for (i=0;i<nd;i++)  r[i] = r[i]*wd[i]/sqrt((float) nm);
+
+    for (i=0;i<nd;i++) r[i] = d[i] - r[i];
+
+    /* fft_op(g,nm,r,nd,wm,nm,wd,nd,p_adj,adj,verbose); */
+    for (i=0;i<nd;i++)  r[i] = r[i]*wd[i];
+    fftwf_execute(r_to_g);
+    for (i=0;i<nm;i++)  g[i] = g[i]*wm[i]/sqrt((float) nm);
+
+    for (i=0;i<nm;i++){
+      g[i] = g[i]*P[i];
+      s[i] = g[i];
+    }
+
+    gamma = cgdot(g,nm);
+    gamma_old = gamma;
+
+    for (k=1;k<=itmax_internal;k++){
+      for (i=0;i<nm;i++) Ps[i] = s[i]*P[i];
+
+      /* fft_op(Ps,nm,ss,nd,wm,nm,wd,nd,p_fwd,fwd,verbose); */
+      for (i=0;i<nm;i++)  Ps[i] = Ps[i]*wm[i];
+      fftwf_execute(Ps_to_ss);
+      for (i=0;i<nd;i++)  ss[i] = ss[i]*wd[i]/sqrt((float) nm);
+
+
+      delta = cgdot(ss,nd);
+      alpha = gamma/(delta + 0.00000001);
+
+      for (i=0;i<nm;i++) v[i] = v[i] +  s[i]*alpha;
+      for (i=0;i<nd;i++) r[i] = r[i] - ss[i]*alpha;
+
+      /* fft_op(g,nm,r,nd,wm,nm,wd,nd,p_adj,adj,verbose); */   
+      for (i=0;i<nd;i++)  r[i] = r[i]*wd[i];
+      fftwf_execute(r_to_g);
+      for (i=0;i<nm;i++)  g[i] = g[i]*wm[i]/sqrt((float) nm);
+
+
+      for (i=0;i<nm;i++) g[i] = g[i]*P[i];
+      gamma = cgdot(g,nm);
+      beta = gamma/(gamma_old + 0.00000001);
+
+      gamma_old = gamma;
+      for (i=0;i<nm;i++) s[i] = g[i] + s[i]*beta;
+    }
+    for (i=0;i<nm;i++) m[i] = v[i]*P[i];
+    Max_m = max_abs(m,nm);
+
+    for (i=0;i<nm;i++) P[i] = sf_cabs(m[i]*(1/Max_m));
+  }
+
+  fftwf_destroy_plan(Pv_to_r);
+  fftwf_destroy_plan(r_to_g);
+  fftwf_destroy_plan(Ps_to_ss);
+
+  return;
+  
+}
+
+void fft_op(sf_complex *m,int nm,
+	   sf_complex *d,int nd,
+           float *wm,int nwm,
+           float *wd,int nwd,
+           fftwf_plan my_plan,
+           int fwd,
+	   int verbose)
+/* forward and adjoint fft operator for mwni*/
+{
+  int i;
+  if (fwd){    
+    for (i=0;i<nm;i++)  m[i] = m[i]*wm[i];
+    fftwf_execute_dft(my_plan, (fftwf_complex*)m, (fftwf_complex*)d);
+    for (i=0;i<nd;i++)  d[i] = d[i]*wd[i]/sqrt((float) nm);
+  }
+  else{
+    for (i=0;i<nd;i++)  d[i] = d[i]*wd[i];
+    fftwf_execute_dft(my_plan, (fftwf_complex*)d, (fftwf_complex*)m);
+    for (i=0;i<nm;i++)  m[i] = m[i]*wm[i]/sqrt((float) nm);
+  }
+  return;
+}
 
 

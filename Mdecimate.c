@@ -32,12 +32,13 @@
 
 int main(int argc, char* argv[])
 {
-    int mode; 
-    int ix,seed;
-    int n1,i1,n2,n3,n4,n5;
+    int mode,inc2,inc3,inc4,inc5; 
+    int seed;
+    int n1,i1,n2,i2,n3,i3,n4,i4,n5,i5;
     float *trace;
     float d1,o1,d2,o2,d3,o3,d4,o4,d5,o5;
     float r,perc; 
+    float a2,a3,a4,a5;
     sf_file in,out;
     sf_init (argc,argv);
     in = sf_input("in");
@@ -49,6 +50,10 @@ int main(int argc, char* argv[])
 
 
     if (!sf_getint("mode",&mode)) mode=1; /* mode of decimation */
+    if (!sf_getint("inc2",&inc2)) inc2=2;    /* if mode=2 then the increment of live traces for dimension 2 (ones in between are zeroed)*/
+    if (!sf_getint("inc3",&inc3)) inc3=2;    /* if mode=2 then the increment of live traces for dimension 3 (ones in between are zeroed)*/
+    if (!sf_getint("inc4",&inc4)) inc4=2;    /* if mode=2 then the increment of live traces for dimension 4 (ones in between are zeroed)*/
+    if (!sf_getint("inc5",&inc5)) inc5=2;    /* if mode=2 then the increment of live traces for dimension 5 (ones in between are zeroed)*/
     if (!sf_getfloat("perc",&perc)) perc=40; /* percentage of traces decimated */
 
     /* read input file parameters */
@@ -95,15 +100,36 @@ int main(int argc, char* argv[])
     sf_putstring(out,"unit4","index");
     sf_putstring(out,"unit5","index"); 
 
-    trace = sf_floatalloc (n1);
 
-    for (ix=0; ix<n2*n3*n4*n5; ix++) {	
+    if (n2==1) inc2=1; 
+    if (n3==1) inc3=1; 
+    if (n4==1) inc4=1; 
+    if (n5==1) inc5=1; 
+
+    trace = sf_floatalloc (n1);
+    for (i2=0; i2<n2; i2++) {	
+    for (i3=0; i3<n3; i3++) {
+    for (i4=0; i4<n4; i4++) {
+    for (i5=0; i5<n5; i5++) {
       sf_floatread(trace,n1,in);
-      r = genrand_real1();
-      if (r < perc/100){
-        for (i1=0;i1<n1;i1++) trace[i1] = 0;
+      if (mode==1){
+        r = genrand_real1();
+        if (r < perc/100){
+          for (i1=0;i1<n1;i1++) trace[i1] = 0;
+        }
+      }
+      else if (mode==2){
+        a2=a3=a4=a5=1;
+        if ((float) i2/inc2 - round(i2/inc2) > 0.0001) a2=0;
+        if ((float) i3/inc3 - round(i3/inc3) > 0.0001) a3=0;
+        if ((float) i4/inc4 - round(i4/inc4) > 0.0001) a4=0;
+        if ((float) i5/inc5 - round(i5/inc5) > 0.0001) a5=0;
+        for (i1=0;i1<n1;i1++) trace[i1] = trace[i1]*a2*a3*a4*a5;
       }
       sf_floatwrite(trace,n1,out);
+    }
+    }
+    }
     }
 
     exit (0);
