@@ -12,7 +12,8 @@ pocs5d
 '''
 
 pyprogs='''
-myclip
+imagesc
+svd_complex
 '''
 pymods='''
 '''
@@ -51,12 +52,12 @@ for prog in mains:
 ######################################################################
 
 if root: # no compilation, just rename
-	pymains = Split(pyprogs)
-	exe = env.get('PROGSUFFIX','')
-	for prog in pymains:
-		env.InstallAs(os.path.join(bindir,'sf'+prog+exe),'M'+prog+'.py')
-	bldutil.install_py_modules(env,Split(pymods),pkgdir)
-
+    pymains = Split(pyprogs)
+    exe = env.get('PROGSUFFIX','')
+    for prog in pymains:
+        env.InstallAs(os.path.join(bindir,'sf'+prog+exe),'M'+prog+'.py')
+    for mod in Split(pymods):
+        env.Install(pkgdir,mod+'.py')
 
 ######################################################################
 # SELF-DOCUMENTATION
@@ -65,7 +66,8 @@ if root:
     user = os.path.basename(os.getcwd())
     main = 'sf%s.py' % user
     
-    docs = map(lambda prog: env.Doc(prog,'M' + prog),mains)
+    docs = map(lambda prog: env.Doc(prog,'M' + prog),mains) +  \
+           map(lambda prog: env.Doc(prog,'M'+prog+'.py',lang='python'),pymains)
     env.Depends(docs,'#/framework/rsf/doc.py')	
 
     doc = env.RSF_Docmerge(main,docs)
