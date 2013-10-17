@@ -31,13 +31,13 @@ if vectors:
 n1 = fin.int('n1')
 n2 = fin.int('n2')
 
-data = numpy.zeros((n2,n1),'f') # Note, we reverse array dims
+data = numpy.zeros((n2,n1),'complex64') # Note, we reverse array dims
+print >> sys.stderr, str(data.dtype)
 
 print >> sys.stderr, "about to read array."
 # Read our input data
 fin.read(data)
 print >> sys.stderr, "done reading array."
-print >> sys.stderr, data.dtype
 
 
 # Perform our SVD
