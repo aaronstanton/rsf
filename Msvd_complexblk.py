@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-''' Perform SVD on a complex-valued matrix using SCIPY. copied from Msvd.py.  
+''' Perform SVD on a block of complex-valued matrices using SCIPY.  
 
 REQUIRES the PYTHON API, NUMPY AND SCIPY
 '''
@@ -30,45 +30,60 @@ if vectors:
 # Get dimensions of input header or output header
 n1 = fin.int('n1')
 n2 = fin.int('n2')
+n3 = fin.int('n3')
 
-data = numpy.zeros((n2,n1),'complex64') # Note, we reverse array dims
-print >> sys.stderr, str(data.dtype)
+data = numpy.zeros((n3,n2,n1),'complex64') # Note, we reverse array dims
 
-print >> sys.stderr, "about to read array."
 # Read our input data
 fin.read(data)
-print >> sys.stderr, "done reading array."
+svals = numpy.zeros((n3,n2,n1),'complex64') 
+lvec = numpy.zeros((n3,n2,n1),'complex64') 
+rvec = numpy.zeros((n3,n2,n1),'complex64') 
 
+for i1 in range(0, n1):
+  # Perform our SVD
+  u,l,v = numpy.linalg.svd(numpy.squeeze(data[:,:,i1]))
+  svals[:,:,i1] = numpy.diag(l)
+  lvec[:,:,i1] = u
+  rvec[:,:,i1] = v
+  
+print svals.shape
 
-# Perform our SVD
-u,l,v = numpy.linalg.svd(data)
-print l.shape
 # Setup output headers
 fout.put('n1',n1)
-fout.put('n2',1)
+fout.put('n2',n2)
+fout.put('n3',n3)
 fout.put('o1',1)
 fout.put('o2',1)
+fout.put('o3',1)
 fout.put('d1',1)
 fout.put('d2',1)
+fout.put('d3',1)
 
 # Write output data
-fout.write(l)
+fout.write(svals)
 
 if vectors:
     lout.put('n1',n1)
     lout.put('n2',n2)
+    lout.put('n3',n3)
     rout.put('n1',n1)
     rout.put('n2',n2)
+    rout.put('n3',n3)
     lout.put('o1',1)
     lout.put('o2',1)
+    lout.put('o3',1)
     rout.put('o1',1)
     rout.put('o2',1)
+    rout.put('o3',1)
     lout.put('d1',1)
     lout.put('d2',1)
+    lout.put('d3',1)
     rout.put('d1',1)
     rout.put('d2',1)
-    lout.write(u)
-    rout.write(v)
+    rout.put('d3',1)
+    lout.write(lvec)
+    rout.write(rvec)
     lout.close()
     rout.close()
 

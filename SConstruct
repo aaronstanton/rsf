@@ -14,6 +14,7 @@ pocs5d
 pyprogs='''
 imagesc
 svd_complex
+svd_complexblk
 '''
 pymods='''
 '''
