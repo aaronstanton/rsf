@@ -22,22 +22,25 @@
 #define MARK fprintf(stderr,"%s @ %u\n",__FILE__,__LINE__);fflush(stderr);
 #endif 
 
+#include "myalloc.h"
+
 #include <rsf.h>
 #include <fftw3.h>
 #ifndef PI
 #define PI (3.141592653589793)
 #endif
+
 void process_time_windows(float **d,
 			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd,int iter,int iter_i,float alphai,float alphaf,
+                          float *wd,int iter,int iter_i,float alphai,float alphaf,int ranki,int rankf,
                           float fmax,int method,int verbose);
 void process1c(float **d,
 	       int verbose,int nt,int nx,float dt,
                int *x1h,int *x2h,int *x3h,int *x4h,
                int nx1,int nx2,int nx3,int nx4,
-               float *wd_no_pad,int iter,int iter_i,float alphai,float alphaf,float fmax,int method);
+               float *wd_no_pad,int iter,int iter_i,float alphai,float alphaf,int ranki,int rankf,float fmax,int method);
 void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf);
 void mwni5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int itmax_external,int itmax_internal,int verbose);
 float cgdot(sf_complex *x,int nm);
@@ -51,13 +54,12 @@ void cg_irls(sf_complex *m,int nm,
 	     int itmax_external,
 	     int itmax_internal,
 	     int verbose);  
-void fft_op(sf_complex *m,int nm,
-	   sf_complex *d,int nd,
-           float *wm,int nwm,
-           float *wd,int nwd,
-           fftwf_plan my_plan,
-           int fwd,
-	   int verbose);
+void cgesdd_(const char *jobz,const int *M,const int *N,sf_complex *Avec,const int *lda,float *Svec,sf_complex *Uvec,const int *ldu,sf_complex *VTvec,const int *ldvt,sf_complex *work,const int *lwork,float *rwork,int *iwork,int *info);	
+void unfold(sf_complex *in, sf_complex **out,int *n,int a);
+void fold(sf_complex **in, sf_complex *out,int *n,int a);
+void csvd(sf_complex **A,sf_complex **U, float *S,sf_complex **VT,int M,int N);
+void mult_svd(sf_complex **A, sf_complex **U, float *S, sf_complex **VT, int M, int N, int rank);
+void seqsvd5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft, int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float alphai,float alphaf,int ranki, int rankf);
 
 int main(int argc, char* argv[])
 { 
@@ -74,6 +76,7 @@ int main(int argc, char* argv[])
     sf_init (argc,argv);
     int tw_length, tw_overlap, iter, iter_i;
     float alphai, alphaf, fmax;
+    int ranki, rankf;
     int sum_wd;
     int verbose;
  
@@ -98,7 +101,7 @@ int main(int argc, char* argv[])
     if (!sf_histfloat(in,"d5",&d5)) d5=1;
     if (!sf_histfloat(in,"o5",&o5)) o5=0.;
 
-    if (!sf_getint("method",&method)) method = 1; /* reconstruction algorithm to choose (1=POCS,2=MWNI) */
+    if (!sf_getint("method",&method)) method = 1; /* reconstruction algorithm to choose (1=POCS,2=MWNI,3=SEQSVD) */
     if (!sf_getint("tw_length",&tw_length)) tw_length = n1; /* length of time windows in number of samples */
     if (!sf_getint("tw_overlap",&tw_overlap)) tw_overlap = 10; /* length of time window overlap in number of samples */
     if (tw_length==n1) tw_overlap=0;
@@ -106,6 +109,8 @@ int main(int argc, char* argv[])
     if (!sf_getint("iter_i",&iter_i)) iter_i = 3; /* number of internal iterations if MWNI is used */
     if (!sf_getfloat("alphai",&alphai)) alphai = 1; /* denoising parameter for 1st iteration 1=no denoise */
     if (!sf_getfloat("alphaf",&alphaf)) alphaf = 1; /* denoising parameter for last iteration 1=no denoise */
+    if (!sf_getint("ranki",&ranki)) ranki = 8; /* rank for first iteration (if using SEQSVD) */
+    if (!sf_getint("rankf",&rankf)) rankf = 8; /* rank for last iteration (if using SEQSVD) */
     if (!sf_getint("verbose",&verbose)) verbose = 0; /* verbosity 0=quiet 1=loud */
     if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/d1; /* max frequency to process */
     if (fmax > 0.5/d1) fmax = 0.5/d1;
@@ -211,7 +216,7 @@ int main(int argc, char* argv[])
 			 n1,d1,nx1,nx2,nx3,nx4,
                          tw_length,tw_overlap,
                          ix1,ix2,ix3,ix4,
-                         wd,iter,iter_i,alphai,alphaf,
+                         wd,iter,iter_i,alphai,alphaf,ranki,rankf,
                          fmax,method,verbose);
 
     for (i2=0; i2<nx; i2++) {
@@ -230,7 +235,7 @@ void process_time_windows(float **d,
 			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd,int iter,int iter_i,float alphai,float alphaf,
+                          float *wd,int iter,int iter_i,float alphai,float alphaf,int ranki,int rankf,
                           float fmax,int method, int verbose)
 /***********************************************************************/
 /* process with overlapping time windows */
@@ -267,7 +272,7 @@ void process_time_windows(float **d,
               verbose,Ltw,nx,dt,
               ix1_in,ix2_in,ix3_in,ix4_in,
               nx1,nx2,nx3,nx4,
-              wd,iter,iter_i,alphai,alphaf,fmax,method);
+              wd,iter,iter_i,alphai,alphaf,ranki,rankf,fmax,method);
 
     if (Itw==0){ 
       for (ix=0;ix<nx;ix++){ 
@@ -297,7 +302,7 @@ void process1c(float **d,
 	       int verbose,int nt,int nx,float dt,
                int *x1h,int *x2h,int *x3h,int *x4h,
                int nx1,int nx2,int nx3,int nx4,
-               float *wd_no_pad,int iter,int iter_i,float alphai,float alphaf,float fmax,int method)
+               float *wd_no_pad,int iter,int iter_i,float alphai,float alphaf,int ranki,int rankf,float fmax,int method)
 {  
   int it, ix, iw;
   sf_complex czero;
@@ -432,6 +437,7 @@ void process1c(float **d,
     /* The reconstruction engine: */
     if (method==1) pocs5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,perci,percf,alphai,alphaf);
     else if (method==2) mwni5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,iter_i,verbose);
+    else if (method==3) seqsvd5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,alphai,alphaf,ranki,rankf);
     ix        = 0;
     ix_no_pad = 0;
     for (ix1=0;ix1<nx1fft;ix1++){
@@ -673,13 +679,10 @@ void cg_irls(sf_complex *m,int nm,
 */
 
 {
-  sf_complex czero,*v,*Pv,*Ps,*s,*ss,*g,*r;
+  sf_complex *v,*Pv,*Ps,*s,*ss,*g,*r;
   float alpha,beta,delta,gamma,gamma_old,*P,Max_m; 
-  int i,j,k,fwd,adj;
+  int i,j,k;
   fftwf_plan Pv_to_r,r_to_g,Ps_to_ss;
-  fwd=1;adj=0;
-  __real__ czero = 0;
-  __imag__ czero = 0;
   v  = sf_complexalloc(nm);
   P  = sf_floatalloc(nm);
   Pv = sf_complexalloc(nm);
@@ -768,27 +771,401 @@ void cg_irls(sf_complex *m,int nm,
   
 }
 
-void fft_op(sf_complex *m,int nm,
-	   sf_complex *d,int nd,
-           float *wm,int nwm,
-           float *wd,int nwd,
-           fftwf_plan my_plan,
-           int fwd,
-	   int verbose)
-/* forward and adjoint fft operator for mwni*/
-{
-  int i;
-  if (fwd){    
-    for (i=0;i<nm;i++)  m[i] = m[i]*wm[i];
-    fftwf_execute_dft(my_plan, (fftwf_complex*)m, (fftwf_complex*)d);
-    for (i=0;i<nd;i++)  d[i] = d[i]*wd[i]/sqrt((float) nm);
+void seqsvd5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft, int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float alphai,float alphaf,int ranki, int rankf)
+{  
+
+  int ix, rank; 
+  int M, N;
+  int *n;
+  sf_complex **uf1;  
+  sf_complex **uf2;  
+  sf_complex **uf3;
+  sf_complex **uf4;
+  sf_complex **U1;
+  sf_complex **U2;
+  sf_complex **U3;
+  sf_complex **U4;
+  sf_complex **VT1;
+  sf_complex **VT2;
+  sf_complex **VT3;
+  sf_complex **VT4;
+  float *S1;
+  float *S2;
+  float *S3;
+  float *S4;
+  float alpha;
+  int iter;
+ 
+  n = sf_intalloc(4);
+  n[0] = nx1fft;
+  n[1] = nx2fft;
+  n[2] = nx3fft;
+  n[3] = nx4fft;
+  uf1 = sf_complexalloc2(nx2fft*nx3fft*nx4fft,nx1fft);  
+  uf2 = sf_complexalloc2(nx1fft*nx3fft*nx4fft,nx2fft);  
+  uf3 = sf_complexalloc2(nx1fft*nx2fft*nx4fft,nx3fft);  
+  uf4 = sf_complexalloc2(nx1fft*nx2fft*nx3fft,nx4fft);
+  M = nx1fft;
+  N = nx2fft*nx3fft*nx4fft;
+  U1 = sf_complexalloc2(M,M);
+  S1 = sf_floatalloc(M);
+  VT1 = sf_complexalloc2(N,M);
+  M = nx2fft;
+  N = nx1fft*nx3fft*nx4fft;
+  U2 = sf_complexalloc2(M,M);
+  S2 = sf_floatalloc(M);
+  VT2 = sf_complexalloc2(N,M);
+  M = nx3fft;
+  N = nx1fft*nx2fft*nx4fft;
+  U3 = sf_complexalloc2(M,M);
+  S3 = sf_floatalloc(M);
+  VT3 = sf_complexalloc2(N,M);
+  M = nx4fft;
+  N = nx1fft*nx2fft*nx3fft;
+  U4 = sf_complexalloc2(M,M);
+  S4 = sf_floatalloc(M);
+  VT4 = sf_complexalloc2(N,M);
+  for (iter=1;iter<=Iter;iter++){  /* loop for iteration */
+    /*  This is to increase rank at each iteration */
+    rank=ranki + (int) trunc((iter-1)*((rankf-ranki)/(Iter-1)));
+
+    if (nx1fft > rank){    
+      unfold(freqslice2,uf1,n,1);
+      M = nx1fft;
+      N = nx2fft*nx3fft*nx4fft;
+      csvd(uf1,U1,S1,VT1,M,N);
+      mult_svd(uf1,U1,S1,VT1,M,N,rank);
+      fold(uf1,freqslice2,n,1);
+    }
+    
+    if (nx2fft > rank){    
+      unfold(freqslice2,uf2,n,2);
+      M = nx2fft;
+      N = nx1fft*nx3fft*nx4fft;
+      csvd(uf2,U2,S2,VT2,M,N);
+      mult_svd(uf2,U2,S2,VT2,M,N,rank);
+      fold(uf2,freqslice2,n,2);
+    }    
+
+    if (nx3fft > rank){    
+      unfold(freqslice2,uf3,n,3);
+      M = nx3fft;
+      N = nx1fft*nx2fft*nx4fft;
+      csvd(uf3,U3,S3,VT3,M,N);
+      mult_svd(uf3,U3,S3,VT3,M,N,rank);
+      fold(uf3,freqslice2,n,3);
+    }   
+
+    if (nx4fft > rank){    
+      unfold(freqslice2,uf4,n,4);
+      M = nx4fft;
+      N = nx1fft*nx2fft*nx3fft;
+      csvd(uf4,U4,S4,VT4,M,N);    
+      mult_svd(uf4,U4,S4,VT4,M,N,rank);
+      fold(uf4,freqslice2,n,4);
+    }
+
+    /*  This is to increase alpha at each iteration */
+    alpha=alphai + (iter-1)*((alphaf-alphai)/(Iter-1));
+    
+    /*  reinsertion into original data */
+    for (ix=0;ix<nk;ix++) freqslice2[ix]=freqslice[ix]*alpha + freqslice2[ix]*(1-alpha*wd[ix]);
+
   }
-  else{
-    for (i=0;i<nd;i++)  d[i] = d[i]*wd[i];
-    fftwf_execute_dft(my_plan, (fftwf_complex*)d, (fftwf_complex*)m);
-    for (i=0;i<nm;i++)  m[i] = m[i]*wm[i]/sqrt((float) nm);
-  }
+
+  free2complex(uf1);
+  free2complex(uf2);
+  free2complex(uf3);
+  free2complex(uf4);
+
+  free2complex(U1);
+  free1float(S1);
+  free2complex(VT1);
+
+  free2complex(U2);
+  free1float(S2);
+  free2complex(VT2);
+
+  free2complex(U3);
+  free1float(S3);
+  free2complex(VT3);
+
+  free2complex(U4);
+  free1float(S4);
+  free2complex(VT4);
+
   return;
 }
+
+void unfold(sf_complex *in, sf_complex **out,int *n,int a)
+{   
+  /* 
+  unfold a long-vector representing a 4D tensor into a matrix.	
+  in  = long vector representing a tensor with dimensions (n[1],n[2],n[3],n[4])
+  out = matrix that is the unfolding of "in" with dimensions (if a=1): (n[1],n[2]*n[3]*n[4])
+  */
+  int nx1,nx2,nx3,nx4;
+  int ix1,ix2,ix3,ix4;
+
+  nx1=n[0];
+  nx2=n[1];
+  nx3=n[2];
+  nx4=n[3];
+  
+  if (a==1){
+    for (ix1=0;ix1<nx1;ix1++){
+      for (ix2=0;ix2<nx2;ix2++){
+	for (ix3=0;ix3<nx3;ix3++){
+	  for (ix4=0;ix4<nx4;ix4++){
+	    out[ix1][ix2*nx3*nx4+ix3*nx4+ix4]=in[ix1*nx2*nx3*nx4+ix2*nx3*nx4+ix3*nx4+ix4];
+	  }
+	}
+      }
+    }
+  }    
+
+
+ 
+  if (a==2){
+    for (ix1=0;ix1<nx1;ix1++){
+      for (ix2=0;ix2<nx2;ix2++){
+	for (ix3=0;ix3<nx3;ix3++){
+	  for (ix4=0;ix4<nx4;ix4++){
+	    out[ix2][ix1*nx3*nx4+ix3*nx4+ix4]=in[ix1*nx2*nx3*nx4+ix2*nx3*nx4+ix3*nx4+ix4];
+	  }
+	}
+      }
+    }
+  }    
+
+
+  if (a==3){
+    for (ix1=0;ix1<nx1;ix1++){
+      for (ix2=0;ix2<nx2;ix2++){
+	for (ix3=0;ix3<nx3;ix3++){
+	  for (ix4=0;ix4<nx4;ix4++){
+            out[ix3][ix1*nx2*nx4+ix2*nx4+ix4]=in[ix1*nx2*nx3*nx4+ix2*nx3*nx4+ix3*nx4+ix4];
+	  }
+	}
+      }
+    }
+  }    
+
+  if (a==4){
+    for (ix1=0;ix1<nx1;ix1++){
+      for (ix2=0;ix2<nx2;ix2++){
+	for (ix3=0;ix3<nx3;ix3++){
+	  for (ix4=0;ix4<nx4;ix4++){
+	    out[ix4][ix1*nx2*nx3+ix2*nx3+ix3]=in[ix1*nx2*nx3*nx4+ix2*nx3*nx4+ix3*nx4+ix4];
+	  }
+	}
+      }
+    }
+  }    
+
+  return;
+}
+
+void fold(sf_complex **in, sf_complex *out,int *n,int a)
+{   
+  /* 
+  fold a matrix back to a long-vector representing a 4D tensor.	
+  in  = the unfolding of "out" with dimensions (if a=1): (n[1],n[2]*n[3]*n[4])
+  out = long vector representing a tensor with dimensions (n[1],n[2],n[3],n[4]) 
+  */
+  int nx1,nx2,nx3,nx4;
+  int ix1,ix2,ix3,ix4;
+  
+  nx1=n[0];
+  nx2=n[1];
+  nx3=n[2];
+  nx4=n[3];
+
+  if (a==1){
+    for (ix1=0;ix1<nx1;ix1++){
+      for (ix2=0;ix2<nx2;ix2++){
+	for (ix3=0;ix3<nx3;ix3++){
+	  for (ix4=0;ix4<nx4;ix4++){
+	    out[ix1*nx2*nx3*nx4+ix2*nx3*nx4+ix3*nx4+ix4]=in[ix1][ix2*nx3*nx4+ix3*nx4+ix4];
+	  }
+	}
+      }
+    }
+  }    
+
+  if (a==2){
+    for (ix1=0;ix1<nx1;ix1++){
+      for (ix2=0;ix2<nx2;ix2++){
+	for (ix3=0;ix3<nx3;ix3++){
+	  for (ix4=0;ix4<nx4;ix4++){
+	    out[ix1*nx2*nx3*nx4+ix2*nx3*nx4+ix3*nx4+ix4]=in[ix2][ix1*nx3*nx4+ix3*nx4+ix4];
+	  }
+	}
+      }
+    }
+  }    
+
+  if (a==3){
+    for (ix1=0;ix1<nx1;ix1++){
+      for (ix2=0;ix2<nx2;ix2++){
+	for (ix3=0;ix3<nx3;ix3++){
+	  for (ix4=0;ix4<nx4;ix4++){
+	    out[ix1*nx2*nx3*nx4+ix2*nx3*nx4+ix3*nx4+ix4]=in[ix3][ix1*nx2*nx4+ix2*nx4+ix4];
+	  }
+	}
+      }
+    }
+  }    
+
+  if (a==4){
+    for (ix1=0;ix1<nx1;ix1++){
+      for (ix2=0;ix2<nx2;ix2++){
+	for (ix3=0;ix3<nx3;ix3++){
+	  for (ix4=0;ix4<nx4;ix4++){
+	    out[ix1*nx2*nx3*nx4+ix2*nx3*nx4+ix3*nx4+ix4]=in[ix4][ix1*nx2*nx3+ix2*nx3+ix3];
+	  }
+	}
+      }
+    }
+  }    
+
+  return;
+}
+
+void csvd(sf_complex **A,sf_complex **U,float *S,sf_complex **VT,int M,int N)
+{
+
+  sf_complex czero;
+  sf_complex* Avec;
+  int i,j,n;
+  float* Svec;  
+  char jobz;
+  int lda;
+  int ldu;
+  int ldvt;
+  int lwork; 
+  int info;
+  sf_complex *work;
+  int lrwork;
+  float *rwork;  
+  float *iwork;  
+  sf_complex* Uvec; 
+  sf_complex* VTvec; 
+  
+  __real__ czero = 0;
+  __imag__ czero = 0;
+
+  Avec = sf_complexalloc(M*N); 
+  n = 0;
+  for (i=0;i<N;i++){
+    for (j=0;j<M;j++){
+      Avec[n] = A[j][i];
+      n++;
+    }
+  }
+  Uvec = sf_complexalloc(M*M); 
+  n = 0;
+  for (i=0;i<M;i++){
+    for (j=0;j<M;j++){
+      Uvec[n] = czero;
+      n++;
+    }
+  }
+  VTvec = sf_complexalloc(M*N); 
+  n = 0;
+  for (i=0;i<N;i++){
+    for (j=0;j<M;j++){
+      VTvec[n] = czero;
+      n++;
+    }
+  }
+  Svec = sf_floatalloc(M);  
+  
+  jobz = 'S';
+  lda   = M;
+  ldu   = M;
+  ldvt  = M;
+  lwork = 5*M + N; 
+  work = sf_complexalloc(lwork); 
+
+  /* make float array rwork with dimension lrwork (where lrwork >= min(M,N)*max(5*min(M,N)+7,2*max(M,N)+2*min(M,N)+1)) */
+  lrwork = 5*M*M+ 7*M;
+  rwork = sf_floatalloc(lrwork);  
+
+  /* make float array iwork with dimension 8*M (where A is MxN) */
+  iwork = sf_floatalloc(8*M);  
+  cgesdd_(&jobz, &M, &N, (sf_complex*)Avec, &lda, Svec, (sf_complex*)Uvec, &ldu, (sf_complex*)VTvec, &ldvt, (sf_complex*)work, &lwork, (float*)rwork, (int*)iwork, &info);  
+  if (info != 0)  fprintf(stderr,"Error in cgesdd: info = %d\n",info);
+
+  n = 0;
+  for (i=0;i<N;i++){
+    for (j=0;j<M;j++){
+      VT[j][i] = VTvec[n];
+      n++;
+    }
+  }
+  n = 0;
+  for (i=0;i<M;i++){
+    for (j=0;j<M;j++){
+      U[j][i] = Uvec[n];
+      n++;
+    }
+  }
+
+  for (i=0;i<M;i++){
+    S[i] = Svec[i];
+  }
+  
+
+  free1complex(Avec);
+  free1complex(VTvec);
+  free1complex(Uvec);
+  free1float(Svec);
+  free1complex(work);
+  free1float(rwork);
+  free1float(iwork);
+
+  return;
+}
+
+void mult_svd(sf_complex **A, sf_complex **U,float *S,sf_complex **VT,int M,int N,int rank)
+{   
+  int i,j,k;
+  sf_complex czero;
+  sf_complex **SVT;
+  sf_complex sum;
+
+  SVT = sf_complexalloc2(N,M);
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  sum = czero;
+  
+  for (i=0;i<rank;i++){
+    for (j=0;j<N;j++){
+      SVT[i][j] = czero;
+      if (i < rank) SVT[i][j] = VT[i][j]*S[i];
+    }
+  }
+
+  for (i=0;i<M;i++){
+    for (j=0;j<N;j++){
+      sum = czero;
+      for (k=0;k<rank;k++){
+      sum = sum + SVT[k][j]*U[i][k];
+      }
+      A[i][j] = sum;
+    }
+  }
+ 
+  free2complex(SVT);
+
+  return;
+}
+
+
+
+
+
+
 
 
