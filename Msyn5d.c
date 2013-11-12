@@ -173,10 +173,10 @@ int main(int argc, char* argv[])
 
     trace = sf_floatalloc (n1);
     ix = 0;
-    for (i2=0;i2<n2;i2++){ 
-      for (i3=0;i3<n3;i3++){ 
-        for (i4=0;i4<n4;i4++){ 
-          for (i5=0;i5<n5;i5++){ 
+    for (i5=0;i5<n5;i5++){ 
+      for (i4=0;i4<n4;i4++){ 
+        for (i3=0;i3<n3;i3++){ 
+          for (i2=0;i2<n2;i2++){ 
             sx = o2 + i2*d2;
             sy = o3 + i3*d3;
             gx = o4 + i4*d4;

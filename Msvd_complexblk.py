@@ -37,13 +37,17 @@ data = numpy.zeros((n3,n2,n1),'complex64') # Note, we reverse array dims
 # Read our input data
 fin.read(data)
 svals = numpy.zeros((n3,n2,n1),'complex64') 
-lvec = numpy.zeros((n3,n2,n1),'complex64') 
-rvec = numpy.zeros((n3,n2,n1),'complex64') 
+lvec = numpy.zeros((n3,n3,n1),'complex64') 
+rvec = numpy.zeros((n2,n2,n1),'complex64') 
 
 for i1 in range(0, n1):
   # Perform our SVD
   u,l,v = numpy.linalg.svd(numpy.squeeze(data[:,:,i1]))
-  svals[:,:,i1] = numpy.diag(l)
+
+  #print >> sys.stderr, str(l.shape)
+  for i2 in range(0, n3):
+    svals[i2,i2,i1] = l[i2]
+  
   lvec[:,:,i1] = u
   rvec[:,:,i1] = v
   
@@ -65,11 +69,11 @@ fout.write(svals)
 
 if vectors:
     lout.put('n1',n1)
-    lout.put('n2',n2)
+    lout.put('n2',n3)
     lout.put('n3',n3)
     rout.put('n1',n1)
     rout.put('n2',n2)
-    rout.put('n3',n3)
+    rout.put('n3',n2)
     lout.put('o1',1)
     lout.put('o2',1)
     lout.put('o3',1)

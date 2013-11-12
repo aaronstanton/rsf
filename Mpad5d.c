@@ -1,4 +1,7 @@
 /* Zero pad 5d data to be regular.
+mode=1: ix1/ix2/ix3/ix4 <- isx/isy/igx/igy
+mode=2: ix1/ix2/ix3/ix4 <- imx/imy/ihx/ihy
+mode=3: ix1/ix2/ix3/ix4 <- imx/imy/ih/iaz
 */
 /*
   Copyright (C) 2013 University of Alberta
@@ -199,7 +202,6 @@ int main(int argc, char* argv[])
 
     fprintf(stderr,"nk_in=%d, nk_out=%d, n2=%d\n",nk_in,nk_out,n2);
 
-
     ix1_out = sf_intalloc(nx1*nx2*nx3*nx4);
     ix2_out = sf_intalloc(nx1*nx2*nx3*nx4);
     ix3_out = sf_intalloc(nx1*nx2*nx3*nx4);
@@ -207,10 +209,10 @@ int main(int argc, char* argv[])
     hdr_out_all = sf_intalloc2(nx1*nx2*nx3*nx4,nk_out);
 
     ix=0;
-    for (i1=0;i1<nx1;i1++){
-      for (i2=0;i2<nx2;i2++){
-        for (i3=0;i3<nx3;i3++){
-          for (i4=0;i4<nx4;i4++){
+    for (i4=0;i4<nx4;i4++){
+      for (i3=0;i3<nx3;i3++){
+        for (i2=0;i2<nx2;i2++){
+          for (i1=0;i1<nx1;i1++){
             ix1_out[ix] = i1;
             ix2_out[ix] = i2;
             ix3_out[ix] = i3;
@@ -224,11 +226,8 @@ int main(int argc, char* argv[])
     }
 
     for (i2=0; i2<n2; i2++){
-      /* ix1/ix2/ix3/ix4 sort */
-      /*ix = ix1_in[i2]*nx2*nx3*nx4 + ix2_in[i2]*nx3*nx4 + ix3_in[i2]*nx4 + ix4_in[i2];*/
       /* ix4/ix3/ix2/ix1 sort */
       ix = ix4_in[i2]*nx3*nx2*nx1 + ix3_in[i2]*nx2*nx1 + ix2_in[i2]*nx1 + ix1_in[i2];
-      /* fprintf(stderr,"ix1_in[%d]=%d, ix2_in[%d]=%d, ix3_in[%d]=%d, ix4_in[%d]=%d\n",i2,ix1_in[i2],i2,ix2_in[i2],i2,ix3_in[i2],i2,ix4_in[i2]); */
       for (ik=0; ik<nk_out; ik++) hdr_out_all[ik][ix] = hdr_in_all[ik][i2];
       for (i1=0; i1<n1; i1++) data_out[i1][ix] = data_in[i1][i2];
     }
@@ -258,26 +257,6 @@ int main(int argc, char* argv[])
     sf_putstring(out,"unit3","index");
     sf_putstring(out,"unit4","index");
     sf_putstring(out,"unit5","index"); 
-
-/*
-    min_ix1_out=999999;min_ix2_out=999999;min_ix3_out=999999;min_ix4_out=999999;
-    max_ix1_out=-999999;max_ix2_out=-999999;max_ix3_out=-999999;max_ix4_out=-999999;
-    for (i2=0; i2<nx1*nx2*nx3*nx4; i2++) {	
-      if (ix1_out[i2] < min_ix1_out) min_ix1_out = ix1_out[i2];
-      if (ix2_out[i2] < min_ix2_out) min_ix2_out = ix2_out[i2];
-      if (ix3_out[i2] < min_ix3_out) min_ix3_out = ix3_out[i2];
-      if (ix4_out[i2] < min_ix4_out) min_ix4_out = ix4_out[i2];
-      if (ix1_out[i2] > max_ix1_out) max_ix1_out = ix1_out[i2];
-      if (ix2_out[i2] > max_ix2_out) max_ix2_out = ix2_out[i2];
-      if (ix3_out[i2] > max_ix3_out) max_ix3_out = ix3_out[i2];
-      if (ix4_out[i2] > max_ix4_out) max_ix4_out = ix4_out[i2];
-    }
-    fprintf(stderr,"min_ix1_out=%d, min_ix2_out=%d, min_ix3_out=%d, min_ix4_out=%d\n",min_ix1_out,min_ix2_out,min_ix3_out,min_ix4_out);
-    fprintf(stderr,"max_ix1_out=%d, max_ix2_out=%d, max_ix3_out=%d, max_ix4_out=%d\n",max_ix1_out,max_ix2_out,max_ix3_out,max_ix4_out);
-
-    fprintf(stderr,"min_ix1=%d, min_ix2=%d, min_ix3=%d, min_ix4=%d\n",min_ix1,min_ix2,min_ix3,min_ix4);
-    fprintf(stderr,"max_ix1=%d, max_ix2=%d, max_ix3=%d, max_ix4=%d\n",max_ix1,max_ix2,max_ix3,max_ix4);
-*/
 
     for (i2=0; i2<nx1*nx2*nx3*nx4; i2++) {	
       /* pass on all input headers */

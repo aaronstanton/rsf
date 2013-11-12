@@ -8,13 +8,16 @@ geom5d
 pad5d
 decimate
 static
-pocs5d
+reg5d
+patch5d
+pstm
 '''
 
 pyprogs='''
 imagesc
 svd_complex
 svd_complexblk
+pstm_pp
 '''
 pymods='''
 '''
