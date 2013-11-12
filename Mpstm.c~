@@ -171,7 +171,7 @@ int main(int argc, char* argv[])
     exit (0);
 }
 
-void kirchhoff_2d_time_op(float **d, float **m, float **v, 
+void kirchhoff_2d_time_op(float **d, float ***m, float **v, 
                             int nt,   int nmx,   int nhx,   int nsx,   int ngx,
                           float ot, float omx, float ohx, float osx, float ogx,
                           float dt, float dmx, float dhx, float dsx, float dgx,
