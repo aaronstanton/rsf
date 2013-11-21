@@ -36,11 +36,11 @@
 void kt_2d_fwd(float **d, float *m, float **vp, float **vs, 
                int nt, int ncmpx, float ot, float ocmpx, float dt, float dcmpx,
                int icipx,
-               float hx,float aperture,float fwidth,float gamma,bool ps);
+               float hx,float aperture,float gamma,bool ps);
 void kt_2d_adj(float *d, float **m, float **v, float **vs,
                int nt, int ncmpx, float ot, float ocmpx, float dt, float dcmpx,
                int icmpx,
-               float hx,float aperture,float fwidth,float gamma,bool ps);
+               float hx,float aperture,float gamma,bool ps);
 float spherical_divergence(float ts,float tg,float v);
 float angle_taper(float ts,float tg, float v, float hx);
 void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d);
@@ -114,8 +114,8 @@ int main(int argc, char* argv[])
   for (ix=0;ix<nmx;ix++){
     sf_floatread(trace,n1,in);
     if (!adj) rho_filt(trace,nt,0);
-    if (adj) kt_2d_adj(trace,m,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,fwidth,gamma,ps);
-    else     kt_2d_fwd(d,trace,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,fwidth,gamma,ps);
+    if (adj) kt_2d_adj(trace,m,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
+    else     kt_2d_fwd(d,trace,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
   }
 
   if (adj){ 
@@ -167,7 +167,7 @@ int main(int argc, char* argv[])
 void kt_2d_fwd(float **d, float *m, float **vp, float **vs, 
                int nt, int ncmpx, float ot, float ocmpx, float dt, float dcmpx,
                int icipx,
-               float hx,float aperture,float fwidth,float gamma,bool ps)
+               float hx,float aperture,float gamma,bool ps)
 {
   int it,icmpx,jt;
   float dist,sx,gx,v2,dists,distg,dists2,distg2;
@@ -235,7 +235,7 @@ void kt_2d_fwd(float **d, float *m, float **vp, float **vs,
 void kt_2d_adj(float *d, float **m, float **vp, float **vs, 
                int nt, int ncmpx, float ot, float ocmpx, float dt, float dcmpx,
                int icmpx,
-               float hx,float aperture,float fwidth,float gamma,bool ps)
+               float hx,float aperture,float gamma,bool ps)
 {
   int it,icipx,ncipx,jt;
   float dist,sx,gx,v2,dists,distg,dists2,distg2;
