@@ -70,22 +70,22 @@ int main(int argc, char* argv[])
   if (!sf_histfloat(in,"d3",&d3)) sf_error("No d3= in input");
   if (!sf_histfloat(in,"o3",&o3)) o3=0.;
 
-  nt=n1; nhx=n2; nmx=n3;  
-  dt=d1; dhx=d2; dmx=d3;  
-  ot=o1; ohx=o2; omx=o3;
+  nt=n1; nmx=n2; nhx=n3;  
+  dt=d1; dmx=d2; dhx=d3;  
+  ot=o1; omx=o2; ohx=o3;
 
   sf_putfloat(out,"o1",ot);
-  sf_putfloat(out,"o2",ohx);
-  sf_putfloat(out,"o3",omx);
+  sf_putfloat(out,"o2",omx);
+  sf_putfloat(out,"o3",ohx);
   sf_putfloat(out,"d1",dt);
-  sf_putfloat(out,"d2",dhx);
-  sf_putfloat(out,"d3",dmx);
+  sf_putfloat(out,"d2",dmx);
+  sf_putfloat(out,"d3",dhx);
   sf_putfloat(out,"n1",nt);
-  sf_putfloat(out,"n2",nhx);
-  sf_putfloat(out,"n3",nmx);
+  sf_putfloat(out,"n2",nmx);
+  sf_putfloat(out,"n3",nhx);
   sf_putstring(out,"label1","Time");
-  sf_putstring(out,"label2","Offset");
-  sf_putstring(out,"label3","Midpoint");
+  sf_putstring(out,"label2","Midpoint");
+  sf_putstring(out,"label3","Offset");
   sf_putstring(out,"unit1","s");
   sf_putstring(out,"unit2","m");
   sf_putstring(out,"unit3","m");
@@ -118,15 +118,15 @@ int main(int argc, char* argv[])
   }
 
   for (ihx=0;ihx<nhx;ihx++){
-    if (verbose) fprintf(stderr,"processing offset class %d of %d\n",ihx+1,nhx);
     hx = ohx + ihx*dhx;
+    if (verbose) fprintf(stderr,"processing offset class %d of %d (hx=%6.0fm)\n",ihx+1,nhx,hx);
     if (adj){ 
-      for (ix=0;ix<n2;ix++){
+      for (ix=0;ix<nmx;ix++){
 	for (it=0;it<nt;it++) m[ix][it] = 0.0;
       }
     }
     else{ 
-      for (ix=0;ix<n2;ix++){
+      for (ix=0;ix<nmx;ix++){
 	for (it=0;it<nt;it++) d[ix][it] = 0.0;
       }
     }
