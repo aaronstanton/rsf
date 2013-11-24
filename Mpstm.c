@@ -41,14 +41,15 @@ int main(int argc, char* argv[])
   float d1,d2,d3;
   float ot,omx,ohx;
   float dt,dmx,dhx;
-  float **d,**m,**vp,**vs,*trace,*traces;
+  float **d,**m,**vp,**vs,*trace,*traces,*wd;
   bool adj;
   bool ps;
   bool verbose;
   float gamma;
   float aperture;
-  float hx;
-  
+  float sum;
+  int sum_wd;  
+
   sf_init (argc,argv);
   in = sf_input("in");
   out = sf_output("out");
@@ -110,57 +111,58 @@ int main(int argc, char* argv[])
     }
   }
 
-  if (adj){ 
-    m = sf_floatalloc2(nt,nmx);
-  }
-  else{ 
-    d = sf_floatalloc2(nt,nmx);
-  }
+  m = sf_floatalloc2(nt,nmx*nhx);
+  d = sf_floatalloc2(nt,nmx*nhx);
+  if (adj) wd = sf_floatalloc(nmx*nhx);
 
-  for (ihx=0;ihx<nhx;ihx++){
-    hx = ohx + ihx*dhx;
-    if (verbose) fprintf(stderr,"processing offset class %d of %d (hx=%6.0fm)\n",ihx+1,nhx,hx);
-    if (adj){ 
-      for (ix=0;ix<nmx;ix++){
-	for (it=0;it<nt;it++) m[ix][it] = 0.0;
-      }
-    }
-    else{ 
-      for (ix=0;ix<nmx;ix++){
-	for (it=0;it<nt;it++) d[ix][it] = 0.0;
-      }
-    }
-
-    for (ix=0;ix<nmx;ix++){ /* read and demigrate or migrate the offset class */
-      sf_floatread(trace,n1,in);
-      if (!adj) rho_filt(trace,nt,0);
-      if (adj) kt_2d_adj(trace,m,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
-      else     kt_2d_fwd(d,trace,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
-    }
-    
-    if (adj){ 
-      for (ix=0;ix<nmx;ix++){
-	for (it=0;it<nt;it++) trace[it] = m[ix][it]; 
-	rho_filt(trace,nt,1);
-	for (it=0;it<nt;it++) m[ix][it] = trace[it]; 
-      }
-    }
-    
+  sum_wd = 0;
+  for (ix=0;ix<nhx*nmx;ix++){
+    sf_floatread(trace,n1,in);
     if (adj){
-      for (ix=0; ix<nmx; ix++) {
-	for (it=0; it<nt; it++) trace[it] = m[ix][it];	
-	sf_floatwrite(trace,nt,out);
+      sum = 0.0;
+      for (it=0;it<nt;it++){
+        sum += trace[it]*trace[it];
+        d[ix][it] = trace[it];
+        m[ix][it] = 0.0;
       }
+      if (sum){ 
+        wd[ix] = 1.0;
+        sum_wd++;
+      }
+      else wd[ix] = 0.0;
     }
-    else{
-      for (ix=0; ix<nmx; ix++) {
-	for (it=0; it<nt; it++) trace[it] = d[ix][it];	
-	sf_floatwrite(trace,nt,out);
+    else {
+      for (it=0;it<nt;it++){ 
+        d[ix][it] = 0.0;
+        m[ix][it] = trace[it];
       }
     }
   }
-  
+    
+  if (verbose && adj) fprintf(stderr,"There are %6.2f %% missing traces.\n", 
+                       (float) 100 - 100*sum_wd/(nmx*nhx));
+
+  kt_2d_op(d,m,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
+           aperture,gamma,ps,adj,verbose);  
+ 
+  if (adj){
+    for (ix=0; ix<nmx*nhx; ix++) {
+      for (it=0; it<nt; it++) trace[it] = m[ix][it];	
+      sf_floatwrite(trace,nt,out);
+    }
+  }
+  else{
+    for (ix=0; ix<nmx*nhx; ix++) {
+      for (it=0; it<nt; it++) trace[it] = d[ix][it];	
+      sf_floatwrite(trace,nt,out);
+    }
+  }
+
   exit (0);
 }
+
+
+
+
 
 

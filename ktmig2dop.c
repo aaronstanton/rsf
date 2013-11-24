@@ -1,4 +1,4 @@
-/* allocation and deallocation routines */
+/* 2d Kirchhoff migration routine */
 /*
   Copyright (C) 213 University of Alberta
   
@@ -20,6 +20,85 @@
 /*^*/
 
 #include "ktmig2dop.h"
+
+void kt_2d_op(float **d, float **m, float **vp, float **vs, 
+               int nt, int nmx, int nhx, 
+               float ot, float omx, float ohx, 
+               float dt, float dmx, float dhx,
+               float aperture, float gamma, bool ps, bool adj, bool verbose)
+/*< Kirchhoff time migration operator >*/
+{
+  int ihx,ix,it;
+  float **doc,**moc,*trace,hx,**z;
+  if (adj) moc = sf_floatalloc2(nt,nmx);
+  else     doc = sf_floatalloc2(nt,nmx);
+  trace = sf_floatalloc(nt);
+
+  z = sf_floatalloc2(nt,nmx*nhx);
+  if (!adj){
+    for (ix=0;ix<nmx*nhx;ix++){
+      for (it=0;it<nt;it++) z[ix][it] = m[ix][it];
+    }
+    triangle_filter(m,z,nt,nmx,nhx,adj);
+  }
+
+  for (ihx=0;ihx<nhx;ihx++){ /* read and demigrate or migrate the offset class */
+    if (verbose){
+      if (adj) fprintf(stderr,"migrating offset class %d of %d\n",ihx+1,nhx);
+      else     fprintf(stderr,"demigrating offset class %d of %d\n",ihx+1,nhx);
+    }
+    hx = ohx + ihx*dhx;
+    if (adj){
+      for (ix=0;ix<nmx;ix++){
+        for (it=0;it<nt;it++) moc[ix][it] = 0;
+      }
+    }
+    else{
+      for (ix=0;ix<nmx;ix++){
+        for (it=0;it<nt;it++) doc[ix][it] = 0;
+      }
+    } 
+    for (ix=0;ix<nmx;ix++){
+      if (adj){
+        for (it=0;it<nt;it++) trace[it] = d[ihx*nmx + ix][it];
+        kt_2d_adj(trace,moc,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
+      }
+      else{     
+        for (it=0;it<nt;it++) trace[it] = m[ihx*nmx + ix][it];
+        rho_filt(trace,nt,0);
+        kt_2d_fwd(doc,trace,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
+      }
+    }
+    if (adj){
+      for (ix=0;ix<nmx;ix++){
+        for (it=0;it<nt;it++) m[ihx*nmx + ix][it] = moc[ix][it];
+      }
+    }
+    else{
+      for (ix=0;ix<nmx;ix++){
+        for (it=0;it<nt;it++) d[ihx*nmx + ix][it] = doc[ix][it];
+      }
+    } 
+  }
+    
+  if (adj){ 
+    for (ix=0;ix<nmx*nhx;ix++){
+      for (it=0;it<nt;it++) trace[it] = m[ix][it]; 
+      rho_filt(trace,nt,1);
+      for (it=0;it<nt;it++) m[ix][it] = trace[it]; 
+    }
+  }
+
+  if (adj){
+    triangle_filter(m,z,nt,nmx,nhx,adj);
+    for (ix=0;ix<nmx*nhx;ix++){
+      for (it=0;it<nt;it++) m[ix][it] = z[ix][it];
+    }
+  }
+
+
+  return;
+} 
 
 void kt_2d_fwd(float **d, float *m, float **vp, float **vs, 
                int nt, int ncmpx, float ot, float ocmpx, float dt, float dcmpx,
@@ -207,4 +286,58 @@ void rho_filt(float *m,int nt,int adj)
   
   return;
 }
+
+void triangle_filter(float **m,float **z,int nt,int nmx,int nhx,bool adj)
+/*< 5 point triangle filter forward and adjoint operator. It acts on the offset axis. The operator does nothing if the offset axis has a length less than or equal to 5. >*/
+{
+  int it, imx, ihx;
+  if (nhx>5){ 
+    if (!adj){
+      for (imx=0;imx<nmx;imx++){
+        for (it=0;it<nt;it++){
+              m[(0)*nmx + imx][it] = (3*z[(0)*nmx + imx][it] + 4*z[(1)*nmx + imx][it] + 2*z[(2)*nmx + imx][it])/9;
+              m[(1)*nmx + imx][it] = (2*z[(0)*nmx + imx][it] + 3*z[(1)*nmx + imx][it] + 2*z[(2)*nmx + imx][it] + 2*z[(3)*nmx + imx][it])/9;
+              m[(nhx-2)*nmx + imx][it] = (2*z[(nhx-4)*nmx + imx][it] + 2*z[(nhx-3)*nmx + imx][it] + 3*z[(nhx-2)*nmx + imx][it] + 2*z[(nhx-1)*nmx + imx][it])/9;
+              m[(nhx-1)*nmx + imx][it] = (2*z[(nhx-3)*nmx + imx][it] + 4*z[(nhx-2)*nmx + imx][it] + 3*z[(nhx-1)*nmx + imx][it])/9;
+        }
+      }
+      for (ihx=2;ihx<nhx-2;ihx++){
+        for (imx=0;imx<nmx;imx++){
+          for (it=0;it<nt;it++){
+            m[(ihx)*nmx + imx][it] = (z[(ihx-2)*nmx + imx][it] + 2*z[(ihx-1)*nmx + imx][it] + 3*z[(ihx)*nmx + imx][it] + 2*z[(ihx+1)*nmx + imx][it] + z[(ihx+2)*nmx + imx][it])/9;
+    	  }
+        }
+      }
+    }
+    else {
+      for (imx=0;imx<nmx;imx++){
+        for (it=0;it<nt;it++){
+    	      z[(0)*nmx + imx][it]  = (3*m[(0)*nmx + imx][it] +   2*m[(1)*nmx + imx][it] + 1*m[(2)*nmx + imx][it])/9;
+    	      z[(1)*nmx + imx][it]  = (4*m[(0)*nmx + imx][it] +   3*m[(1)*nmx + imx][it] + 2*m[(2)*nmx + imx][it] + 1*m[(3)*nmx + imx][it])/9;
+    	      z[(2)*nmx + imx][it]  = (2*m[(0)*nmx + imx][it] +   2*m[(1)*nmx + imx][it] + 3*m[(2)*nmx + imx][it] + 2*m[(3)*nmx + imx][it] + 1*m[(4)*nmx + imx][it])/9;
+    	      z[(3)*nmx + imx][it]  = (2*m[(1)*nmx + imx][it] +   2*m[(2)*nmx + imx][it] + 3*m[(3)*nmx + imx][it] + 2*m[(4)*nmx + imx][it] + 1*m[(5)*nmx + imx][it])/9;
+
+    	      z[(nhx-1)*nmx + imx][it]  = (3*m[(nhx-1)*nmx + imx][it] +   2*m[(nhx-2)*nmx + imx][it] + 1*m[(nhx-3)*nmx + imx][it])/9;
+    	      z[(nhx-2)*nmx + imx][it]  = (4*m[(nhx-1)*nmx + imx][it] +   3*m[(nhx-2)*nmx + imx][it] + 2*m[(nhx-3)*nmx + imx][it] + 1*m[(nhx-4)*nmx + imx][it])/9;
+    	      z[(nhx-3)*nmx + imx][it]  = (2*m[(nhx-1)*nmx + imx][it] +   2*m[(nhx-2)*nmx + imx][it] + 3*m[(nhx-3)*nmx + imx][it] + 2*m[(nhx-4)*nmx + imx][it] + 1*m[(nhx-5)*nmx + imx][it])/9;
+    	      z[(nhx-4)*nmx + imx][it]  = (2*m[(nhx-2)*nmx + imx][it] +   2*m[(nhx-3)*nmx + imx][it] + 3*m[(nhx-4)*nmx + imx][it] + 2*m[(nhx-5)*nmx + imx][it] + 1*m[(nhx-6)*nmx + imx][it])/9;
+        }
+      }
+      for (ihx=4;ihx<nhx-4;ihx++){
+        for (imx=0;imx<nmx;imx++){
+          for (it=0;it<nt;it++){
+            z[ihx*nmx + imx][it] = (m[(ihx-2)*nmx + imx][it] 
+                                    + 2*m[(ihx-1)*nmx + imx][it] 
+                                    + 3*m[(ihx)*nmx + imx][it] 
+                                    + 2*m[(ihx+1)*nmx + imx][it] 
+                                    +   m[(ihx+2)*nmx + imx][it])/9;
+  	  }
+        }
+      }
+    }
+  }
+    
+  return;
+}
+
 
