@@ -17,7 +17,16 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 #include <rsf.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+#include "myfree.h"
 /*^*/
+
+
+#ifndef MARK
+#define MARK fprintf(stderr,"%s @ %u\n",__FILE__,__LINE__);fflush(stderr);
+#endif 
 
 #include "ktmig2dop.h"
 
@@ -29,11 +38,9 @@ void kt_2d_op(float **d, float **m, float **vp, float **vs,
 /*< Kirchhoff time migration operator >*/
 {
   int ihx,ix,it;
-  float **doc,**moc,*trace,hx,**z;
-  if (adj) moc = sf_floatalloc2(nt,nmx);
-  else     doc = sf_floatalloc2(nt,nmx);
-  trace = sf_floatalloc(nt);
+  float **z; float *trace,hx;
 
+  trace = sf_floatalloc(nt);
   z = sf_floatalloc2(nt,nmx*nhx);
   if (!adj){
     for (ix=0;ix<nmx*nhx;ix++){
@@ -42,43 +49,14 @@ void kt_2d_op(float **d, float **m, float **vp, float **vs,
     triangle_filter(m,z,nt,nmx,nhx,adj);
   }
 
+#ifdef _OPENMP
+#pragma omp parallel for \
+    shared(d,m) 
+#endif
   for (ihx=0;ihx<nhx;ihx++){ /* read and demigrate or migrate the offset class */
-    if (verbose){
-      if (adj) fprintf(stderr,"migrating offset class %d of %d\n",ihx+1,nhx);
-      else     fprintf(stderr,"demigrating offset class %d of %d\n",ihx+1,nhx);
-    }
     hx = ohx + ihx*dhx;
-    if (adj){
-      for (ix=0;ix<nmx;ix++){
-        for (it=0;it<nt;it++) moc[ix][it] = 0;
-      }
-    }
-    else{
-      for (ix=0;ix<nmx;ix++){
-        for (it=0;it<nt;it++) doc[ix][it] = 0;
-      }
-    } 
-    for (ix=0;ix<nmx;ix++){
-      if (adj){
-        for (it=0;it<nt;it++) trace[it] = d[ihx*nmx + ix][it];
-        kt_2d_adj(trace,moc,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
-      }
-      else{     
-        for (it=0;it<nt;it++) trace[it] = m[ihx*nmx + ix][it];
-        rho_filt(trace,nt,0);
-        kt_2d_fwd(doc,trace,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
-      }
-    }
-    if (adj){
-      for (ix=0;ix<nmx;ix++){
-        for (it=0;it<nt;it++) m[ihx*nmx + ix][it] = moc[ix][it];
-      }
-    }
-    else{
-      for (ix=0;ix<nmx;ix++){
-        for (it=0;it<nt;it++) d[ihx*nmx + ix][it] = doc[ix][it];
-      }
-    } 
+    kt_2d_1ofc(d,m,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,ihx,hx,
+               aperture,gamma,ps,adj,verbose);
   }
     
   if (adj){ 
@@ -87,18 +65,83 @@ void kt_2d_op(float **d, float **m, float **vp, float **vs,
       rho_filt(trace,nt,1);
       for (it=0;it<nt;it++) m[ix][it] = trace[it]; 
     }
-  }
-
-  if (adj){
     triangle_filter(m,z,nt,nmx,nhx,adj);
     for (ix=0;ix<nmx*nhx;ix++){
       for (it=0;it<nt;it++) m[ix][it] = z[ix][it];
     }
   }
 
-
   return;
 } 
+
+void kt_2d_1ofc(float **d, float **m, float **vp, float **vs, 
+               int nt, int nmx, int nhx,
+               float ot, float omx, float ohx, 
+               float dt, float dmx, float dhx,
+               int ihx, float hx, 
+               float aperture, float gamma, bool ps, bool adj, bool verbose)
+/*< de-migrate or migrate 1 offset class >*/
+{
+  int ix,it;
+  float **doc,**moc,*trace;
+  if (adj) moc = sf_floatalloc2(nt,nmx);
+  else doc = sf_floatalloc2(nt,nmx);
+  trace = sf_floatalloc(nt);
+
+  for (it=0;it<nt;it++) trace[it] = 0;
+ 
+  if (adj){
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++) moc[ix][it] = 0;
+    }
+  }
+  else{
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++) doc[ix][it] = 0;
+    }
+  } 
+
+  if (verbose){
+    if (adj) fprintf(stderr,"migrating offset class %d of %d\n",ihx+1,nhx);
+    else     fprintf(stderr,"demigrating offset class %d of %d\n",ihx+1,nhx);
+  }
+  if (adj){
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++) moc[ix][it] = 0;
+    }
+  }
+  else{
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++) doc[ix][it] = 0;
+    }
+  } 
+  for (ix=0;ix<nmx;ix++){
+    if (adj){
+      for (it=0;it<nt;it++) trace[it] = d[ihx*nmx + ix][it];
+      kt_2d_adj(trace,moc,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
+    }
+    else{
+      for (it=0;it<nt;it++) trace[it] = m[ihx*nmx + ix][it];
+      rho_filt(trace,nt,0);
+      kt_2d_fwd(doc,trace,vp,vs,nt,nmx,ot,omx,dt,dmx,ix,hx,aperture,gamma,ps);
+    }
+  }
+  if (adj){
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++) m[ihx*nmx + ix][it] = moc[ix][it];
+    }
+  }
+  else{
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++) d[ihx*nmx + ix][it] = doc[ix][it];
+    }
+  } 
+
+  if (adj) free2float(moc);
+  else free2float(doc);
+  free1float(trace);
+  return;
+}
 
 void kt_2d_fwd(float **d, float *m, float **vp, float **vs, 
                int nt, int ncmpx, float ot, float ocmpx, float dt, float dcmpx,
@@ -116,7 +159,6 @@ void kt_2d_fwd(float **d, float *m, float **vp, float **vs,
   ocipx=ocmpx; dcipx=dcmpx;
 
   gammainv = 1/gamma;
-
   cipx = ocipx + icipx*dcipx;
   for (icmpx=0;icmpx<ncmpx;icmpx++){
     cmpx = ocmpx + icmpx*dcmpx;
@@ -338,6 +380,195 @@ void triangle_filter(float **m,float **z,int nt,int nmx,int nhx,bool adj)
   }
     
   return;
+}
+
+void cg_irls_kt2d(float **d,int nd,
+             float **m,int nm,
+             float *wd,int nwd,
+	     int itmax_external,int itmax_internal,
+             float **vp,float **vs,
+             int nt,int nmx,int nhx,float ot,float omx,float ohx,float dt,float dmx,float dhx,
+             float aperture,float psgamma,bool ps,
+             int verbose)
+/*< Non-quadratic regularization with CG-LS. The inner CG routine is taken from Algorithm 2 of Scales, 1987. Make sure linear operator passes the dot product. In this case (PSTM), the linear operator is a Kirchhoff demigration operator. >*/
+{
+  float **v,**Pv,**Ps,**s,**ss,**g,**r;
+  float alpha,beta,delta,gamma,gamma_old,**P,Max_m; 
+  int ix,it,j,k;
+  v  = sf_floatalloc2(nt,nm);
+  P  = sf_floatalloc2(nt,nm);
+  Pv = sf_floatalloc2(nt,nm);
+  Ps = sf_floatalloc2(nt,nm);
+  g  = sf_floatalloc2(nt,nm);
+  r  = sf_floatalloc2(nt,nd);
+  s  = sf_floatalloc2(nt,nm);
+  ss = sf_floatalloc2(nt,nd);
+
+  for (ix=0;ix<nm;ix++){
+    for (it=0;it<nt;it++){
+      m[ix][it] = 0;				
+      P[ix][it] = 1;
+      v[ix][it] = m[ix][it];
+    }
+  }
+
+  for (ix=0;ix<nd;ix++){
+    for (it=0;it<nt;it++) r[ix][it] = d[ix][it];				
+  }
+
+  for (j=1;j<=itmax_external;j++){
+    for (ix=0;ix<nm;ix++){
+      for (it=0;it<nt;it++){ 
+        Pv[ix][it] = v[ix][it]*P[ix][it];
+      }
+    }
+
+    kt_2d_op(r,Pv,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
+             aperture,psgamma,ps,false,verbose);
+
+    for (ix=0;ix<nd;ix++)  r[ix][it] = r[ix][it]*wd[ix];
+
+    for (ix=0;ix<nd;ix++){
+      for (it=0;it<nt;it++){ 
+        r[ix][it] = r[ix][it]*wd[ix];
+      }
+    }
+
+    for (ix=0;ix<nd;ix++){
+      for (it=0;it<nt;it++){ 
+        r[ix][it] = d[ix][it] - r[ix][it];
+      }
+    }
+
+
+    for (ix=0;ix<nd;ix++){
+      for (it=0;it<nt;it++){ 
+        r[ix][it] = r[ix][it]*wd[ix];
+      }
+    }
+
+    kt_2d_op(r,g,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
+             aperture,psgamma,ps,true,verbose);
+
+    for (ix=0;ix<nm;ix++){
+      for (it=0;it<nt;it++){
+        g[ix][it] = g[ix][it]*P[ix][it];
+        s[ix][it] = g[ix][it];
+      }
+    }
+
+    gamma = cgdot(g,nt,nm);
+    gamma_old = gamma;
+
+    for (k=1;k<=itmax_internal;k++){
+
+      for (ix=0;ix<nm;ix++){
+        for (it=0;it<nt;it++){
+          Ps[ix][it] = s[ix][it]*P[ix][it];
+        }
+      }
+
+      kt_2d_op(ss,Ps,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
+               aperture,psgamma,ps,false,verbose);
+
+      for (ix=0;ix<nd;ix++){
+        for (it=0;it<nt;it++){ 
+          ss[ix][it] = ss[ix][it]*wd[ix];
+        }
+      }
+
+      delta = cgdot(ss,nt,nd);
+      alpha = gamma/(delta + 0.00000001);
+
+
+      for (ix=0;ix<nm;ix++){
+        for (it=0;it<nt;it++){
+          v[ix][it] = v[ix][it] +  s[ix][it]*alpha;
+        }
+      }
+
+      for (ix=0;ix<nd;ix++){
+        for (it=0;it<nt;it++){
+          r[ix][it] = r[ix][it] -  ss[ix][it]*alpha;
+        }
+      }
+
+
+      for (ix=0;ix<nd;ix++){
+        for (it=0;it<nt;it++){ 
+          r[ix][it] = r[ix][it]*wd[ix];
+        }
+      }
+
+      kt_2d_op(r,g,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
+               aperture,psgamma,ps,true,verbose);
+
+
+      for (ix=0;ix<nm;ix++){
+        for (it=0;it<nt;it++){
+          g[ix][it] = g[ix][it]*P[ix][it];
+        }
+      }
+
+      gamma = cgdot(g,nt,nm);
+      beta = gamma/(gamma_old + 0.00000001);
+
+      gamma_old = gamma;
+      for (ix=0;ix<nm;ix++){
+        for (it=0;it<nt;it++){
+          s[ix][it] = g[ix][it] + s[ix][it]*beta;
+        }
+      }
+    }
+
+    for (ix=0;ix<nm;ix++){
+      for (it=0;it<nt;it++){
+        m[ix][it] = v[ix][it]*P[ix][it];
+      }
+    }
+
+    Max_m = max_abs(m,nt,nm);
+
+    for (ix=0;ix<nm;ix++){
+      for (it=0;it<nt;it++){
+        P[ix][it] = fabsf(m[ix][it]*(1/Max_m));
+      }
+    }
+
+  }
+
+  return;
+  
+}
+
+float max_abs(float **x,int nt,int nm)
+/*< Compute Mx = max absolute value of matrix of floats, x >*/
+{
+  int it,ix;
+  float Mx;
+  
+  Mx = 0;
+  for (ix=0;ix<nm;ix++){
+    for (it=0;it<nt;it++){   
+      if(Mx<fabsf(x[ix][it])) Mx=fabsf(x[ix][it]);
+    }
+  }
+  return(Mx);
+}
+
+float cgdot(float **x,int nt,int nm)
+/*< Compute the inner product for matrix of floats, x >*/
+{
+  int it,ix;
+  float cgdot;
+  
+  cgdot = 0;
+  for (ix=0;ix<nm;ix++){  
+    for (it=0;it<nt;it++){ 
+      cgdot = cgdot + x[ix][it]*x[ix][it];
+    }
+  }
+  return(cgdot);
 }
 
 

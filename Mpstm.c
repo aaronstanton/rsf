@@ -36,19 +36,21 @@ int main(int argc, char* argv[])
   sf_file in,out,velp,vels;
   int n1,n2,n3;
   int nt,nmx,nhx;
-  int it,ix,ihx;
+  int it,ix;
   float o1,o2,o3;
   float d1,d2,d3;
   float ot,omx,ohx;
   float dt,dmx,dhx;
   float **d,**m,**vp,**vs,*trace,*traces,*wd;
   bool adj;
+  bool inv;
   bool ps;
   bool verbose;
   float gamma;
   float aperture;
   float sum;
   int sum_wd;  
+  int itmax_internal,itmax_external;
 
   sf_init (argc,argv);
   in = sf_input("in");
@@ -58,8 +60,11 @@ int main(int argc, char* argv[])
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (ps) vels = sf_input("vs");
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
+  if (!sf_getbool("inv",&inv)) inv = false; /* flag for least squares migration */
   if (!sf_getfloat("gamma",&gamma)) gamma=2;
   if (!sf_getfloat("aperture",&aperture)) aperture=1000;
+  if (!sf_getint("itmax_internal",&itmax_internal)) itmax_internal = 10;
+  if (!sf_getint("itmax_external",&itmax_external)) itmax_external = 1;
   /* read input file parameters */
   if (!sf_histint(  in,"n1",&n1)) sf_error("No n1= in input");
   if (!sf_histfloat(in,"d1",&d1)) sf_error("No d1= in input");
@@ -70,7 +75,9 @@ int main(int argc, char* argv[])
   if (!sf_histint(  in,"n3",&n3)) sf_error("No n3= in input");
   if (!sf_histfloat(in,"d3",&d3)) sf_error("No d3= in input");
   if (!sf_histfloat(in,"o3",&o3)) o3=0.;
-
+  
+  if (inv) adj = true; /* activate adjoint flags */
+ 
   nt=n1; nmx=n2; nhx=n3;  
   dt=d1; dmx=d2; dhx=d3;  
   ot=o1; omx=o2; ohx=o3;
@@ -142,9 +149,20 @@ int main(int argc, char* argv[])
   if (verbose && adj) fprintf(stderr,"There are %6.2f %% missing traces.\n", 
                        (float) 100 - 100*sum_wd/(nmx*nhx));
 
-  kt_2d_op(d,m,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
-           aperture,gamma,ps,adj,verbose);  
- 
+  if (!inv){
+    kt_2d_op(d,m,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
+             aperture,gamma,ps,adj,verbose);  
+  }
+  else{
+    cg_irls_kt2d(d,nmx*nhx,
+                 m,nmx*nhx,
+                 wd,nmx*nhx,
+	         itmax_external,itmax_internal,
+                 vp,vs,
+                 nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
+                 aperture,gamma,ps,
+                 verbose);
+  }
   if (adj){
     for (ix=0; ix<nmx*nhx; ix++) {
       for (it=0; it<nt; it++) trace[it] = m[ix][it];	
