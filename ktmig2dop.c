@@ -154,8 +154,9 @@ void kt_2d_fwd(float **d, float *m, float **vp, float **vs,
   float cmpx,cipx,ocipx,dcipx,t,t0,t02,ts,tg,t_floor;
   float res,res0,sphe,cos1;
   float gammainv;
-  float tp0,ts0,tp02,ts02,vp2,vs2;
-  
+  float tp0,ts0,tp02,ts02,vp2,vs2,gamma_eff;
+  float gamma0,ds,dg,z,cos_s,cos_g,sin_s,sin_g,gamma02,w;
+
   ocipx=ocmpx; dcipx=dcmpx;
 
   gammainv = 1/gamma;
@@ -183,28 +184,44 @@ void kt_2d_fwd(float **d, float *m, float **vp, float **vs,
 	v2=vp[icipx][it]*vp[icipx][it];
 	ts = sqrtf(t02 + dists2/v2);
 	tg = sqrtf(t02 + distg2/v2);
+        w = spherical_divergence(ts,tg,vp[icipx][it]);
       }
       else{
-	tp0 = (2*t0)/(1+gamma);
-	ts0 = (2*t0)*gamma/(1+gamma);
+        gamma0 = vp[icipx][it]/vs[icipx][it];
+	tp0 = (2*t0)/(1+gamma0);
+	ts0 = (2*t0)*gamma0/(1+gamma0);
 	tp02 = tp0*tp0; 
 	ts02 = ts0*ts0;
 	vp2=vp[icipx][it]*vp[icipx][it];
 	vs2=vs[icipx][it]*vs[icipx][it];
 	ts = sqrtf(tp02 + dists2/vp2);
 	tg = sqrtf(ts02 + distg2/vs2);
+
+
+        ds = vp[icipx][it]*ts;
+        dg = vs[icipx][it]*tg;
+        z = sqrt(ds*ds - dists2);
+        cos_s = z/ds;
+        cos_g = z/dg;
+        sin_s = dists/ds;
+        sin_g = distg/dg;
+        cos1 = cos_s*cos_g - sin_s*sin_g;        
+        gamma02 = gamma0*gamma0;
+        w = z*(1+cos1)*(gamma02*ts+tg)*(gamma02*gamma02*ts*ts+tg*tg)/(2*vp2*vp[icipx][it]*sqrt(1+2*gamma0*cos1+gamma02)*gamma0*ts*ts*tg*tg);
+
+        gamma_eff = (vp2/vs2)/gamma;
+        sphe = spherical_divergence(ts,tg,sqrt((1+gamma_eff)/((1+gamma)*gamma_eff))*vp[icipx][it]);
       }
       t  = ts + tg;
-      sphe = spherical_divergence(ts,tg,vp[icipx][it]);
       cos1 = angle_taper(ts,tg,vp[icipx][it],hx);
-      if (cos1 < 0.1) continue;          
+    /*  if (cos1 < 0.1) continue; */          
       t_floor = trunc(t/dt) + 1;
       jt = (int) t_floor;
       if (jt >= 0 && jt+1 < nt){
 	res = (t-t_floor)/dt;
 	res0 = 1.0-res;
-	d[icmpx][jt]   += cos1*sphe*res0*(m[it]);
-	d[icmpx][jt+1] += cos1*sphe*res*(m[it]);
+	d[icmpx][jt]   += w*res0*(m[it]);
+	d[icmpx][jt+1] += w*res*(m[it]);
       }
     }
   } 
@@ -222,7 +239,8 @@ void kt_2d_adj(float *d, float **m, float **vp, float **vs,
   float cmpx,cipx,ocipx,dcipx,t,t0,t02,ts,tg,t_floor;
   float res,res0,sphe,cos1;
   float gammainv;
-  float tp0,ts0,tp02,ts02,vp2,vs2;
+  float tp0,ts0,tp02,ts02,vp2,vs2,gamma_eff;
+  float gamma0,ds,dg,z,cos_s,cos_g,sin_s,sin_g,gamma02,w;
  
   ocipx=ocmpx; dcipx=dcmpx; ncipx=ncmpx;
    
@@ -251,27 +269,42 @@ void kt_2d_adj(float *d, float **m, float **vp, float **vs,
 	v2=vp[icipx][it]*vp[icipx][it];
 	ts = sqrtf(t02 + dists2/v2);
 	tg = sqrtf(t02 + distg2/v2);
+        w = spherical_divergence(ts,tg,vp[icipx][it]);
       }
       else{
-	tp0 = (2*t0)/(1+gamma);
-	ts0 = (2*t0)*gamma/(1+gamma);
-	tp02 = tp0*tp0; 
-	ts02 = ts0*ts0;
-	vp2=vp[icipx][it]*vp[icipx][it];
-	vs2=vs[icipx][it]*vs[icipx][it];
-	ts = sqrtf(tp02 + dists2/vp2);
-	tg = sqrtf(ts02 + distg2/vs2);
+        gamma0 = vp[icipx][it]/vs[icipx][it];
+        tp0 = (2*t0)/(1+gamma0);
+        ts0 = (2*t0)*gamma0/(1+gamma0);
+        tp02 = tp0*tp0;
+        ts02 = ts0*ts0;
+        vp2=vp[icipx][it]*vp[icipx][it];
+        vs2=vs[icipx][it]*vs[icipx][it];
+        ts = sqrtf(tp02 + dists2/vp2);
+        tg = sqrtf(ts02 + distg2/vs2);
+
+        ds = vp[icipx][it]*ts;
+        dg = vs[icipx][it]*tg;
+        z = sqrt(ds*ds - dists2);
+        cos_s = z/ds;
+        cos_g = z/dg;
+        sin_s = dists/ds;
+        sin_g = distg/dg;
+        cos1 = cos_s*cos_g - sin_s*sin_g;        
+        gamma02 = gamma0*gamma0;
+        w = z*(1+cos1)*(gamma02*ts+tg)*(gamma02*gamma02*ts*ts+tg*tg)/(2*vp2*vp[icipx][it]*sqrt(1+2*gamma0*cos1+gamma02)*gamma0*ts*ts*tg*tg);
+
+        gamma_eff = (vp2/vs2)/gamma;
+        sphe = spherical_divergence(ts,tg,sqrt((1+gamma_eff)/((1+gamma)*gamma_eff))*vp[icipx][it]);
       }
       t  = ts + tg;
-      sphe = spherical_divergence(ts,tg,vp[icipx][it]);
       cos1 = angle_taper(ts,tg,vp[icipx][it],hx);
-      if (cos1 < 0.1) continue;          
+    /*  if (cos1 < 0.1) continue;   */       
       t_floor = trunc(t/dt) + 1;
       jt = (int) t_floor;
       if (jt >= 0 && jt+1 < nt){
 	res = (t-t_floor)/dt;
 	res0 = 1.0-res;
-	m[icipx][it] += cos1*sphe*(res0*d[jt] + res*d[jt+1]);
+	m[icipx][it] += w*(res0*d[jt] + res*d[jt+1]);
       }
     }
   } 
@@ -387,7 +420,10 @@ void cg_irls_kt2d(float **d,int nd,
              float *wd,int nwd,
 	     int itmax_external,int itmax_internal,
              float **vp,float **vs,
-             int nt,int nmx,int nhx,float ot,float omx,float ohx,float dt,float dmx,float dhx,
+             int nt,int nmx,int nhx,
+             float ot,float omx,float ohx,
+             float dt,float dmx,float dhx,
+             float *misfit,
              float aperture,float psgamma,bool ps,
              int verbose)
 /*< Non-quadratic regularization with CG-LS. The inner CG routine is taken from Algorithm 2 of Scales, 1987. Make sure linear operator passes the dot product. In this case (PSTM), the linear operator is a Kirchhoff demigration operator. >*/
@@ -425,8 +461,6 @@ void cg_irls_kt2d(float **d,int nd,
 
     kt_2d_op(r,Pv,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
              aperture,psgamma,ps,false,verbose);
-
-    for (ix=0;ix<nd;ix++)  r[ix][it] = r[ix][it]*wd[ix];
 
     for (ix=0;ix<nd;ix++){
       for (it=0;it<nt;it++){ 
@@ -499,6 +533,8 @@ void cg_irls_kt2d(float **d,int nd,
           r[ix][it] = r[ix][it]*wd[ix];
         }
       }
+
+      misfit[(j-1)*itmax_internal + (k-1)] = cgdot(r,nt,nd);
 
       kt_2d_op(r,g,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
                aperture,psgamma,ps,true,verbose);

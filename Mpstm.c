@@ -33,7 +33,7 @@
 int main(int argc, char* argv[])
 {
 
-  sf_file in,out,velp,vels;
+  sf_file in,out,velp,vels,misfitfile;
   int n1,n2,n3;
   int nt,nmx,nhx;
   int it,ix;
@@ -51,10 +51,13 @@ int main(int argc, char* argv[])
   float sum;
   int sum_wd;  
   int itmax_internal,itmax_external;
+  float *misfit;
+  char *misfitname;
 
   sf_init (argc,argv);
   in = sf_input("in");
   out = sf_output("out");
+  velp = sf_input("vp");
   velp = sf_input("vp");
   if (!sf_getbool("ps",&ps)) ps = false; /* flag for PS data */
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
@@ -76,8 +79,25 @@ int main(int argc, char* argv[])
   if (!sf_histfloat(in,"d3",&d3)) sf_error("No d3= in input");
   if (!sf_histfloat(in,"o3",&o3)) o3=0.;
   
-  if (inv) adj = true; /* activate adjoint flags */
- 
+  if (inv){ 
+    adj = true; /* activate adjoint flags */
+    misfitname = sf_getstring("misfit");
+    misfitfile = sf_output(misfitname);
+    sf_putint(misfitfile,"n1",itmax_internal*itmax_external);
+    sf_putfloat(misfitfile,"d1",1);
+    sf_putfloat(misfitfile,"o1",1);
+    sf_putstring(misfitfile,"label1","Iteration Number");
+    sf_putstring(misfitfile,"label2","Misfit");
+    sf_putstring(misfitfile,"unit1"," ");
+    sf_putstring(misfitfile,"unit2"," ");
+    sf_putstring(misfitfile,"title","Misfit");
+    sf_putint(misfitfile,"n2",1);
+    sf_putint(misfitfile,"n3",1);
+    sf_putint(misfitfile,"n4",1);
+    sf_putint(misfitfile,"n5",1);
+    misfit = sf_floatalloc(itmax_internal*itmax_external);
+  }
+
   nt=n1; nmx=n2; nhx=n3;  
   dt=d1; dmx=d2; dhx=d3;  
   ot=o1; omx=o2; ohx=o3;
@@ -160,6 +180,7 @@ int main(int argc, char* argv[])
 	         itmax_external,itmax_internal,
                  vp,vs,
                  nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
+                 misfit,
                  aperture,gamma,ps,
                  verbose);
   }
@@ -175,6 +196,10 @@ int main(int argc, char* argv[])
       sf_floatwrite(trace,nt,out);
     }
   }
+
+  if (inv){
+    sf_floatwrite(misfit,itmax_internal*itmax_external,misfitfile);
+  }   
 
   exit (0);
 }
