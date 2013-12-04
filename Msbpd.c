@@ -1,4 +1,4 @@
-/* static preserving sparse basis persuit denoising 
+/* static preserving basis persuit denoising 
 */
 /*
   Copyright (C) 2013 University of Alberta
@@ -39,6 +39,7 @@ int main(int argc, char* argv[])
 {
   int ix,it,nt,nx,seed,iw,ik;
   int n1,n2;
+  int mode;
   float *trace,*trace1,*trace2;
   float **d;
   sf_complex **m;
@@ -52,17 +53,18 @@ int main(int argc, char* argv[])
   sf_complex **grad;
   float Mmax,Gradmax,p;
   float alpha,lambda;
+  float maxlag;
   sf_file in,out;
   
   sf_init (argc,argv);
   in = sf_input("in");
   out = sf_output("out");
 
-  if (!sf_getint("Niter",&Niter)) Niter = 20;
-  if (!sf_getfloat("alpha",&alpha)) alpha = 1;
-  if (!sf_getfloat("lambda",&lambda)) lambda = 1;
-
-
+  if (!sf_getfloat("maxlag",&maxlag)) maxlag = 0.02; /* maximum static shift in the data (seconds) */
+  if (!sf_getint("iter",&Niter)) Niter = 20; /* number of iterations */
+  if (!sf_getfloat("alpha",&alpha)) alpha = 0.03; /* step size */
+  if (!sf_getfloat("lambda",&lambda)) lambda = 0.03; /* hyperparameter for the inversion */
+  if (!sf_getint("mode",&mode)) mode = 1; /* flag for what to do with statics on output: 1=denoise only (leave statics in data), 2=denoise and correct, or 3=static correct only*/
   /* read input file parameters */
   if (!sf_histint(in,"n1",&n1)) sf_error("No n1= in input");
   if (!sf_histfloat(in,"d1",&d1)) sf_error("No d1= in input");
@@ -91,22 +93,22 @@ int main(int argc, char* argv[])
 
   for (ix=0; ix<n2; ix++) {	
     sf_floatread(trace,n1,in);
-    for (it=0; it<n1; it++) d[ix][it] = s[ix][it] = trace[it];
+    for (it=0; it<n1; it++) d[ix][it] = trace[it];
     tshift[ix] = 0.0;
   }
 
-  fk_op(m,d,nw,nk,nt,nx,1);
+  fk_op(m,d,nw,nk,nt,nx,1); /* adjoint: d to m */
 
   for (iter=1;iter<=Niter;iter++){
-    fprintf(stderr,"iter=%d/%d",iter+1,Niter);
-    fk_op(m,s,nw,nk,nt,nx,0);
+    fprintf(stderr,"iter=%d/%d\n",iter,Niter);
+    fk_op(m,s,nw,nk,nt,nx,0); /* foward: m to s */
     /* apply time shift */
     for (ix=0;ix<nx;ix++){
       for (it=0;it<nt;it++) trace1[it] = s[ix][it];
       time_shift(trace1,d1,nt,tshift[ix]);
       for (it=0;it<nt;it++) s[ix][it] = trace1[it];
     }
-    fk_op(grad,d,nw,nk,nt,nx,1);
+    fk_op(grad,s,nw,nk,nt,nx,1); /* adjoint: s to grad */
     Mmax = 0.0;
     Gradmax = 0.0;
     for (ik=0;ik<nk;ik++){
@@ -118,7 +120,7 @@ int main(int argc, char* argv[])
  
     for (ik=0;ik<nk;ik++){
       for (iw=0;iw<nw;iw++){
-        m[ik][iw] = m[ik][iw] - alpha*Mmax/Gradmax*grad[ik][iw];
+        m[ik][iw] = m[ik][iw] - alpha*Mmax/(Gradmax*grad[ik][iw]);
       }
     }
     p = 0.0;
@@ -127,22 +129,22 @@ int main(int argc, char* argv[])
         if (sf_cabs(m[ik][iw]) > p) p = sf_cabs(m[ik][iw]);
       }
     }
-    /*mysoft(m,nw,nk,p,lambda);*/
-    fk_op(m,Q,nw,nk,nt,nx,0);
+    mysoft(m,nw,nk,p,lambda);
+    fk_op(m,Q,nw,nk,nt,nx,0); /* foward: m to Q */
     /* calculate time shift */
     for (ix=0;ix<nx;ix++){
       for (it=0;it<nt;it++) trace1[it] = Q[ix][it];
       for (it=0;it<nt;it++) trace2[it] = d[ix][it];
-      lag = find_lag(trace1,trace2,nt,d1,0.2);
+      lag = find_lag(trace1,trace2,nt,d1,maxlag);
       tshift[ix] = lag;
     }
 
   }
-  fk_op(m,d,nw,nk,nt,nx,1);
+  if (mode != 3) fk_op(m,d,nw,nk,nt,nx,0); /* foward: m to d */
 
   for (ix=0; ix<nx; ix++) {	
     for (it=0; it<nt; it++) trace[it] = d[ix][it];
-    time_shift(trace,d1,nt,-tshift[ix]);
+    if (mode==1 || mode==3) time_shift(trace,d1,nt,-tshift[ix]);
     sf_floatwrite(trace,n1,out);
   }
 
@@ -155,7 +157,6 @@ void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj)
   float *in1a,*out1b;
   int *n,ntfft,ix,it,iw,ik;
   fftwf_plan p1a,p1b,p2a,p2b;
-
 
   ntfft = (nw-1)*2;
   __real__ czero = 0;
@@ -187,8 +188,8 @@ if (adj){ /* data --> model */
     fftwf_execute(p2a); /* FFT x to k */
     for (ik=0;ik<nk;ik++) m[ik][iw] = in2a[ik];
   }
-  fftwf_destroy_plan(p2b);
-  fftwf_free(in2b); 
+  fftwf_destroy_plan(p2a);
+  fftwf_free(in2a); 
 }
 
 else{ /* model --> data */
@@ -208,7 +209,8 @@ else{ /* model --> data */
   fftwf_destroy_plan(p1b);
   fftwf_free(in1b); fftwf_free(out1b);
 }
-  
+  free2complex(cpfft);
+
   return;
 
 }
@@ -298,6 +300,12 @@ void time_shift(float *d,float dt,int nt,float tshift)
   for (it=0; it<nt; it++) d[it]=d[it]/ntfft;
   fftwf_destroy_plan(p1);
   fftwf_destroy_plan(p2);
+
+  fftwf_free(in1);
+  fftwf_free(in2);
+  fftwf_free(out1);
+  fftwf_free(out2);
+  fftwf_free(D);
 
   return;
 }
