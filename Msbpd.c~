@@ -97,7 +97,7 @@ int main(int argc, char* argv[])
 
   fk_op(m,d,nw,nk,nt,nx,1);
 
-  for (iter=1;iter<=Niter;iter++){
+  for (iter=1;iter<Niter;iter++){
     fprintf(stderr,"iter=%d/%d",iter+1,Niter);
     fk_op(m,s,nw,nk,nt,nx,0);
     /* apply time shift */

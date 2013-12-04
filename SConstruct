@@ -11,6 +11,7 @@ static
 reg5d
 patch5d
 pstm
+sbpd
 '''
 
 pyprogs='''
