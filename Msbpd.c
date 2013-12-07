@@ -57,21 +57,24 @@ int main(int argc, char* argv[])
   float maxeig,t;
   sf_complex czero;
   int Niterpower;
-  sf_file in,out;
-  
+  sf_file in,out,costfile;
+  float *cost,costsum1,costsum2;
+  char *costname;
+  bool verbose;
+  float p;
+
   __real__ czero = 0;
   __imag__ czero = 0;
-
-
   sf_init (argc,argv);
   in = sf_input("in");
   out = sf_output("out");
-
   if (!sf_getfloat("maxlag",&maxlag)) maxlag = 0.02; /* maximum static shift in the data (seconds) */
   if (!sf_getint("iter",&Niter)) Niter = 20; /* number of iterations for ISTA*/
   if (!sf_getint("iterpower",&Niterpower)) Niterpower = 20; /* number of iterations for power method used to approximate max eigenvalue (used in ISTA) */
   if (!sf_getfloat("lambda",&lambda)) lambda = 0.03; /* hyperparameter for the inversion */
   if (!sf_getint("mode",&mode)) mode = 1; /* flag for what to do with statics on output: 1=denoise only (leave statics in data), 2=denoise and correct, or 3=static correct only 0=denoise ignoring statics */
+  if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag */
+    costname = sf_getstring("cost");
   /* read input file parameters */
   if (!sf_histint(in,"n1",&n1)) sf_error("No n1= in input");
   if (!sf_histfloat(in,"d1",&d1)) sf_error("No d1= in input");
@@ -88,6 +91,23 @@ int main(int argc, char* argv[])
   nw=ntfft/2+1;
   nk = padx*nx;
 
+
+  costname = sf_getstring("cost");
+  costfile = sf_output(costname);
+  sf_putint(costfile,"n1",Niter);
+  sf_putfloat(costfile,"d1",1);
+  sf_putfloat(costfile,"o1",1);
+  sf_putstring(costfile,"label1","Iteration Number");
+  sf_putstring(costfile,"label2","cost");
+  sf_putstring(costfile,"unit1"," ");
+  sf_putstring(costfile,"unit2"," ");
+  sf_putstring(costfile,"title","Cost");
+  sf_putint(costfile,"n2",1);
+  sf_putint(costfile,"n3",1);
+  sf_putint(costfile,"n4",1);
+  sf_putint(costfile,"n5",1);
+  cost = sf_floatalloc(Niter);
+
   trace = sf_floatalloc (n1);
   trace1 = sf_floatalloc (n1);
   trace2 = sf_floatalloc (n1);
@@ -100,26 +120,38 @@ int main(int argc, char* argv[])
 
   for (ix=0; ix<n2; ix++) {	
     sf_floatread(trace,n1,in);
-    for (it=0; it<n1; it++) d[ix][it] = s[ix][it] = trace[it];
+    for (it=0; it<n1; it++) d[ix][it]= s[ix][it] = trace[it];
+    /*for (it=0; it<n1; it++) s[ix][it] = 0;*/
     tshift[ix] = 0.0;
   }
 
-  for (ik=0; ik<nk; ik++) {	
+/*  for (ik=0; ik<nk; ik++) {	
     for (iw=0; iw<nw; iw++) m[ik][iw] = czero;
   }
+*/
+  fk_op(m,d,nw,nk,nt,nx,1); /* adjoint: d to m */
+
+  p = 0.0;
+  for (ik=0;ik<nk;ik++){
+    for (iw=0;iw<nw;iw++){
+      if (sf_cabs(m[ik][iw]) > p) p = sf_cabs(m[ik][iw]);
+    }
+  }
+  lambda = lambda*p;
 
   maxeig = power_method(nw,nk,nt,nx,Niterpower);
  /* if (verbose) fprintf(stderr,"maxeig after 10 iterations = %f\n",maxeig);*/
 
   t = 1/(2*1.2*maxeig);
   alpha = lambda*t;
+  if (verbose) fprintf(stderr,"alpha=%f t=%f \n",alpha,t);
 
   for (iter=1;iter<=Niter;iter++){
-    fprintf(stderr,"iter=%d/%d\n",iter,Niter);
+    if (verbose) fprintf(stderr,"iter=%d/%d\n",iter,Niter);
 
 /* ----------------------------------------------------------- */
-    /* apply time shift */
     if (mode!=0){
+      /* add static shifts to s */
       for (ix=0;ix<nx;ix++){
         for (it=0;it<nt;it++) trace1[it] = s[ix][it];
         time_shift(trace1,d1,nt,tshift[ix]);
@@ -131,6 +163,26 @@ int main(int argc, char* argv[])
     for (ix=0;ix<nx;ix++){
       for (it=0;it<nt;it++) r[ix][it] = s[ix][it] - d[ix][it];
     }
+    /* calculate cost */
+    costsum1 = 0.0; 
+    for (ix=0;ix<nx;ix++){
+      for (it=0;it<nt;it++) costsum1 += r[ix][it]*r[ix][it];
+    }
+    costsum2 = 0.0; 
+    for (ik=0;ik<nk;ik++){
+      for (iw=0;iw<nw;iw++) costsum2 += sf_cabs(m[ik][iw]);
+    }
+    cost[iter-1] = costsum1 + lambda*costsum2;
+/* ----------------------------------------------------------- */
+    if (mode!=0){
+      /* remove static shifts from r */
+      for (ix=0;ix<nx;ix++){
+        for (it=0;it<nt;it++) trace1[it] = r[ix][it];
+        time_shift(trace1,d1,nt,-tshift[ix]);
+        for (it=0;it<nt;it++) r[ix][it] = trace1[it];
+      }
+    }
+/* ----------------------------------------------------------- */
     fk_op(g,r,nw,nk,nt,nx,1); /* adjoint: r to g */
     for (ik=0;ik<nk;ik++){
       for (iw=0;iw<nw;iw++){
@@ -139,6 +191,7 @@ int main(int argc, char* argv[])
     }
     mysoft(m,nw,nk,alpha);
     fk_op(m,s,nw,nk,nt,nx,0); /* foward: m to s */
+
 /* ----------------------------------------------------------- */
     /* calculate time shift */
     for (ix=0;ix<nx;ix++){
@@ -157,6 +210,8 @@ int main(int argc, char* argv[])
     if (mode==3) time_shift(trace,d1,nt,-tshift[ix]);
     sf_floatwrite(trace,n1,out);
   }
+
+  sf_floatwrite(cost,Niter,costfile);
 
   free1float(trace);
   free1float(trace1);

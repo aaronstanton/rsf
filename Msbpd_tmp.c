@@ -33,12 +33,11 @@
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 float find_lag(float *x, float *y, int n, float dt, float maxdelay);
 void time_shift(float *d,float dt,int nt,float tshift);
-void mysoft(sf_complex **m,int nw,int nk,float alpha);
-float power_method(int nw,int nk,int nt, int nx,int itmax_power);
+void mysoft(sf_complex **m,int nw,int nk,float p,float lambda);
 
 int main(int argc, char* argv[])
 {
-  int ix,it,nt,nx,iw,ik;
+  int ix,it,nt,nx,seed,iw,ik;
   int n1,n2;
   int mode;
   float *trace,*trace1,*trace2;
@@ -50,31 +49,28 @@ int main(int argc, char* argv[])
   int iter,Niter; 
   float lag;
   float *tshift;
-  float **s,**r;
-  sf_complex **g;
+  float **s,**Q;
+  sf_complex **grad;
+  float Mmax,Gradmax,p;
   float alpha,lambda;
   float maxlag;
-  float maxeig,t;
-  sf_complex czero;
-  int Niterpower;
-  sf_file in,out,costfile;
-  float *cost,costsum1,costsum2;
-  char *costname;
   bool verbose;
-  float p;
-
-  __real__ czero = 0;
-  __imag__ czero = 0;
+  sf_complex czero;
+  sf_file in,out;
+  
   sf_init (argc,argv);
   in = sf_input("in");
   out = sf_output("out");
+
+  __real__ czero = 0;
+  __imag__ czero = 0;
+
   if (!sf_getfloat("maxlag",&maxlag)) maxlag = 0.02; /* maximum static shift in the data (seconds) */
-  if (!sf_getint("iter",&Niter)) Niter = 20; /* number of iterations for ISTA*/
-  if (!sf_getint("iterpower",&Niterpower)) Niterpower = 20; /* number of iterations for power method used to approximate max eigenvalue (used in ISTA) */
+  if (!sf_getint("iter",&Niter)) Niter = 20; /* number of iterations */
+  if (!sf_getfloat("alpha",&alpha)) alpha = 0.03; /* step size */
   if (!sf_getfloat("lambda",&lambda)) lambda = 0.03; /* hyperparameter for the inversion */
-  if (!sf_getint("mode",&mode)) mode = 1; /* flag for what to do with statics on output: 1=denoise only (leave statics in data), 2=denoise and correct, or 3=static correct only 0=denoise ignoring statics */
-  if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag */
-    costname = sf_getstring("cost");
+  if (!sf_getint("mode",&mode)) mode = 1; /* flag for what to do with statics on output: 1=denoise only (leave statics in data), 2=denoise and correct, or 3=static correct only*/
+  if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   /* read input file parameters */
   if (!sf_histint(in,"n1",&n1)) sf_error("No n1= in input");
   if (!sf_histfloat(in,"d1",&d1)) sf_error("No d1= in input");
@@ -91,130 +87,76 @@ int main(int argc, char* argv[])
   nw=ntfft/2+1;
   nk = padx*nx;
 
-
-  costname = sf_getstring("cost");
-  costfile = sf_output(costname);
-  sf_putint(costfile,"n1",Niter);
-  sf_putfloat(costfile,"d1",1);
-  sf_putfloat(costfile,"o1",1);
-  sf_putstring(costfile,"label1","Iteration Number");
-  sf_putstring(costfile,"label2","cost");
-  sf_putstring(costfile,"unit1"," ");
-  sf_putstring(costfile,"unit2"," ");
-  sf_putstring(costfile,"title","Cost");
-  sf_putint(costfile,"n2",1);
-  sf_putint(costfile,"n3",1);
-  sf_putint(costfile,"n4",1);
-  sf_putint(costfile,"n5",1);
-  cost = sf_floatalloc(Niter);
-
   trace = sf_floatalloc (n1);
   trace1 = sf_floatalloc (n1);
   trace2 = sf_floatalloc (n1);
   d = sf_floatalloc2(nt,nx);
   m = sf_complexalloc2(nw,nk);
   tshift = sf_floatalloc (nx);
-  g = sf_complexalloc2(nw,nk);
+  grad = sf_complexalloc2(nw,nk);
   s = sf_floatalloc2(nt,nx);
-  r = sf_floatalloc2(nt,nx);
+  Q = sf_floatalloc2(nt,nx);
 
   for (ix=0; ix<n2; ix++) {	
     sf_floatread(trace,n1,in);
-    for (it=0; it<n1; it++) d[ix][it]= s[ix][it] = trace[it];
-    /*for (it=0; it<n1; it++) s[ix][it] = 0;*/
+    for (it=0; it<n1; it++) d[ix][it] = trace[it];
     tshift[ix] = 0.0;
   }
 
-/*  for (ik=0; ik<nk; ik++) {	
-    for (iw=0; iw<nw; iw++) m[ik][iw] = czero;
-  }
-*/
   fk_op(m,d,nw,nk,nt,nx,1); /* adjoint: d to m */
 
-
-  maxeig = power_method(nw,nk,nt,nx,Niterpower);
- /* if (verbose) fprintf(stderr,"maxeig after 10 iterations = %f\n",maxeig);*/
-
-  t = 1/(2*1.2*maxeig);
-  alpha = lambda*t;
-  if (verbose) fprintf(stderr,"alpha=%f t=%f \n",alpha,t);
+  for (ik=0;ik<nk;ik++){
+    for (iw=0;iw<nw;iw++){
+      m[ik][iw] = czero;
+    }
+  }
 
   for (iter=1;iter<=Niter;iter++){
     if (verbose) fprintf(stderr,"iter=%d/%d\n",iter,Niter);
-
-/* ----------------------------------------------------------- */
-    if (mode!=0){
-      /* add static shifts to s */
-      for (ix=0;ix<nx;ix++){
-        for (it=0;it<nt;it++) trace1[it] = s[ix][it];
-        time_shift(trace1,d1,nt,tshift[ix]);
-        for (it=0;it<nt;it++) s[ix][it] = trace1[it];
-      }
-    }
-/* ----------------------------------------------------------- */
-
+    /* apply time shift */
     for (ix=0;ix<nx;ix++){
-      for (it=0;it<nt;it++) r[ix][it] = s[ix][it] - d[ix][it];
+      for (it=0;it<nt;it++) trace1[it] = d[ix][it];
+      time_shift(trace1,d1,nt,tshift[ix]);
+      for (it=0;it<nt;it++) s[ix][it] = trace1[it];
     }
-    /* calculate cost */
-    costsum1 = 0.0; 
-    for (ix=0;ix<nx;ix++){
-      for (it=0;it<nt;it++) costsum1 += r[ix][it]*r[ix][it];
-    }
-    costsum2 = 0.0; 
-    for (ik=0;ik<nk;ik++){
-      for (iw=0;iw<nw;iw++) costsum2 += sf_cabs(m[ik][iw]);
-    }
-    cost[iter-1] = costsum1 + lambda*costsum2;
-/* ----------------------------------------------------------- */
-    if (mode!=0){
-      /* remove static shifts from r */
-      for (ix=0;ix<nx;ix++){
-        for (it=0;it<nt;it++) trace1[it] = r[ix][it];
-        time_shift(trace1,d1,nt,-tshift[ix]);
-        for (it=0;it<nt;it++) r[ix][it] = trace1[it];
-      }
-    }
-/* ----------------------------------------------------------- */
-    fk_op(g,r,nw,nk,nt,nx,1); /* adjoint: r to g */
+    fk_op(grad,s,nw,nk,nt,nx,1); /* adjoint: s to grad */
+    p = 0.0;
     for (ik=0;ik<nk;ik++){
       for (iw=0;iw<nw;iw++){
-        m[ik][iw] = m[ik][iw] - 2*t*g[ik][iw];
+        if (sf_cabs(grad[ik][iw]) > p) p = sf_cabs(grad[ik][iw]);
       }
     }
-    mysoft(m,nw,nk,alpha);
-    fk_op(m,s,nw,nk,nt,nx,0); /* foward: m to s */
-
-/* ----------------------------------------------------------- */
+    mysoft(grad,nw,nk,p,lambda);
+    Mmax = 0.0;
+    Gradmax = 0.0;
+    for (ik=0;ik<nk;ik++){
+      for (iw=0;iw<nw;iw++){
+        if (sf_cabs(m[ik][iw]) > Mmax) Mmax = sf_cabs(m[ik][iw]);
+        if (sf_cabs(grad[ik][iw]) > Gradmax) Gradmax = sf_cabs(grad[ik][iw]);
+      }
+    }
+    for (ik=0;ik<nk;ik++){
+      for (iw=0;iw<nw;iw++){
+        m[ik][iw] = m[ik][iw] - alpha*Mmax/(Gradmax*grad[ik][iw]);
+      }
+    }
+    fk_op(m,Q,nw,nk,nt,nx,0); /* foward: m to Q */
     /* calculate time shift */
     for (ix=0;ix<nx;ix++){
-      for (it=0;it<nt;it++) trace1[it] = s[ix][it];
+      for (it=0;it<nt;it++) trace1[it] = Q[ix][it];
       for (it=0;it<nt;it++) trace2[it] = d[ix][it];
       lag = find_lag(trace1,trace2,nt,d1,maxlag);
       tshift[ix] = lag;
     }
-/* ----------------------------------------------------------- */
+
   }
-  if (mode!=3) fk_op(m,d,nw,nk,nt,nx,0); /* foward: m to d */
+  if (mode != 3) fk_op(m,d,nw,nk,nt,nx,0); /* foward: m to d */
 
   for (ix=0; ix<nx; ix++) {	
     for (it=0; it<nt; it++) trace[it] = d[ix][it];
-    if (mode==1) time_shift(trace,d1,nt,tshift[ix]);
-    if (mode==3) time_shift(trace,d1,nt,-tshift[ix]);
+    if (mode==1 || mode==3) time_shift(trace,d1,nt,-tshift[ix]);
     sf_floatwrite(trace,n1,out);
   }
-
-  sf_floatwrite(cost,Niter,costfile);
-
-  free1float(trace);
-  free1float(trace1);
-  free1float(trace2);
-  free2float(d);
-  free2complex(m);
-  free1float(tshift);
-  free2complex(g);
-  free2float(s);
-  free2float(r);
 
   exit (0);
 }
@@ -378,76 +320,23 @@ void time_shift(float *d,float dt,int nt,float tshift)
   return;
 }
 
-void mysoft(sf_complex **m,int nw,int nk,float alpha)
+void mysoft(sf_complex **m,int nw,int nk,float p,float lambda)
 {
   int ik,iw;
   float a,ang;
 
   for (ik=0;ik<nk;ik++){
     for (iw=0;iw<nw;iw++){
-      a = sf_cabs(m[ik][iw]) - alpha;
-      ang = cargf(m[ik][iw]);
+      a = sf_cabs(m[ik][iw]/p) - lambda;
+      ang = cargf(m[ik][iw]/p);
       if (a<0.0) a = 0.0;
-      __real__ m[ik][iw] = a*cos(ang);
-      __imag__ m[ik][iw] = a*sin(ang);
+      __real__ m[ik][iw] = p*a*cos(ang);
+      __imag__ m[ik][iw] = p*a*sin(ang);
     }
   }
-
+  
   return;
 }
-
-float power_method(int nw,int nk,int nt, int nx,int itmax_power)
-{
-  float a,b,maxeig;
-  int ik,iw,iter;
-  sf_complex **x,**ATAx;
-  float **Ax; 
-  sf_complex sum;
-
-  maxeig = 0.0;
-  x = sf_complexalloc2(nw,nk);
-  ATAx = sf_complexalloc2(nw,nk);
-  Ax = sf_floatalloc2(nt,nx);
-
-  init_genrand((unsigned long) 1); /* initialize with seed */
-
-  a = -1; b = 1;
-  for (ik=0;ik<nk;ik++){
-    for (iw=0;iw<nw;iw++){
-      __real__ x[ik][iw] = a + (b-a)*genrand_real1();
-      __imag__ x[ik][iw] = a + (b-a)*genrand_real1();
-    }
-  }
-
-  for (iter=0;iter<itmax_power;iter++){
-    fk_op(x,Ax,nw,nk,nt,nx,0); /* foward: x to Ax */
-    fk_op(ATAx,Ax,nw,nk,nt,nx,1); /* adjoint: Ax to ATAx */
-    __real__ sum = 0.0;
-    __imag__ sum = 0.0;
-    for (ik=0;ik<nk;ik++){
-      for (iw=0;iw<nw;iw++){
-        sum = sum + conjf(ATAx[ik][iw])*ATAx[ik][iw];
-      }
-    }
-    maxeig = (float) sqrt(crealf(sum));
-    for (ik=0;ik<nk;ik++){
-      for (iw=0;iw<nw;iw++){
-        x[ik][iw] = ATAx[ik][iw]/maxeig;
-      }
-    } 
-  }
-
-  free2complex(x);
-  free2complex(ATAx);
-  free2float(Ax);
-
-  return maxeig;
-}
-
-
-
-
-
 
 
 
