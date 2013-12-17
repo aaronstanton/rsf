@@ -12,6 +12,7 @@ reg5d
 patch5d
 pstm
 sbpd
+linearevents5d
 '''
 
 pyprogs='''
