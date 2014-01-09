@@ -11,7 +11,7 @@ static
 reg5d
 patch5d
 pstm
-sbpd
+spbpdn
 linearevents5d
 '''
 
@@ -19,7 +19,6 @@ pyprogs='''
 imagesc
 svd_complex
 svd_complexblk
-pstm_pp
 '''
 pymods='''
 '''
