@@ -607,7 +607,7 @@ void mwni5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,in
 	  itmax_internal,
 	  verbose);
    
-  fftwf_execute(prv); /* FFT (k to x)  (x2 ---> x1) */
+  fftwf_execute(prv); /* FFT (k to x)  (x2 ---> x2 (in place)) */
   for (i=0; i<nk; i++){ 
     freqslice2[i]=x2[i]*(1/sqrt((float) nk));
   }	
