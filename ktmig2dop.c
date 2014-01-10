@@ -291,8 +291,7 @@ void kt_2d_adj(float *d, float **m, float **vp, float **vs,
         sin_g = distg/dg;
         cos1 = cos_s*cos_g - sin_s*sin_g;        
         gamma02 = gamma0*gamma0;
-        w = z*(1+cos1)*(gamma02*ts+tg)*(gamma02*gamma02*ts*ts+tg*tg)/(2*vp2*vp[icipx][it]*sqrt(1+2*gamma0*cos1+gamma02)*gamma0*ts*ts*tg*tg);
-
+        w = z*(1+cos1)/(2*vp2*vp[icipx][it]*sqrt(1+2*gamma0*cos1+gamma02))*(tg/(gamma02*ts) + (gamma02*ts)/tg)*sqrt((gamma02*ts + tg)/(ts*tg));
         gamma_eff = (vp2/vs2)/gamma;
         sphe = spherical_divergence(ts,tg,sqrt((1+gamma_eff)/((1+gamma)*gamma_eff))*vp[icipx][it]);
       }

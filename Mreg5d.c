@@ -33,13 +33,13 @@ void process_time_windows(float **d,
 			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd,int iter,int iter_i,float alphai,float alphaf,int ranki,int rankf,
+                          float *wd,int iter,int iter_e,float alphai,float alphaf,int ranki,int rankf,
                           float fmax,int method,int verbose);
 void process1c(float **d,
 	       int verbose,int nt,int nx,float dt,
                int *x1h,int *x2h,int *x3h,int *x4h,
                int nx1,int nx2,int nx3,int nx4,
-               float *wd_no_pad,int iter,int iter_i,float alphai,float alphaf,int ranki,int rankf,float fmax,int method);
+               float *wd_no_pad,int iter,int iter_e,float alphai,float alphaf,int ranki,int rankf,float fmax,int method);
 void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf);
 void mwni5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int itmax_external,int itmax_internal,int verbose);
 float cgdot(sf_complex *x,int nm);
@@ -72,7 +72,7 @@ int main(int argc, char* argv[])
     float sum;
     sf_file in,out;
     sf_init (argc,argv);
-    int tw_length, tw_overlap, iter, iter_i;
+    int tw_length, tw_overlap, iter, iter_e;
     float alphai, alphaf, fmax;
     int ranki, rankf;
     int sum_wd;
@@ -101,10 +101,11 @@ int main(int argc, char* argv[])
 
     if (!sf_getint("method",&method)) method = 1; /* reconstruction algorithm to choose (1=POCS,2=MWNI,3=SEQSVD) */
     if (!sf_getint("tw_length",&tw_length)) tw_length = n1; /* length of time windows in number of samples */
+    if (tw_length>n1) tw_length = n1;
     if (!sf_getint("tw_overlap",&tw_overlap)) tw_overlap = 10; /* length of time window overlap in number of samples */
     if (tw_length==n1) tw_overlap=0;
     if (!sf_getint("iter",&iter)) iter = 10; /* number of iterations */
-    if (!sf_getint("iter_i",&iter_i)) iter_i = 3; /* number of internal iterations if MWNI is used */
+    if (!sf_getint("iter_e",&iter_e)) iter_e = 3; /* number of external iterations for sparsity promotion if MWNI is used */
     if (!sf_getfloat("alphai",&alphai)) alphai = 1; /* denoising parameter for 1st iteration 1=no denoise */
     if (!sf_getfloat("alphaf",&alphaf)) alphaf = 1; /* denoising parameter for last iteration 1=no denoise */
     if (!sf_getint("ranki",&ranki)) ranki = 8; /* rank for first iteration (if using SEQSVD) */
@@ -142,16 +143,22 @@ int main(int argc, char* argv[])
     nx1 = n2; nx2 = n3; nx3 = n4; nx4 = n5;
     nx = nx1*nx2*nx3*nx4;
 
-    ix1 = sf_intalloc (n2*n3*n4*n5);
-    ix2 = sf_intalloc (n2*n3*n4*n5);
-    ix3 = sf_intalloc (n2*n3*n4*n5);
-    ix4 = sf_intalloc (n2*n3*n4*n5);
+    ix1 = sf_intalloc (nx1*nx2*nx3*nx4);
+    ix2 = sf_intalloc (nx1*nx2*nx3*nx4);
+    ix3 = sf_intalloc (nx1*nx2*nx3*nx4);
+    ix4 = sf_intalloc (nx1*nx2*nx3*nx4);
 
+    /* 
+      RSF stores long vectors in an order opposite to FFTW: 
+      RSF:  ix = ix4*nx3*nx2*nx1 + ix3*nx2*nx1 + ix2*nx1 + ix1 
+      FFTW: ix = ix1*nx2*nx3*nx4 + ix2*nx3*nx4 + ix3*nx4 + ix4
+      here we fetch traces from RSF order
+    */
     ix = 0;
-    for (i2=0; i2<n2; i2++) {	
-      for (i3=0; i3<n3; i3++) {	
-        for (i4=0; i4<n4; i4++) {	
-          for (i5=0; i5<n5; i5++) {	
+    for (i5=0; i5<n5; i5++) {	
+      for (i4=0; i4<n4; i4++) {	
+        for (i3=0; i3<n3; i3++) {	
+          for (i2=0; i2<n2; i2++) {	
             ix1[ix] = i2;
             ix2[ix] = i3;
             ix3[ix] = i4;
@@ -172,12 +179,8 @@ int main(int argc, char* argv[])
     }
 
     sum_wd = 0;
-    for (i2=0; i2<nx; i2++) {
+    for (ix=0; ix<nx; ix++) {
       sf_floatread(trace,n1,in);
-      ix =   ix1[i2]*nx2*nx3*nx4 
-           + ix2[i2]*nx3*nx4 
-           + ix3[i2]*nx4 
-           + ix4[i2];
       sum = 0;
       for (i1=0; i1<n1; i1++){
         sum      += trace[i1]*trace[i1]; 
@@ -188,22 +191,18 @@ int main(int argc, char* argv[])
         sum_wd++;
       }      
     }
-
+ 
     if (verbose) fprintf(stderr,"the block has %6.2f %% missing traces.\n", (float) 100 - 100*sum_wd/(nx1*nx2*nx3*nx4));
 
     process_time_windows(d,
 			 n1,d1,nx1,nx2,nx3,nx4,
                          tw_length,tw_overlap,
                          ix1,ix2,ix3,ix4,
-                         wd,iter,iter_i,alphai,alphaf,ranki,rankf,
+                         wd,iter,iter_e,alphai,alphaf,ranki,rankf,
                          fmax,method,verbose);
 
-    for (i2=0; i2<nx; i2++) {
-      ix =   ix1[i2]*nx2*nx3*nx4 
-           + ix2[i2]*nx3*nx4 
-           + ix3[i2]*nx4 
-           + ix4[i2];
-      for (i1=0; i1<n1; i1++) trace[i1] = d[ix][i1];	
+    for (ix=0; ix<nx; ix++) {
+      for (i1=0; i1<n1; i1++) trace[i1] = d[ix][i1];
       sf_floatwrite(trace,n1,out);
     }
 
@@ -214,7 +213,7 @@ void process_time_windows(float **d,
 			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
                           int Ltw,int Dtw,
                           int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd,int iter,int iter_i,float alphai,float alphaf,int ranki,int rankf,
+                          float *wd,int iter,int iter_e,float alphai,float alphaf,int ranki,int rankf,
                           float fmax,int method, int verbose)
 /***********************************************************************/
 /* process with overlapping time windows */
@@ -251,7 +250,7 @@ void process_time_windows(float **d,
               verbose,Ltw,nx,dt,
               ix1_in,ix2_in,ix3_in,ix4_in,
               nx1,nx2,nx3,nx4,
-              wd,iter,iter_i,alphai,alphaf,ranki,rankf,fmax,method);
+              wd,iter,iter_e,alphai,alphaf,ranki,rankf,fmax,method);
 
     if (Itw==0){ 
       for (ix=0;ix<nx;ix++){ 
@@ -281,7 +280,7 @@ void process1c(float **d,
 	       int verbose,int nt,int nx,float dt,
                int *x1h,int *x2h,int *x3h,int *x4h,
                int nx1,int nx2,int nx3,int nx4,
-               float *wd_no_pad,int iter,int iter_i,float alphai,float alphaf,int ranki,int rankf,float fmax,int method)
+               float *wd_no_pad,int iter,int iter_e,float alphai,float alphaf,int ranki,int rankf,float fmax,int method)
 {  
   int it, ix, iw;
   sf_complex czero;
@@ -295,7 +294,6 @@ void process1c(float **d,
   int N; 
   sf_complex *out;
   fftwf_plan p1;
-  int *mapping_vector;
   int ix_no_pad;
   int ix1,ix2,ix3,ix4;
   float  f_low;
@@ -364,19 +362,13 @@ void process1c(float **d,
   fftwf_destroy_plan(p1);
   fftwf_free(in); fftwf_free(out);
   /********************************************************************************************/
-  mapping_vector = sf_intalloc(nk+1);
   for (ix=0;ix<nk;ix++){
 	wd[ix] = 0;  
-	mapping_vector[ix] = 0;
   }
-	
-  ix_no_pad = 0;
-	
   for (ix_no_pad=0;ix_no_pad<nx;ix_no_pad++){
 	ix = x1h[ix_no_pad]*(nx2fft*nx3fft*nx4fft) + x2h[ix_no_pad]*(nx3fft*nx4fft) + x3h[ix_no_pad]*(nx4fft) + x4h[ix_no_pad];
       if (wd_no_pad[ix_no_pad] > 0){
-	wd[ix] = wd_no_pad[ix_no_pad];  
-	mapping_vector[ix] = ix_no_pad+1;
+	wd[ix] = wd_no_pad[ix_no_pad];
       }	
   }
 	
@@ -414,10 +406,9 @@ void process1c(float **d,
       }	
     }
 
-
     /* The reconstruction engine: */
     if (method==1) pocs5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,perci,percf,alphai,alphaf);
-    else if (method==2) mwni5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,iter_i,verbose);
+    else if (method==2) mwni5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter_e,iter,verbose);
     else if (method==3) seqsvd5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,alphai,alphaf,ranki,rankf);
 
     ix        = 0;
@@ -427,16 +418,14 @@ void process1c(float **d,
     	for (ix3=0;ix3<nx3fft;ix3++){
     	  for (ix4=0;ix4<nx4fft;ix4++){
     	    if (ix1<nx1 && ix2<nx2 && ix3<nx3 && ix4<nx4){
+              ix_no_pad = ix4*nx3*nx2*nx1 + ix3*nx2*nx1 + ix2*nx1 + ix1;
     	      cpfft[ix_no_pad][iw] = freqslice2[ix];
-    	      ix_no_pad++;
     	    }
 	    ix++;
     	  }
     	}
       }
     }
-
-
   }
 
   /* zero all other frequencies */
