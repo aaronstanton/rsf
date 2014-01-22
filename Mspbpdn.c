@@ -1,4 +1,4 @@
-/* static preserving basis persuit denoising 
+/* Static Preserving Basis Persuit Denoising 
 */
 /*
   Copyright (C) 2013 University of Alberta
@@ -62,7 +62,6 @@ int main(int argc, char* argv[])
   float *cost,costsum1,costsum2;
   char *costname;
   bool verbose;
-  float p;
   float dt,dx,ox,dp,op,fmin,fmax,pmin,pmax;
   int operator,np,ip;
   bool debug;
@@ -87,7 +86,7 @@ int main(int argc, char* argv[])
   dp = (pmax-pmin)/((float) np-1);
   if (!sf_getbool("debug",&debug)) debug = false; /* debugging flag */
   if (!sf_getbool("powermethod",&powermethod)) powermethod = false; /* if not using FK then should do powermethod to find max eig value of operator  */
-  if (!sf_getfloat("maxeig",&maxeig)) maxeig = 1; /* max eigenvalue (note for orthog op maxeig=1) */
+  if (!sf_getfloat("maxeig",&maxeig)) maxeig = 1; /* max eigenvalue (note for orthog op maxeig should be 1) */
 
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag */
     costname = sf_getstring("cost");
@@ -156,28 +155,17 @@ int main(int argc, char* argv[])
   }
   l2norm_in = sqrt(l2norm_in);
 
-  for (ix=0; ix<n2; ix++) {	
-    for (it=0; it<n1; it++) d[ix][it] = d[ix][it];
-  }
-
- 
   if (operator==2) nk=np;
 
   my_op(m,d,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,1,operator); /* adjoint: d to m */ 
   my_op(m,s,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,0,operator); /* forward: m to s */ 
-/*
-    for (ik=0;ik<nk;ik++){
-      for (iw=0;iw<nw;iw++){
-        __real__ m[ik][iw] = 0.0;
-        __imag__ m[ik][iw] = 0.0;
-      }
-    }
-*/
-  p = 0.0;
 
   if (debug){ 
-    /* for testing, just output the adjoint radon model to ensure it is ok */
+    /* for testing, just output the adjoint model to ensure it is ok */
     if (operator==1){
+      sf_putfloat(out,"n1",nw);
+      sf_putfloat(out,"o1",0);
+      sf_putfloat(out,"d1",1/(float) (2*nt)/dt);
       sf_putfloat(out,"o2",-PI/dx);
       sf_putfloat(out,"d2",2*PI/nk/dx);
       sf_putint(out,"n2",nk);
@@ -228,7 +216,9 @@ int main(int argc, char* argv[])
       }
       }
       fprintf(stderr,"dot product check if match: %f and %f\n",tmp_sum1,tmp_sum2);
-
+      sf_putfloat(out,"o1",0);
+      sf_putfloat(out,"d1",dt);
+      sf_putfloat(out,"n1",nt);
       sf_putfloat(out,"o2",pmin);
       sf_putfloat(out,"d2",dp);
       sf_putint(out,"n2",np);
