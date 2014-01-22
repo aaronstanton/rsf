@@ -11,9 +11,8 @@ static
 reg5d
 patch5d
 pstm
-linearevents5d
-stolt_as
 spbpdn
+linearevents5d
 '''
 
 pyprogs='''
@@ -26,7 +25,7 @@ pymods='''
 
 try:  # distributed version
     Import('env root pkgdir bindir')
-    env = env.Clone()
+#    env = env.Clone()
 except: # local version
     env = bldutil.Debug()
     root = None

@@ -30,11 +30,13 @@
 #define MARK fprintf(stderr,"%s @ %u\n",__FILE__,__LINE__);fflush(stderr);
 #endif 
 
+void my_op(sf_complex **m,float **d,int nw,int nk,int nt,float dt,int nx,float dx,float ox,int np,float dp,float op,float fmin,float fmax,bool adj,int operator);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
+void radon_op(float **m,float **d,int ntau,int np,float dp,float op,int nt,float dt,int nx,float dx,float ox,float fmin,float fmax,bool adj);
 float find_lag(float *x, float *y, int n, float dt, float maxdelay);
 void time_shift(float *d,float dt,int nt,float tshift);
 void mysoft(sf_complex **m,int nw,int nk,float alpha);
-float power_method(int nw,int nk,int nt, int nx,int itmax_power);
+float power_method(int nw, int nk,int nt,float dt,int nx,float dx,float ox,int np, float dp, float op,float fmin, float fmax, int operator, int itmax_power);
 
 int main(int argc, char* argv[])
 {
@@ -52,19 +54,23 @@ int main(int argc, char* argv[])
   float *tshift;
   float **s,**r;
   sf_complex **g;
-  float alpha,lambda,lambda2;
+  float alpha,lambda;
   float maxlag;
   float maxeig,t;
-  sf_complex czero;
   int Niterpower;
   sf_file in,out,costfile;
   float *cost,costsum1,costsum2;
   char *costname;
   bool verbose;
   float p;
+  float dt,dx,ox,dp,op,fmin,fmax,pmin,pmax;
+  int operator,np,ip;
+  bool debug;
+  float **tm1,**tm2,**td1,**td2;
+  float tmp_sum1,tmp_sum2;
+  float l2norm_in,l2norm_out;
+  bool powermethod;
 
-  __real__ czero = 0;
-  __imag__ czero = 0;
   sf_init (argc,argv);
   in = sf_input("in");
   out = sf_output("out");
@@ -72,8 +78,17 @@ int main(int argc, char* argv[])
   if (!sf_getint("iter",&Niter)) Niter = 20; /* number of iterations for ISTA*/
   if (!sf_getint("iterpower",&Niterpower)) Niterpower = 20; /* number of iterations for power method used to approximate max eigenvalue (used in ISTA) */
   if (!sf_getfloat("lambda",&lambda)) lambda = 0.2; /* hyperparameter for the inversion */
-  if (!sf_getfloat("lambda2",&lambda2)) lambda2 = 0.1; /* hyperparameter for the actual denoising step if mode=4 is selected. This allows for a different lambda to be used to estimate the statics than used to denoise the data.*/
-  if (!sf_getint("mode",&mode)) mode = 1; /* flag for what to do with statics on output: 1=denoise only (leave statics in data), 2=denoise and correct, or 3=static correct only 0=denoise ignoring statics 4=estimate statics and apply correction, repeat noise removal step, then remove statics.*/
+  if (!sf_getint("mode",&mode)) mode = 1; /* flag for what to do with statics on output: 1=denoise only (leave statics in data), 2=denoise and correct, or 3=static correct only 0=denoise ignoring statics */
+  if (!sf_getint("operator",&operator)) operator = 1; /* flag for linear operator to be used 1= FK, 2=Linear Radon*/
+  if (!sf_getfloat("pmin",&pmin)) pmin = -0.001; /* slowness min */
+  if (!sf_getfloat("pmax",&pmax)) pmax = 0.001; /* slowness max */
+  if (!sf_getint("np",&np)) np = 101; /* slowness length, should be odd number to ensure it is 0 centered.*/
+  op = pmin;
+  dp = (pmax-pmin)/((float) np-1);
+  if (!sf_getbool("debug",&debug)) debug = false; /* debugging flag */
+  if (!sf_getbool("powermethod",&powermethod)) powermethod = false; /* if not using FK then should do powermethod to find max eig value of operator  */
+  if (!sf_getfloat("maxeig",&maxeig)) maxeig = 1; /* max eigenvalue (note for orthog op maxeig=1) */
+
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag */
     costname = sf_getstring("cost");
   /* read input file parameters */
@@ -84,6 +99,12 @@ int main(int argc, char* argv[])
   if (!sf_histfloat(in,"d2",&d2)) sf_error("No d2= in input");
   if (!sf_histfloat(in,"o2",&o2)) o2=0.;
 
+  if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/d1; /* max frequency to process */
+  if (fmax > 0.5/d1) fmax = 0.5/d1;
+  if (!sf_getfloat("fmin",&fmin)) fmin = 0.1; /* min frequency to process */
+  dt = d1;
+  dx = d2;
+  ox = o2;
   nx = n2;
   nt = n1;
   padt = 2;
@@ -91,7 +112,6 @@ int main(int argc, char* argv[])
   ntfft = padt*nt;
   nw=ntfft/2+1;
   nk = padx*nx;
-
 
   costname = sf_getstring("cost");
   costfile = sf_output(costname);
@@ -113,37 +133,141 @@ int main(int argc, char* argv[])
   trace1 = sf_floatalloc (n1);
   trace2 = sf_floatalloc (n1);
   d = sf_floatalloc2(nt,nx);
-  m = sf_complexalloc2(nw,nk);
+  if (operator==1){
+    m = sf_complexalloc2(nw,nk);
+    g = sf_complexalloc2(nw,nk);
+  }
+  else{
+    m = sf_complexalloc2(nt,np);
+    g = sf_complexalloc2(nt,np);
+  }
   tshift = sf_floatalloc (nx);
-  g = sf_complexalloc2(nw,nk);
   s = sf_floatalloc2(nt,nx);
   r = sf_floatalloc2(nt,nx);
 
+  l2norm_in = 0.0;
   for (ix=0; ix<n2; ix++) {	
     sf_floatread(trace,n1,in);
-    for (it=0; it<n1; it++) d[ix][it]= s[ix][it] = trace[it];
+    for (it=0; it<n1; it++){ 
+      d[ix][it] = trace[it];
+      l2norm_in = l2norm_in + trace[it]*trace[it];
+    }
     tshift[ix] = 0.0;
   }
+  l2norm_in = sqrt(l2norm_in);
 
-  fk_op(m,d,nw,nk,nt,nx,1); /* adjoint: d to m */
+  for (ix=0; ix<n2; ix++) {	
+    for (it=0; it<n1; it++) d[ix][it] = d[ix][it];
+  }
 
+ 
+  if (operator==2) nk=np;
+
+  my_op(m,d,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,1,operator); /* adjoint: d to m */ 
+  my_op(m,s,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,0,operator); /* forward: m to s */ 
+/*
+    for (ik=0;ik<nk;ik++){
+      for (iw=0;iw<nw;iw++){
+        __real__ m[ik][iw] = 0.0;
+        __imag__ m[ik][iw] = 0.0;
+      }
+    }
+*/
   p = 0.0;
+
+  if (debug){ 
+    /* for testing, just output the adjoint radon model to ensure it is ok */
+    if (operator==1){
+      sf_putfloat(out,"o2",-PI/dx);
+      sf_putfloat(out,"d2",2*PI/nk/dx);
+      sf_putint(out,"n2",nk);
+      sf_putstring(out,"label1","F");
+      sf_putstring(out,"label2","K");
+      sf_putstring(out,"unit1","1/s");
+      sf_putstring(out,"unit2","1/m");
+      sf_putstring(out,"title","FK Panel");
+      for (ik=nk/2; ik<nk; ik++) {	
+        for (iw=0; iw<nw; iw++) trace[iw] = cabsf(m[ik][iw]);
+        sf_floatwrite(trace,nw,out);
+      }
+      for (ik=0; ik<nk/2; ik++) {	
+        for (iw=0; iw<nw; iw++) trace[iw] = cabsf(m[ik][iw]);
+        sf_floatwrite(trace,nw,out);
+      }
+    }
+    else{
+
+      init_genrand((unsigned long) 1); /* initialize with seed */
+
+      td1 = sf_floatalloc2(nt,nx);
+      td2 = sf_floatalloc2(nt,nx);
+      tm1 = sf_floatalloc2(nt,np);
+      tm2 = sf_floatalloc2(nt,np);
+      for (ix=0;ix<nx;ix++){
+      for (it=0;it<nt;it++){
+        td2[ix][it] = genrand_real1();
+      }
+      }
+      for (ip=0;ip<np;ip++){
+      for (it=0;it<nt;it++){
+        tm1[ip][it] = genrand_real1();
+      }
+      }
+      radon_op(tm1,td1,nt,np,dp,op,nt,dt,nx,dx,ox,fmin,fmax,0); 
+      radon_op(tm2,td2,nt,np,dp,op,nt,dt,nx,dx,ox,fmin,fmax,1); 
+      tmp_sum1=0;
+      for (ix=0;ix<nx;ix++){
+      for (it=0;it<nt;it++){
+        tmp_sum1 += td1[ix][it]*td2[ix][it];
+      }
+      }
+      tmp_sum2=0;
+      for (ip=0;ip<np;ip++){
+      for (it=0;it<nt;it++){
+        tmp_sum2 += tm1[ip][it]*tm2[ip][it];
+      }
+      }
+      fprintf(stderr,"dot product check if match: %f and %f\n",tmp_sum1,tmp_sum2);
+
+      sf_putfloat(out,"o2",pmin);
+      sf_putfloat(out,"d2",dp);
+      sf_putint(out,"n2",np);
+      sf_putstring(out,"label1","Time");
+      sf_putstring(out,"label2","Slowness");
+      sf_putstring(out,"unit1","s");
+      sf_putstring(out,"unit2","s/m");
+      sf_putstring(out,"title","Radon Panel");
+      for (ip=0; ip<np; ip++) {	
+        for (it=0; it<nt; it++) trace[it] = crealf(m[ip][it]);
+        sf_floatwrite(trace,nt,out);
+      }
+    }
+    exit (0);
+  }
+
+  /*
   for (ik=0;ik<nk;ik++){
     for (iw=0;iw<nw;iw++){
-      if (sf_cabs(m[ik][iw]) > p) p = sf_cabs(m[ik][iw]);
+      if (sf_cabs(m[ik][iw]) > p) p = cabsf(m[ik][iw]);
     }
   }
   lambda = lambda*p;
+  */
 
-  maxeig = power_method(nw,nk,nt,nx,Niterpower);
- /* if (verbose) fprintf(stderr,"maxeig after 10 iterations = %f\n",maxeig);*/
+  if (operator>1 && powermethod){
+    /* if operator=1 (FK) the max eigenvalue is 1 (it is orthogonal), 
+    otherwise use power method to find the max. */
+    maxeig = power_method(nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,operator,Niterpower);
+    if (verbose) fprintf(stderr,"maxeig after %d iterations of the power method = %f\n",Niterpower,maxeig);
+    if (verbose) fprintf(stderr,"re-run the program setting maxeig=%f\n",maxeig);
+    exit (0);    
+  }
 
   t = 1/(2*1.2*maxeig);
   alpha = lambda*t;
   if (verbose) fprintf(stderr,"alpha=%f t=%f \n",alpha,t);
 
   for (iter=1;iter<=Niter;iter++){
-    if (verbose) fprintf(stderr,"iter=%d/%d\n",iter,Niter);
 
 /* ----------------------------------------------------------- */
     if (mode!=0){
@@ -169,6 +293,9 @@ int main(int argc, char* argv[])
       for (iw=0;iw<nw;iw++) costsum2 += sf_cabs(m[ik][iw]);
     }
     cost[iter-1] = costsum1 + lambda*costsum2;
+
+    if (verbose) fprintf(stderr,"iter=%d/%d: cost=%f\n",iter,Niter,cost[iter-1]);
+
 /* ----------------------------------------------------------- */
     if (mode!=0){
       /* remove static shifts from r */
@@ -179,14 +306,14 @@ int main(int argc, char* argv[])
       }
     }
 /* ----------------------------------------------------------- */
-    fk_op(g,r,nw,nk,nt,nx,1); /* adjoint: r to g */
+    my_op(g,r,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,1,operator); /* adjoint: r to g */
     for (ik=0;ik<nk;ik++){
       for (iw=0;iw<nw;iw++){
         m[ik][iw] = m[ik][iw] - 2*t*g[ik][iw];
       }
     }
     mysoft(m,nw,nk,alpha);
-    fk_op(m,s,nw,nk,nt,nx,0); /* foward: m to s */
+    my_op(m,s,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,0,operator); /* forward: m to s */
 
 /* ----------------------------------------------------------- */
     /* calculate time shift */
@@ -199,49 +326,19 @@ int main(int argc, char* argv[])
 /* ----------------------------------------------------------- */
   }
 
-  if (mode==4) { /* repeat denoising with static correction applied */
-    /* remove static shifts from d */
-    for (ix=0;ix<nx;ix++){
-      for (it=0;it<nt;it++) trace1[it] = d[ix][it];
-      time_shift(trace1,d1,nt,-tshift[ix]);
-      for (it=0;it<nt;it++) d[ix][it] = trace1[it];
-    }
-    alpha = lambda2*p*t;
-    for (ix=0; ix<n2; ix++) {	
-      for (it=0; it<n1; it++) s[ix][it]= d[ix][it];
-    }
-    fk_op(m,d,nw,nk,nt,nx,1); /* adjoint: d to m */
-    if (verbose) fprintf(stderr,"lambda=%f lambda2=%f\n",lambda,lambda2);
-    for (iter=1;iter<=Niter;iter++){
-      if (verbose) fprintf(stderr,"mode 4: iter=%d/%d\n",iter,Niter);
-      for (ix=0;ix<nx;ix++){
-        for (it=0;it<nt;it++) r[ix][it] = s[ix][it] - d[ix][it];
-      }
-      /* calculate cost */
-      costsum1 = 0.0; 
-      for (ix=0;ix<nx;ix++){
-        for (it=0;it<nt;it++) costsum1 += r[ix][it]*r[ix][it];
-      }
-      costsum2 = 0.0; 
-      for (ik=0;ik<nk;ik++){
-        for (iw=0;iw<nw;iw++) costsum2 += sf_cabs(m[ik][iw]);
-      }
-      cost[iter-1] = costsum1 + lambda*costsum2;
-      fk_op(g,r,nw,nk,nt,nx,1); /* adjoint: r to g */
-      for (ik=0;ik<nk;ik++){
-        for (iw=0;iw<nw;iw++){
-          m[ik][iw] = m[ik][iw] - 2*t*g[ik][iw];
-        }
-      }
-      mysoft(m,nw,nk,alpha);
-      fk_op(m,s,nw,nk,nt,nx,0); /* foward: m to s */
+  if (mode!=3) my_op(m,d,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,0,operator); /* forward: m to d */
+
+  l2norm_out = 0.0;
+  for (ix=0; ix<nx; ix++) {	
+    for (it=0; it<nt; it++){ 
+      l2norm_out = l2norm_out + d[ix][it]*d[ix][it];
     }
   }
+  l2norm_out = sqrt(l2norm_out);
 
-  if (mode!=3) fk_op(m,d,nw,nk,nt,nx,0); /* foward: m to d */
 
   for (ix=0; ix<nx; ix++) {	
-    for (it=0; it<nt; it++) trace[it] = d[ix][it];
+    for (it=0; it<nt; it++) trace[it] = d[ix][it]*l2norm_in/l2norm_out;
     if (mode==1 || mode==4) time_shift(trace,d1,nt,tshift[ix]);
     if (mode==3) time_shift(trace,d1,nt,-tshift[ix]);
     sf_floatwrite(trace,n1,out);
@@ -260,6 +357,37 @@ int main(int argc, char* argv[])
   free2float(r);
 
   exit (0);
+}
+
+void my_op(sf_complex **m,float **d,int nw,int nk,int nt,float dt,int nx,float dx,float ox,int np,float dp,float op,float fmin,float fmax,bool adj,int operator)
+{
+  int ip,it;
+  float **mradon;
+  mradon = sf_floatalloc2(nt,np);
+
+  if (operator==1){
+    fk_op(m,d,nw,nk,nt,nx,adj);
+  }
+  else{
+    if (!adj){
+      for (ip=0;ip<np;ip++){
+        for(it=0;it<nt;it++){ 
+          mradon[ip][it] = crealf(m[ip][it]);
+        }
+      }
+    }
+    radon_op(mradon,d,nt,np,dp,op,nt,dt,nx,dx,ox,fmin,fmax,adj);   
+    if (adj){
+      for (ip=0;ip<np;ip++){
+        for(it=0;it<nt;it++){ 
+          __real__ m[ip][it] = mradon[ip][it];
+          __imag__ m[ip][it] = 0.0;
+        }
+      }
+    }
+  }
+
+  return;
 }
 
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj)
@@ -322,6 +450,129 @@ else{ /* model --> data */
 }
   free2complex(cpfft);
 
+  return;
+
+}
+
+void radon_op(float **m,float **d,int ntau,int np,float dp,float op,int nt,float dt,int nx,float dx,float ox,float fmin,float fmax,bool adj)
+{
+  int padfactor,nw;
+  sf_complex **df,**mf,**cpfft,*out1a,*in1b,czero,L;
+  float *in1a,*out1b;
+  int ntfft,ix,it,iw;
+  fftwf_plan p1a,p1b;
+  float f_low,f_high,omega,p,x;
+  int if_low,if_high,ip;
+
+  if (adj){
+    padfactor = 2;
+    nw = nt*padfactor;
+    ntfft = (nw-1)*2;
+    __real__ czero = 0;
+    __imag__ czero = 0;
+    cpfft = sf_complexalloc2(nw,nx);
+    df = sf_complexalloc2(nw,nx);
+    mf = sf_complexalloc2(nw,np);
+    out1a = sf_complexalloc(nw);
+    in1a = sf_floatalloc(ntfft);
+    p1a = fftwf_plan_dft_r2c_1d(ntfft, in1a, (fftwf_complex*)out1a, FFTW_ESTIMATE);
+    out1b = sf_floatalloc(ntfft);
+    in1b = sf_complexalloc(ntfft);
+    p1b = fftwf_plan_dft_c2r_1d(ntfft, (fftwf_complex*)in1b, out1b, FFTW_ESTIMATE);
+    
+    for (ix=0;ix<nx;ix++){
+      for(it=0;it<nt;it++) in1a[it] = d[ix][it];
+      for(it=nt;it<ntfft;it++) in1a[it] = 0;
+      fftwf_execute(p1a); 
+      for(iw=0;iw<nw;iw++) cpfft[ix][iw] = out1a[iw]; 
+    }
+    fftwf_destroy_plan(p1a);
+    fftwf_free(in1a); fftwf_free(out1a);
+    
+    f_low = fmin;   /* min frequency to process */
+    f_high = fmax;  /* max frequency to process */
+
+    if(f_low>0)if_low = trunc(f_low*dt*ntfft);
+    else if_low = 0;
+    if(f_high*dt*ntfft+1<nw) if_high = trunc(f_high*dt*ntfft)+1;
+    else if_high = nw;
+    /* process frequency slices */
+    for (iw=if_low;iw<if_high;iw++){
+      omega = 2*PI*iw/ntfft/dt;
+      for (ip=0;ip<np;ip++){
+	mf[ip][iw] = czero;
+	p = op + ip*dp;
+	for (ix=0;ix<nx;ix++){ 
+	  x = ox + ix*dx;
+	  __real__ L = cos(omega*x*p);
+	  __imag__ L = -sin(omega*x*p);
+          /*fprintf(stderr,"real(L)=%f imag(L)=%f omega=%f x=%f p=%f ox=%f ix=%d dx=%f op=%f ip=%d dp=%f \n",crealf(L),cimagf(L),omega,x,p,ox,ix,dx,op,ip,dp);*/
+	  mf[ip][iw] = mf[ip][iw] + cpfft[ix][iw]*L;
+	}
+      }   
+    }
+    for (ip=0;ip<np;ip++){
+      for(iw=0;iw<nw;iw++) in1b[iw] = mf[ip][iw];
+      for(iw=nw;iw<ntfft;iw++) in1b[iw] = czero;
+      fftwf_execute(p1b); 
+      for(it=0;it<nt;it++) m[ip][it] = out1b[it]/ntfft; 
+    }
+    fftwf_destroy_plan(p1b);
+    fftwf_free(in1b); fftwf_free(out1b);
+  }
+  
+  else{
+    padfactor = 2;
+    nw = nt*padfactor;
+    ntfft = (nw-1)*2;
+    __real__ czero = 0;
+    __imag__ czero = 0;
+    cpfft = sf_complexalloc2(nw,np);
+    df = sf_complexalloc2(nw,nx);
+    mf = sf_complexalloc2(nw,np);
+    out1a = sf_complexalloc(nw);
+    in1a = sf_floatalloc(ntfft);
+    p1a = fftwf_plan_dft_r2c_1d(ntfft, in1a, (fftwf_complex*)out1a, FFTW_ESTIMATE);
+    out1b = sf_floatalloc(ntfft);
+    in1b = sf_complexalloc(ntfft);
+    p1b = fftwf_plan_dft_c2r_1d(ntfft, (fftwf_complex*)in1b, out1b, FFTW_ESTIMATE);
+    for (ip=0;ip<np;ip++){
+      for(it=0;it<nt;it++) in1a[it] = m[ip][it];
+      for(it=nt;it<ntfft;it++) in1a[it] = 0;
+      fftwf_execute(p1a); 
+      for(iw=0;iw<nw;iw++) cpfft[ip][iw] = out1a[iw]; 
+    }
+    fftwf_destroy_plan(p1a);
+    fftwf_free(in1a); fftwf_free(out1a);
+    f_low = 0.1;   /* min frequency to process */
+    f_high = fmax; /* max frequency to process */
+    if(f_low>0)if_low = trunc(f_low*dt*ntfft);
+    else if_low = 0;
+    if(f_high*dt*ntfft+1<nw) if_high = trunc(f_high*dt*ntfft)+1;
+    else if_high = nw;
+    /* process frequency slices */
+    for (iw=if_low;iw<if_high;iw++){
+      omega = 2*PI*iw/ntfft/dt;
+      for (ix=0;ix<nx;ix++){
+	df[ix][iw] = czero;
+	x = ox + ix*dx;
+	for (ip=0;ip<np;ip++){ 
+	  p = op + ip*dp;
+	  __real__ L = cos(omega*x*p);
+	  __imag__ L = sin(omega*x*p);
+	  df[ix][iw] = df[ix][iw] + cpfft[ip][iw]*L;
+	}
+      }   
+    }
+    for (ix=0;ix<nx;ix++){
+      for(iw=0;iw<nw;iw++) in1b[iw] = df[ix][iw];
+      for(iw=nw;iw<ntfft;iw++) in1b[iw] = czero;
+      fftwf_execute(p1b); 
+      for(it=0;it<nt;it++) d[ix][it] = out1b[it]/ntfft; 
+    }
+    fftwf_destroy_plan(p1b);
+    fftwf_free(in1b); fftwf_free(out1b);
+  }
   return;
 
 }
@@ -430,6 +681,7 @@ void mysoft(sf_complex **m,int nw,int nk,float alpha)
     for (iw=0;iw<nw;iw++){
       a = sf_cabs(m[ik][iw]) - alpha;
       ang = cargf(m[ik][iw]);
+      /*fprintf(stderr,"ang=%f\n",ang);*/
       if (a<0.0) a = 0.0;
       __real__ m[ik][iw] = a*cos(ang);
       __imag__ m[ik][iw] = a*sin(ang);
@@ -439,13 +691,15 @@ void mysoft(sf_complex **m,int nw,int nk,float alpha)
   return;
 }
 
-float power_method(int nw,int nk,int nt, int nx,int itmax_power)
+float power_method(int nw, int nk,int nt,float dt,int nx,float dx,float ox,int np, float dp, float op,float fmin, float fmax, int operator, int itmax_power)
 {
   float a,b,maxeig;
   int ik,iw,iter;
   sf_complex **x,**ATAx;
   float **Ax; 
   sf_complex sum;
+
+  if (operator>1) nk = np; nw = nt;
 
   maxeig = 0.0;
   x = sf_complexalloc2(nw,nk);
@@ -455,16 +709,26 @@ float power_method(int nw,int nk,int nt, int nx,int itmax_power)
   init_genrand((unsigned long) 1); /* initialize with seed */
 
   a = -1; b = 1;
-  for (ik=0;ik<nk;ik++){
-    for (iw=0;iw<nw;iw++){
-      __real__ x[ik][iw] = a + (b-a)*genrand_real1();
-      __imag__ x[ik][iw] = a + (b-a)*genrand_real1();
+  if (operator==1){
+    for (ik=0;ik<nk;ik++){
+      for (iw=0;iw<nw;iw++){
+        __real__ x[ik][iw] = a + (b-a)*genrand_real1();
+        __imag__ x[ik][iw] = a + (b-a)*genrand_real1();
+      }
+    }
+  }
+  else{
+     for (ik=0;ik<nk;ik++){
+      for (iw=0;iw<nw;iw++){
+        __real__ x[ik][iw] = a + (b-a)*genrand_real1();
+        __imag__ x[ik][iw] = 0.0;
+      }
     }
   }
 
   for (iter=0;iter<itmax_power;iter++){
-    fk_op(x,Ax,nw,nk,nt,nx,0); /* foward: x to Ax */
-    fk_op(ATAx,Ax,nw,nk,nt,nx,1); /* adjoint: Ax to ATAx */
+    my_op(x,Ax,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,0,operator); /* forward: x to Ax */
+    my_op(ATAx,Ax,nw,nk,nt,dt,nx,dx,ox,np,dp,op,fmin,fmax,1,operator); /* adjoint: Ax to ATAx */
     __real__ sum = 0.0;
     __imag__ sum = 0.0;
     for (ik=0;ik<nk;ik++){
@@ -478,6 +742,7 @@ float power_method(int nw,int nk,int nt, int nx,int itmax_power)
         x[ik][iw] = ATAx[ik][iw]/maxeig;
       }
     } 
+    fprintf(stderr,"iter=%d maxeig= %f\n",iter,maxeig);
   }
 
   free2complex(x);
