@@ -9,7 +9,6 @@ pad5d
 decimate
 static
 reg5d
-patch5d
 pstm
 linearevents5d
 stolt_as
