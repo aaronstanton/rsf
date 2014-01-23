@@ -1,4 +1,4 @@
-/* Stolt migration operator.
+/* Zero Offset Wave Equation Migration with Stolt or Gazdag 2D operators.
 */
 /*
   Copyright (C) 2014 University of Alberta
@@ -166,12 +166,22 @@ int main(int argc, char* argv[])
       }
     }
   }
-  stolt_2d_op(d,dmig,
-              nt,ot,dt, 
-              nmx,omx,dmx,
-              nz,oz,dz,
-              vp[0][0],
-              adj,verbose);
+  if (op=='stolt'){
+    stolt_2d_op(d,dmig,
+                nt,ot,dt, 
+                nmx,omx,dmx,
+                nz,oz,dz,
+                vp[0][0],
+                adj,verbose);
+  }
+  else if (op=='gazdag'){
+    gazdag_2d_op(d,dmig,
+                 nt,ot,dt, 
+                 nmx,omx,dmx,
+                 nz,oz,dz,
+                 vp,
+                 adj,verbose);
+  }
   if (adj){
     for (ix=0; ix<nmx; ix++) {
       for (iz=0; iz<nz; iz++) trace[iz] = dmig[ix][iz];	
