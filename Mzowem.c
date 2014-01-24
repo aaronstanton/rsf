@@ -369,27 +369,29 @@ for 1: ndepth steps{
     }
   }
   /* extrapolate in depth */
+  fk_op(m,d,nw,nk,nt,nmx,1); /* adjoint: d to m */
   for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0]; /* no need to extrapolate data at depth=0 */
   for (iz=1;iz<nz;iz++){
     fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
     vel = c[0][iz]/2;
-    fk_op(m,d,nw,nk,nt,nmx,1); /* adjoint: d to m */
     for (ik=0;ik<nk;ik++){
       if (ik<nk/2) k = dk*ik;
       else         k = -(dk*nk - dk*ik);
       for (iw=0;iw<nw;iw++){ 
         w = dw*iw;
-        kz = sqrt((w*w)/(vel*vel) - (k*k));
-        /*fprintf(stderr,"kz=%f\n",kz);*/
-        if (adj){ 
-            __real__ L =  cos(kz*dz);
-            __imag__ L = -sin(kz*dz);
+        if ((w*w)/(vel*vel) - (k*k)>0){
+          kz =-sqrt((w*w)/(vel*vel) - (k*k));
+          /* fprintf(stderr,"kz=%f\n",kz); */
+          if (adj){ 
+              __real__ L =  cos(kz*dz);
+              __imag__ L = -sin(kz*dz);
+          }
+          else{ 
+              __real__ L =  cos(kz*dz);
+              __imag__ L =  sin(kz*dz);
+          }
+          m[ik][iw] = m[ik][iw]*L;
         }
-        else{ 
-            __real__ L =  cos(kz*dz);
-            __imag__ L =  sin(kz*dz);
-        }
-        m[ik][iw] = m[ik][iw]*L;
       }
     }
     fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d. Now d is the recorded data at z=iz*dz, ready for extrapolation to next depth */ 
