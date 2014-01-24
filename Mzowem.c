@@ -33,8 +33,14 @@
 void stolt_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
-                 float nz, float oz, float dz,
+                 int nz, float oz, float dz,
                  float c,
+                 bool adj, bool verbose);
+void gazdag_2d_op(float **d, float **dmig,
+                 int nt, float ot, float dt, 
+                 int nmx, float omx, float dmx,
+                 int nz, float oz, float dz,
+                 float **c,
                  bool adj, bool verbose);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 
@@ -53,7 +59,8 @@ int main(int argc, char* argv[])
   bool adj;
   bool verbose;
   float sum;
-  int sum_wd;  
+  int sum_wd;
+  int op;  
 
   sf_init (argc,argv);
   in = sf_input("in");
@@ -61,7 +68,7 @@ int main(int argc, char* argv[])
   velp = sf_input("vp");
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
-
+  if (!sf_getint("op",&op)) op = 1; /* extrapolation operator to be used 1=stolt, 2=gazdag*/
   if (adj){
     if (!sf_getint("nz",&nz)) sf_error("nz must be specified");
     if (!sf_getfloat("oz",&oz)) sf_error("oz must be specified");
@@ -72,7 +79,6 @@ int main(int argc, char* argv[])
     if (!sf_getfloat("ot",&ot)) sf_error("ot must be specified");
     if (!sf_getfloat("dt",&dt)) sf_error("dt must be specified");
   }
-
   /* read input file parameters */
   if (!sf_histint(  in,"n1",&n1)) sf_error("No n1= in input");
   if (!sf_histfloat(in,"d1",&d1)) sf_error("No d1= in input");
@@ -166,7 +172,7 @@ int main(int argc, char* argv[])
       }
     }
   }
-  if (op=='stolt'){
+  if (op==1){
     stolt_2d_op(d,dmig,
                 nt,ot,dt, 
                 nmx,omx,dmx,
@@ -174,7 +180,7 @@ int main(int argc, char* argv[])
                 vp[0][0],
                 adj,verbose);
   }
-  else if (op=='gazdag'){
+  else if (op==2){
     gazdag_2d_op(d,dmig,
                  nt,ot,dt, 
                  nmx,omx,dmx,
@@ -200,13 +206,13 @@ int main(int argc, char* argv[])
 void stolt_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
-                 float nz, float oz, float dz,
+                 int nz, float oz, float dz,
                  float c,
                  bool adj, bool verbose)
-/*< Stolt depth migration operator >*/
+/*< Stolt zero offset wave equation depth migration operator >*/
 {
-  int iw,ikz,iwz,ik,nw,nwz,nk,nkz,padt,padx,padz,ntfft,nzfft;
-  float w,kz,k,L,vel,dw,dk,dkz;
+  int iw,iwz,ik,nw,nwz,nk,padt,padx,padz,ntfft,nzfft;
+  float w,kz,k,vel,dw,dk,dkz;
   sf_complex **m,**mig;
   sf_complex czero;
 
@@ -326,5 +332,70 @@ else{ /* model --> data */
 
 }
 
+void gazdag_2d_op(float **d, float **dmig,
+                 int nt, float ot, float dt, 
+                 int nmx, float omx, float dmx,
+                 int nz, float oz, float dz,
+                 float **c,
+                 bool adj, bool verbose)
+/*< Gazdag zero offset wave equation depth migration operator >*/
+{
+
+/* 
+for 1: ndepth steps{
+  -d(f,k) = F{d(t,x)}
+  -apply the phase shift operator (depth extrapolation operator) for one depth step
+  -inverse fourier transform the data and put t=0 into dmig(idepth,:)
+} 
+*/
+
+  int iw,ik,iz,ix,nw,nk,padt,padx,ntfft;
+  float w,kz,k,vel,dw,dk;
+  sf_complex **m,czero,L;
+  
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  padt = 1;
+  padx = 1;
+  ntfft = padt*nt;
+  nw=ntfft/2+1;
+  nk = padx*nmx;
+  dk = 2*PI/nk/dmx;
+  dw = 2*PI/ntfft/dt;
+  m = sf_complexalloc2(nw,nk);
+  for (ik=0;ik<nk;ik++){
+    for (iw=0;iw<nw;iw++){
+      m[ik][iw] = czero;
+    }
+  }
+  /* extrapolate in depth */
+  for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0]; /* no need to extrapolate data at depth=0 */
+  for (iz=1;iz<nz;iz++){
+    fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
+    vel = c[0][iz]/2;
+    fk_op(m,d,nw,nk,nt,nmx,1); /* adjoint: d to m */
+    for (ik=0;ik<nk;ik++){
+      if (ik<nk/2) k = dk*ik;
+      else         k = -(dk*nk - dk*ik);
+      for (iw=0;iw<nw;iw++){ 
+        w = dw*iw;
+        kz = sqrt((w*w)/(vel*vel) - (k*k));
+        /*fprintf(stderr,"kz=%f\n",kz);*/
+        if (adj){ 
+            __real__ L =  cos(kz*dz);
+            __imag__ L = -sin(kz*dz);
+        }
+        else{ 
+            __real__ L =  cos(kz*dz);
+            __imag__ L =  sin(kz*dz);
+        }
+        m[ik][iw] = m[ik][iw]*L;
+      }
+    }
+    fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d. Now d is the recorded data at z=iz*dz, ready for extrapolation to next depth */ 
+    for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d[ix][0]; /* apply the imaging condition */ 
+  }
+  return;
+} 
 
 
