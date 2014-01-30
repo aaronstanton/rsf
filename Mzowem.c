@@ -34,13 +34,13 @@ void stolt_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
                  int nz, float oz, float dz,
-                 float c,
+                 float c, float fmax,
                  bool adj, bool verbose);
 void gazdag_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
                  int nz, float oz, float dz,
-                 float **c,
+                 float **c, float fmax,
                  bool adj, bool verbose);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj);
@@ -61,6 +61,7 @@ int main(int argc, char* argv[])
   bool adj;
   bool verbose;
   float sum;
+  float fmax;
   int sum_wd;
   int op;  
 
@@ -81,6 +82,7 @@ int main(int argc, char* argv[])
     if (!sf_getfloat("ot",&ot)) sf_error("ot must be specified");
     if (!sf_getfloat("dt",&dt)) sf_error("dt must be specified");
   }
+
   /* read input file parameters */
   if (!sf_histint(  in,"n1",&n1)) sf_error("No n1= in input");
   if (!sf_histfloat(in,"d1",&d1)) sf_error("No d1= in input");
@@ -88,7 +90,7 @@ int main(int argc, char* argv[])
   if (!sf_histint(  in,"n2",&n2)) sf_error("No n2= in input");
   if (!sf_histfloat(in,"d2",&d2)) sf_error("No d2= in input");
   if (!sf_histfloat(in,"o2",&o2)) o2=0.;
-  
+ 
   nmx=n2;  
   dmx=d2;  
   omx=o2;
@@ -102,6 +104,9 @@ int main(int argc, char* argv[])
     dz=d1;  
     oz=o1;  
   }
+ 
+  if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/dt; /* max frequency to process */
+  if (fmax > 0.5/dt) fmax = 0.5/dt;
 
   if (adj){
     sf_putfloat(out,"o1",oz);
@@ -179,7 +184,7 @@ int main(int argc, char* argv[])
                 nt,ot,dt, 
                 nmx,omx,dmx,
                 nz,oz,dz,
-                vp[0][0],
+                vp[0][0],fmax,
                 adj,verbose);
   }
   else if (op==2){
@@ -187,7 +192,7 @@ int main(int argc, char* argv[])
                  nt,ot,dt, 
                  nmx,omx,dmx,
                  nz,oz,dz,
-                 vp,
+                 vp,fmax,
                  adj,verbose);
   }
   if (adj){
@@ -209,7 +214,7 @@ void stolt_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
                  int nz, float oz, float dz,
-                 float c,
+                 float c, float fmax,
                  bool adj, bool verbose)
 /*< Stolt zero offset wave equation depth migration operator >*/
 {
@@ -217,8 +222,9 @@ void stolt_2d_op(float **d, float **dmig,
   float w,kz,k,vel,dw,dk,dkz;
   sf_complex **m,**mig;
   sf_complex czero;
+  int ifmax;
 
-  vel = c;
+  vel = c/2;
   __real__ czero = 0;
   __imag__ czero = 0;
   padt = 4;
@@ -226,6 +232,10 @@ void stolt_2d_op(float **d, float **dmig,
   padx = 4;
   ntfft = padt*nt;
   nw=ntfft/2+1;
+
+  if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
+  else ifmax = nw;
+
   nzfft = padz*nz;
   nwz = nzfft/2+1;
   nk = padx*nmx;
@@ -250,10 +260,10 @@ void stolt_2d_op(float **d, float **dmig,
   for (ik=0;ik<nk;ik++){
     if (ik<nk/2) k = dk*ik;
     else         k = -(dk*nk - dk*ik);
-    for (iw=0;iw<nw;iw++){ 
+    for (iw=0;iw<ifmax;iw++){ 
       w = dw*iw;
       if ((w*w)/(vel*vel) - (k*k) > 0){ 
-        kz = sqrt(4*(w*w)/(vel*vel) - (k*k));
+        kz = sqrt((w*w)/(vel*vel) - (k*k));
         iwz = trunc(kz/dkz); 
        /* fprintf(stderr,"kz=%f, iwz=%d\n",kz,iwz);*/
       }
@@ -274,67 +284,69 @@ void gazdag_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
                  int nz, float oz, float dz,
-                 float **c,
+                 float **c, float fmax,
                  bool adj, bool verbose)
 /*< Gazdag zero offset wave equation depth migration operator >*/
 {
-
-/* 
-for 1: ndepth steps{
-  -d(f,k) = F{d(t,x)}
-  -apply the phase shift operator (depth extrapolation operator) for one depth step
-  -inverse fourier transform the data and put t=0 into dmig(idepth,:)
-} 
-*/
   int iw,ik,iz,ix,nw,nk,padt,padx,ntfft;
   float w,kz,k,vel,dw,dk;
   sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero,L;
+  int ifmax;
+  sf_complex i;
 
   __real__ czero = 0;
   __imag__ czero = 0;
-  padt = 1;
-  padx = 1;
+  __real__ i = 0;
+  __imag__ i = 1;
+  padt = 4;
+  padx = 4;
   ntfft = padt*nt;
   nw=ntfft/2+1;
+
+  if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
+  else ifmax = nw;
+
   nk = padx*nmx;
   dk = 2*PI/nk/dmx;
   dw = 2*PI/ntfft/dt;
   m = sf_complexalloc2(nw,nk);
-  for (ik=0;ik<nk;ik++){
-    for (iw=0;iw<nw;iw++){
-      m[ik][iw] = czero;
-    }
-  }
 
-  if (adj){ /* extrapolate downward in depth */
+  dmig_zk = sf_complexalloc2(nz,nk);
+  dmig_x = sf_complexalloc(nmx);
+  dmig_k = sf_complexalloc(nk);
+
+  if (adj){ /* Adjoint Operator <=> Migration */
+
+    for (iz=0;iz<nz;iz++){
+      for (ik=0;ik<nk;ik++){ 
+        dmig_zk[ik][iz] = czero;
+      }
+    }
+
     fk_op(m,d,nw,nk,nt,nmx,1); /* d to m */
+    for (ik=0;ik<nk;ik++) for (iw=ifmax;iw<nw;iw++) m[ik][iw] = czero;
     for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0]; /* no need to extrapolate data at depth=0 */
-    for (iz=1;iz<nz;iz++){
+    for (iz=1;iz<nz;iz++){ /* Extrapolate downward in depth */
       fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
       vel = c[0][iz]/2;
-      for (ik=0;ik<nk;ik++){
-        if (ik<nk/2) k = dk*ik;
-        else         k = -(dk*nk - dk*ik);
-        for (iw=0;iw<nw;iw++){ 
-          w = dw*iw;
+      for (iw=0;iw<ifmax;iw++){
+        w = dw*iw;
+        for (ik=0;ik<nk;ik++){ 
+          if (ik<nk/2) k = dk*ik;
+          else         k = -(dk*nk - dk*ik);
           if ((w*w)/(vel*vel) - (k*k)>0){
             kz =-sqrt((w*w)/(vel*vel) - (k*k));
-            /* fprintf(stderr,"kz=%f\n",kz); */
-            __real__ L =  cos(kz*dz);
-            __imag__ L = -sin(kz*dz);
+            L =  cexpf(-i*kz*dz);
             m[ik][iw] = m[ik][iw]*L;
           }
         }
       }
-      fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d. Now d is the recorded data at z=iz*dz, ready for extrapolation to next depth */ 
+      fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d */ 
       for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d[ix][0]; /* apply the imaging condition */ 
     }
   }
 
-  else{ /* extrapolate upward in depth */
-    dmig_zk = sf_complexalloc2(nz,nk);
-    dmig_x = sf_complexalloc(nmx);
-    dmig_k = sf_complexalloc(nk);
+  else{ /* Forward Operator <=> Modelling */
     for (iz=0;iz<nz;iz++){
       for (ix=0;ix<nmx;ix++){ 
         __real__ dmig_x[ix] = dmig[ix][iz];
@@ -344,32 +356,30 @@ for 1: ndepth steps{
       for (ik=0;ik<nk;ik++) dmig_zk[ik][iz] = dmig_k[ik];
     }
     for (ix=0;ix<nmx;ix++) d[ix][0] = dmig[ix][0]; /* no need to extrapolate data at time=0 */
-/*
+
     for (iw=0;iw<nw;iw++){
       for (ik=0;ik<nk;ik++){
-        m[ik][iw] = dmig_zk[ik][nz-1];
+        m[ik][iw] = czero;
       }
     }
-*/
-    for (iz=nz-2;iz>0;iz--){
+
+    for (iz=nz-2;iz>0;iz--){ /* Extrapolate upward in depth */
       fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
       vel = c[0][iz]/2;
-      for (ik=0;ik<nk;ik++){
-        if (ik<nk/2) k = dk*ik;
-        else         k = -(dk*nk - dk*ik);
-        for (iw=0;iw<nw;iw++){ 
-          w = dw*iw;
+      for (iw=0;iw<ifmax;iw++){
+        w = dw*iw;
+        for (ik=0;ik<nk;ik++){ 
+          if (ik<nk/2) k = dk*ik;
+          else         k = -(dk*nk - dk*ik);
           if ((w*w)/(vel*vel) - (k*k)>0){
             kz =-sqrt((w*w)/(vel*vel) - (k*k));
-            /* fprintf(stderr,"kz=%f\n",kz); */
-            __real__ L =  cos(kz*dz);
-            __imag__ L =  sin(kz*dz);
+            L =  cexpf(i*kz*dz);
             m[ik][iw] = m[ik][iw]*L + dmig_zk[ik][iz];
           }
         }
       }
-      fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d. Now d is the recorded data at z=iz*dz, ready for extrapolation to next depth */ 
     }
+    fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d. */ 
   }
 
   return;
