@@ -42,6 +42,18 @@ void gazdag_2d_op(float **d, float **dmig,
                  int nz, float oz, float dz,
                  float **c, float fmax,
                  bool adj, bool verbose);
+void phase_shift(sf_complex **m, sf_complex **dmig_zk,
+                 int iz, float dz,
+                 int ifmax, float dw,
+                 int nk, float dk,
+                 float vel,
+                 bool adj, bool verbose);
+void pspi_2d_op(float **d, float **dmig,
+                 int nt, float ot, float dt, 
+                 int nmx, float omx, float dmx,
+                 int nz, float oz, float dz,
+                 float **c, float fmax,
+                 bool adj, bool verbose);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj);
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj);
@@ -195,6 +207,14 @@ int main(int argc, char* argv[])
                  vp,fmax,
                  adj,verbose);
   }
+  else if (op==3){
+    pspi_2d_op(d,dmig,
+               nt,ot,dt, 
+               nmx,omx,dmx,
+               nz,oz,dz,
+               vp,fmax,
+               adj,verbose);
+  }
   if (adj){
     for (ix=0; ix<nmx; ix++) {
       for (iz=0; iz<nz; iz++) trace[iz] = dmig[ix][iz];	
@@ -289,15 +309,12 @@ void gazdag_2d_op(float **d, float **dmig,
 /*< Gazdag zero offset wave equation depth migration operator >*/
 {
   int iw,ik,iz,ix,nw,nk,padt,padx,ntfft;
-  float w,kz,k,vel,dw,dk;
-  sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero,L;
+  float vel,dw,dk;
+  sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero;
   int ifmax;
-  sf_complex i;
 
   __real__ czero = 0;
   __imag__ czero = 0;
-  __real__ i = 0;
-  __imag__ i = 1;
   padt = 4;
   padx = 4;
   ntfft = padt*nt;
@@ -315,38 +332,13 @@ void gazdag_2d_op(float **d, float **dmig,
   dmig_x = sf_complexalloc(nmx);
   dmig_k = sf_complexalloc(nk);
 
-  if (adj){ /* Adjoint Operator <=> Migration */
-
-    for (iz=0;iz<nz;iz++){
-      for (ik=0;ik<nk;ik++){ 
-        dmig_zk[ik][iz] = czero;
-      }
-    }
-
+  if (adj){
     fk_op(m,d,nw,nk,nt,nmx,1); /* d to m */
-    for (ik=0;ik<nk;ik++) for (iw=ifmax;iw<nw;iw++) m[ik][iw] = czero;
-    for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0]; /* no need to extrapolate data at depth=0 */
-    for (iz=1;iz<nz;iz++){ /* Extrapolate downward in depth */
-      fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
-      vel = c[0][iz]/2;
-      for (iw=0;iw<ifmax;iw++){
-        w = dw*iw;
-        for (ik=0;ik<nk;ik++){ 
-          if (ik<nk/2) k = dk*ik;
-          else         k = -(dk*nk - dk*ik);
-          if ((w*w)/(vel*vel) - (k*k)>0){
-            kz =-sqrt((w*w)/(vel*vel) - (k*k));
-            L =  cexpf(-i*kz*dz);
-            m[ik][iw] = m[ik][iw]*L;
-          }
-        }
-      }
-      fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d */ 
-      for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d[ix][0]; /* apply the imaging condition */ 
-    }
+    for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0]; 
+    for (iw=ifmax;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero; 
   }
-
-  else{ /* Forward Operator <=> Modelling */
+  else{
+    for (iw=0;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero;
     for (iz=0;iz<nz;iz++){
       for (ix=0;ix<nmx;ix++){ 
         __real__ dmig_x[ix] = dmig[ix][iz];
@@ -355,33 +347,127 @@ void gazdag_2d_op(float **d, float **dmig,
       k_op(dmig_k,dmig_x,nk,nmx,1); /* dmig_x to dmig_k */
       for (ik=0;ik<nk;ik++) dmig_zk[ik][iz] = dmig_k[ik];
     }
-    for (ix=0;ix<nmx;ix++) d[ix][0] = dmig[ix][0]; /* no need to extrapolate data at time=0 */
+    for (ix=0;ix<nmx;ix++) d[ix][0] = dmig[ix][0];
+  }
 
-    for (iw=0;iw<nw;iw++){
-      for (ik=0;ik<nk;ik++){
-        m[ik][iw] = czero;
-      }
+  for (iz=1;iz<nz;iz++){
+    fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
+    vel = c[0][iz]/2;
+    if (adj){
+      phase_shift(m,dmig_zk,iz,dz,ifmax,dw,nk,dk,vel,adj,verbose);
+      fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */
+      for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d[ix][0];  
     }
+    else{ 
+      phase_shift(m,dmig_zk,nz-iz,-dz,ifmax,dw,nk,dk,vel,adj,verbose);
+    }
+  }
+  if (!adj){ 
+    fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */ 
+  }
+  return;
+} 
 
-    for (iz=nz-2;iz>0;iz--){ /* Extrapolate upward in depth */
-      fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
-      vel = c[0][iz]/2;
-      for (iw=0;iw<ifmax;iw++){
-        w = dw*iw;
-        for (ik=0;ik<nk;ik++){ 
-          if (ik<nk/2) k = dk*ik;
-          else         k = -(dk*nk - dk*ik);
-          if ((w*w)/(vel*vel) - (k*k)>0){
-            kz =-sqrt((w*w)/(vel*vel) - (k*k));
-            L =  cexpf(i*kz*dz);
-            m[ik][iw] = m[ik][iw]*L + dmig_zk[ik][iz];
-          }
+void phase_shift(sf_complex **m, sf_complex **dmig_zk,
+                 int iz, float dz,
+                 int ifmax, float dw,
+                 int nk, float dk,
+                 float vel,
+                 bool adj, bool verbose)
+/*< phase shift >*/
+{
+
+  sf_complex L,i;
+  float w,k,kz;
+  int iw,ik;
+  __real__ i = 0;
+  __imag__ i = 1;
+
+  for (iw=0;iw<ifmax;iw++){
+    w = dw*iw;
+    for (ik=0;ik<nk;ik++){ 
+      if (ik<nk/2) k = dk*ik;
+      else         k = -(dk*nk - dk*ik);
+      if ((w*w)/(vel*vel) - (k*k)>0){
+        kz =-sqrt((w*w)/(vel*vel) - (k*k));
+        L =  cexpf(-i*kz*dz);
+        if (adj){
+          m[ik][iw] = m[ik][iw]*L;
+        }
+        else{
+          m[ik][iw] = m[ik][iw]*L + dmig_zk[ik][iz];
         }
       }
     }
-    fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d. */ 
+  }
+  return;
+}
+
+void pspi_2d_op(float **d, float **dmig,
+                 int nt, float ot, float dt, 
+                 int nmx, float omx, float dmx,
+                 int nz, float oz, float dz,
+                 float **c, float fmax,
+                 bool adj, bool verbose)
+/*< Phase Shift Plus Interpolation zero offset wave equation depth migration operator >*/
+{
+  int iw,ik,iz,ix,nw,nk,padt,padx,ntfft;
+  float vel,dw,dk;
+  sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero;
+  int ifmax;
+
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  padt = 4;
+  padx = 4;
+  ntfft = padt*nt;
+  nw=ntfft/2+1;
+
+  if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
+  else ifmax = nw;
+
+  nk = padx*nmx;
+  dk = 2*PI/nk/dmx;
+  dw = 2*PI/ntfft/dt;
+  m = sf_complexalloc2(nw,nk);
+
+  dmig_zk = sf_complexalloc2(nz,nk);
+  dmig_x = sf_complexalloc(nmx);
+  dmig_k = sf_complexalloc(nk);
+
+  if (adj){
+    fk_op(m,d,nw,nk,nt,nmx,1); /* d to m */
+    for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0]; 
+    for (iw=ifmax;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero; 
+  }
+  else{
+    for (iw=0;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero;
+    for (iz=0;iz<nz;iz++){
+      for (ix=0;ix<nmx;ix++){ 
+        __real__ dmig_x[ix] = dmig[ix][iz];
+        __imag__ dmig_x[ix] = 0.0;
+      }
+      k_op(dmig_k,dmig_x,nk,nmx,1); /* dmig_x to dmig_k */
+      for (ik=0;ik<nk;ik++) dmig_zk[ik][iz] = dmig_k[ik];
+    }
+    for (ix=0;ix<nmx;ix++) d[ix][0] = dmig[ix][0];
   }
 
+  for (iz=1;iz<nz;iz++){
+    fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
+    vel = c[0][iz]/2;
+    if (adj){
+      phase_shift(m,dmig_zk,iz,dz,ifmax,dw,nk,dk,vel,adj,verbose);
+      fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */
+      for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d[ix][0];  
+    }
+    else{ 
+      phase_shift(m,dmig_zk,nz-iz,-dz,ifmax,dw,nk,dk,vel,adj,verbose);
+    }
+  }
+  if (!adj){ 
+    fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */ 
+  }
   return;
 } 
 
