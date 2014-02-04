@@ -385,6 +385,9 @@ void pspi_2d_op(float **d, float **dmig,
   float w,k,kz,s,*d_t;
   sf_complex *d_w,*d_x,*d_x1,*d_x2,*d_k,*d_k1,*d_k2;
   sf_complex **d_wx;
+  sf_complex *a,*b;
+  int *n;
+  fftwf_plan p1,p2;
 
   __real__ czero = 0;
   __imag__ czero = 0;
@@ -406,6 +409,12 @@ void pspi_2d_op(float **d, float **dmig,
   dmig_zk = sf_complexalloc2(nz,nk);
   dmig_x = sf_complexalloc(nmx);
   dmig_k = sf_complexalloc(nk);
+
+  a  = sf_complexalloc(nk);
+  b  = sf_complexalloc(nk);
+  n = sf_intalloc(1); n[0] = nk;
+  p1 = fftwf_plan_dft(1, n, (fftwf_complex*)a, (fftwf_complex*)a, FFTW_FORWARD, FFTW_ESTIMATE);
+  p2 = fftwf_plan_dft(1, n, (fftwf_complex*)b, (fftwf_complex*)b, FFTW_BACKWARD, FFTW_ESTIMATE);
 
   d_wx = sf_complexalloc2(nw,nmx);
   d_t = sf_floatalloc(nt);
@@ -446,7 +455,13 @@ void pspi_2d_op(float **d, float **dmig,
         L = cexpf(-i*w*dz/vel);
         d_x[ix] = d_wx[ix][iw]*L;
       }
-      k_op(d_k,d_x,nk,nmx,1); /* d_x to d_k */
+      /*k_op(d_k,d_x,nk,nmx,1);*/ 
+      /************* d_x --> d_k *********/
+      for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
+      for(ix=nmx;ix<nk;ix++) a[ix] = czero;
+      fftwf_execute(p1); 
+      for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
+      /***********************************/
       for (ik=0;ik<nk;ik++){ 
         if (ik<nk/2) k = dk*ik;
         else         k = -(dk*nk - dk*ik);
@@ -459,8 +474,18 @@ void pspi_2d_op(float **d, float **dmig,
           d_k2[ik] = d_k[ik]*L2;
         }
       }
-      k_op(d_k1,d_x1,nk,nmx,0); /* d_k1 to d_x1 */
-      k_op(d_k2,d_x2,nk,nmx,0); /* d_k2 to d_x2 */
+      /* k_op(d_k1,d_x1,nk,nmx,0); */
+      /* k_op(d_k2,d_x2,nk,nmx,0); */
+      /************* d_k1 --> d_x1 *******/
+      for(ik=0; ik<nk;ik++) b[ik] = d_k1[ik];
+      fftwf_execute(p2); 
+      for(ix=0; ix<nmx;ix++) d_x1[ix] = b[ix]/nk; 
+      /***********************************/
+      /************* d_k2 --> d_x2 *******/
+      for(ik=0; ik<nk;ik++) b[ik] = d_k2[ik];
+      fftwf_execute(p2); 
+      for(ix=0; ix<nmx;ix++) d_x2[ix] = b[ix]/nk; 
+      /***********************************/
       for (ix=0;ix<nmx;ix++){
         __real__ d_wx[ix][iw] = crealf(d_x1[ix]) + (crealf(d_x2[ix])-crealf(d_x1[ix]))*(omx + dmx*ix)/((omx + dmx*(nmx-1))-(omx + dmx*0));
         __imag__ d_wx[ix][iw] = cimagf(d_x1[ix]) + (cimagf(d_x2[ix])-cimagf(d_x1[ix]))*(omx + dmx*ix)/((omx + dmx*(nmx-1))-(omx + dmx*0));
@@ -473,6 +498,8 @@ void pspi_2d_op(float **d, float **dmig,
       dmig[ix][iz] = d_t[0];
     }
   }
+  fftwf_destroy_plan(p1);fftwf_destroy_plan(p2);
+  fftwf_free(a);fftwf_free(b);
   return;
 } 
 
@@ -567,7 +594,6 @@ void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj)
   }
   fftwf_destroy_plan(p1);fftwf_destroy_plan(p2);
   fftwf_free(a);fftwf_free(b);
-  free(n);free(ix);free(ik);
   return;
 }
 
@@ -605,7 +631,6 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
     fftwf_destroy_plan(p1b);
     fftwf_free(in1b); fftwf_free(out1b);
   }
-  free(ntfft),free(it),free(iw);
   return;
 }
 
