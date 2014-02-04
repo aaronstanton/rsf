@@ -57,6 +57,8 @@ void pspi_2d_op(float **d, float **dmig,
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj);
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj);
+float linear_interp(float x1,float y1,float x2,float y2,float x);
+sf_complex clinear_interp(sf_complex x1,sf_complex y1,float x2,sf_complex y2,float x,int mode);
 
 int main(int argc, char* argv[])
 {
@@ -368,41 +370,6 @@ void gazdag_2d_op(float **d, float **dmig,
   return;
 } 
 
-void phase_shift(sf_complex **m, sf_complex **dmig_zk,
-                 int iz, float dz,
-                 int ifmax, float dw,
-                 int nk, float dk,
-                 float vel,
-                 bool adj, bool verbose)
-/*< phase shift >*/
-{
-
-  sf_complex L,i;
-  float w,k,kz;
-  int iw,ik;
-  __real__ i = 0;
-  __imag__ i = 1;
-
-  for (iw=0;iw<ifmax;iw++){
-    w = dw*iw;
-    for (ik=0;ik<nk;ik++){ 
-      if (ik<nk/2) k = dk*ik;
-      else         k = -(dk*nk - dk*ik);
-      if ((w*w)/(vel*vel) - (k*k)>0){
-        kz =-sqrt((w*w)/(vel*vel) - (k*k));
-        L =  cexpf(-i*kz*dz);
-        if (adj){
-          m[ik][iw] = m[ik][iw]*L;
-        }
-        else{
-          m[ik][iw] = m[ik][iw]*L + dmig_zk[ik][iz];
-        }
-      }
-    }
-  }
-  return;
-}
-
 void pspi_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
@@ -411,13 +378,18 @@ void pspi_2d_op(float **d, float **dmig,
                  bool adj, bool verbose)
 /*< Phase Shift Plus Interpolation zero offset wave equation depth migration operator >*/
 {
-  int iw,ik,iz,ix,nw,nk,padt,padx,ntfft;
-  float vel,dw,dk;
-  sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero;
+  int iw,ik,iz,ix,it,nw,nk,padt,padx,ntfft;
+  float vel,vel1,vel2,dw,dk;
+  sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero,i,L,L1,L2;
   int ifmax;
+  float w,k,kz,s,*d_t;
+  sf_complex *d_w,*d_x,*d_x1,*d_x2,*d_k,*d_k1,*d_k2;
+  sf_complex **d_wx;
 
   __real__ czero = 0;
   __imag__ czero = 0;
+  __real__ i = 0;
+  __imag__ i = 1;
   padt = 4;
   padx = 4;
   ntfft = padt*nt;
@@ -435,38 +407,71 @@ void pspi_2d_op(float **d, float **dmig,
   dmig_x = sf_complexalloc(nmx);
   dmig_k = sf_complexalloc(nk);
 
+  d_wx = sf_complexalloc2(nw,nmx);
+  d_t = sf_floatalloc(nt);
+  d_w = sf_complexalloc(nw);
+  d_x = sf_complexalloc(nmx);
+  d_x1 = sf_complexalloc(nmx);
+  d_x2 = sf_complexalloc(nmx);
+  d_k = sf_complexalloc(nk);
+  d_k1 = sf_complexalloc(nk);
+  d_k2 = sf_complexalloc(nk);
+  for (it=0;it<nt;it++)  d_t[it] = 0.0;  
+  for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
+  for (ix=0;ix<nmx;ix++) d_x[ix] = czero;
+  for (ik=0;ik<nk;ik++)  d_k[ik] = czero;
+
   if (adj){
-    fk_op(m,d,nw,nk,nt,nmx,1); /* d to m */
-    for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0]; 
-    for (iw=ifmax;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero; 
+   for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++) d_t[it] = d[ix][it];
+      f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
+      for (iw=0;iw<ifmax;iw++) d_wx[ix][iw] = d_w[iw];
+      for (iw=ifmax;iw<nw;iw++) d_wx[ix][iw] = czero;
+      dmig[ix][0] = d[ix][0]; 
+    }
   }
   else{
-    for (iw=0;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero;
-    for (iz=0;iz<nz;iz++){
-      for (ix=0;ix<nmx;ix++){ 
-        __real__ dmig_x[ix] = dmig[ix][iz];
-        __imag__ dmig_x[ix] = 0.0;
-      }
-      k_op(dmig_k,dmig_x,nk,nmx,1); /* dmig_x to dmig_k */
-      for (ik=0;ik<nk;ik++) dmig_zk[ik][iz] = dmig_k[ik];
-    }
-    for (ix=0;ix<nmx;ix++) d[ix][0] = dmig[ix][0];
+    fprintf(stderr,"Sorry, PSPI forward operator not written yet!\n");
+    return;
   }
 
   for (iz=1;iz<nz;iz++){
     fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
-    vel = c[0][iz]/2;
-    if (adj){
-      phase_shift(m,dmig_zk,iz,dz,ifmax,dw,nk,dk,vel,adj,verbose);
-      fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */
-      for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d[ix][0];  
+    vel1 = c[0][iz]/2;
+    vel2 = c[nmx-1][iz]/2;
+    for (iw=0;iw<ifmax;iw++){
+      w = iw*dw;
+      for (ix=0;ix<nmx;ix++){ 
+        vel = c[ix][iz]/2;
+        L = cexpf(-i*w*dz/vel);
+        d_x[ix] = d_wx[ix][iw]*L;
+      }
+      k_op(d_k,d_x,nk,nmx,1); /* d_x to d_k */
+      for (ik=0;ik<nk;ik++){ 
+        if (ik<nk/2) k = dk*ik;
+        else         k = -(dk*nk - dk*ik);
+        s = (w*w)/(vel1*vel1) - (k*k);
+        if (s>0){
+          kz =-sqrt(s);
+          L1 =  cexpf(-i*(kz-w/vel1)*dz);
+          L2 =  cexpf(-i*(kz-w/vel2)*dz);
+          d_k1[ik] = d_k[ik]*L1;
+          d_k2[ik] = d_k[ik]*L2;
+        }
+      }
+      k_op(d_k1,d_x1,nk,nmx,0); /* d_k1 to d_x1 */
+      k_op(d_k2,d_x2,nk,nmx,0); /* d_k2 to d_x2 */
+      for (ix=0;ix<nmx;ix++){
+        __real__ d_wx[ix][iw] = crealf(d_x1[ix]) + (crealf(d_x2[ix])-crealf(d_x1[ix]))*(omx + dmx*ix)/((omx + dmx*(nmx-1))-(omx + dmx*0));
+        __imag__ d_wx[ix][iw] = cimagf(d_x1[ix]) + (cimagf(d_x2[ix])-cimagf(d_x1[ix]))*(omx + dmx*ix)/((omx + dmx*(nmx-1))-(omx + dmx*0));
+       /* d_wx[ix][iw] = clinear_interp(omx + dmx*0,d_x1[ix],omx + dmx*(nmx-1),d_x2[ix],omx + dmx*ix,1); */
+      }
     }
-    else{ 
-      phase_shift(m,dmig_zk,nz-iz,-dz,ifmax,dw,nk,dk,vel,adj,verbose);
+    for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<ifmax;iw++) d_w[iw] = d_wx[ix][iw];
+      f_op(d_w,d_t,nw,nt,0); /* d_w to d_t */
+      dmig[ix][iz] = d_t[0];
     }
-  }
-  if (!adj){ 
-    fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */ 
   }
   return;
 } 
@@ -555,14 +560,14 @@ void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj)
     for(ik=0 ;ik<nk;ik++) m[ik] = a[ik]; 
   }
   else{ /* k --> x */
-    for(ik=0; ik<nk;ik++) a[ik] = m[ik];
+    for(ik=0; ik<nk;ik++) b[ik] = m[ik];
     fftwf_execute(p2); 
-    for(ix=0; ix<nx;ix++) d[ix] = a[ix]/nk; 
+    for(ix=0; ix<nx;ix++) d[ix] = b[ix]/nk; 
     for(ix=nx;ix<nk;ix++) d[ix] = czero;
   }
   fftwf_destroy_plan(p1);fftwf_destroy_plan(p2);
   fftwf_free(a);fftwf_free(b);
-
+  free(n);free(ix);free(ik);
   return;
 }
 
@@ -600,8 +605,67 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
     fftwf_destroy_plan(p1b);
     fftwf_free(in1b); fftwf_free(out1b);
   }
-
+  free(ntfft),free(it),free(iw);
   return;
+}
+
+void phase_shift(sf_complex **m, sf_complex **dmig_zk,
+                 int iz, float dz,
+                 int ifmax, float dw,
+                 int nk, float dk,
+                 float vel,
+                 bool adj, bool verbose)
+/*< phase shift >*/
+{
+
+  sf_complex L,i;
+  float w,k,kz;
+  int iw,ik;
+  __real__ i = 0;
+  __imag__ i = 1;
+
+  for (iw=0;iw<ifmax;iw++){
+    w = dw*iw;
+    for (ik=0;ik<nk;ik++){ 
+      if (ik<nk/2) k = dk*ik;
+      else         k = -(dk*nk - dk*ik);
+      if ((w*w)/(vel*vel) - (k*k)>0){
+        kz =-sqrt((w*w)/(vel*vel) - (k*k));
+        L =  cexpf(-i*kz*dz);
+        if (adj){
+          m[ik][iw] = m[ik][iw]*L;
+        }
+        else{
+          m[ik][iw] = m[ik][iw]*L + dmig_zk[ik][iz];
+        }
+      }
+    }
+  }
+  return;
+}
+
+float linear_interp(float x1,float y1,float x2,float y2,float x)
+/*< linear interpolation between two points. x2-x1 must be nonzero. >*/
+{  
+  return y1 + (y2-y1)*x/(x2-x1);
+}
+
+sf_complex clinear_interp(sf_complex x1,sf_complex y1,float x2,sf_complex y2,float x,int mode)
+/*< linear interpolation of complex numbers between two points. x2-x1 must be nonzero. >*/
+{  
+  sf_complex f;
+  float af,pf;
+  if (mode==1){ /* interpolate real and imaginary parts separately */
+    __real__ f = crealf(y1) + (crealf(y2)-crealf(y1))*x/(x2-x1);
+    __imag__ f = cimagf(y1) + (cimagf(y2)-cimagf(y1))*x/(x2-x1);
+  }
+  else{ /* interpolate amplitude and phase separately */
+    af = cabsf(y1) + (cabsf(y2)-cabsf(y1))*x/(x2-x1);
+    pf = cargf(y1) + (cargf(y2)-cargf(y1))*x/(x2-x1);
+    __real__ f = af*cos(pf);
+    __imag__ f = af*sin(pf);
+  }
+  return f;
 }
 
 
