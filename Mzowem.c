@@ -431,6 +431,7 @@ void pspi_2d_op(float **d, float **dmig,
   for (ik=0;ik<nk;ik++)  d_k[ik] = czero;
 
   if (adj){
+MARK
    for (ix=0;ix<nmx;ix++){
       for (it=0;it<nt;it++) d_t[it] = d[ix][it];
       f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
@@ -438,6 +439,7 @@ void pspi_2d_op(float **d, float **dmig,
       for (iw=ifmax;iw<nw;iw++) d_wx[ix][iw] = czero;
       dmig[ix][0] = d[ix][0]; 
     }
+MARK
   }
   else{
     fprintf(stderr,"Sorry, PSPI forward operator not written yet!\n");
@@ -492,11 +494,13 @@ void pspi_2d_op(float **d, float **dmig,
        /* d_wx[ix][iw] = clinear_interp(omx + dmx*0,d_x1[ix],omx + dmx*(nmx-1),d_x2[ix],omx + dmx*ix,1); */
       }
     }
+MARK
     for (ix=0;ix<nmx;ix++){
       for (iw=0;iw<ifmax;iw++) d_w[iw] = d_wx[ix][iw];
       f_op(d_w,d_t,nw,nt,0); /* d_w to d_t */
       dmig[ix][iz] = d_t[0];
     }
+MARK
   }
   fftwf_destroy_plan(p1);fftwf_destroy_plan(p2);
   fftwf_free(a);fftwf_free(b);
@@ -607,14 +611,11 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
   ntfft = (nw-1)*2;
   __real__ czero = 0;
   __imag__ czero = 0;
-  out1a = sf_complexalloc(nw);
-  in1a = sf_floatalloc(ntfft);
-  p1a = fftwf_plan_dft_r2c_1d(ntfft, in1a, (fftwf_complex*)out1a, FFTW_ESTIMATE);
-  out1b = sf_floatalloc(ntfft);
-  in1b = sf_complexalloc(ntfft);
-  p1b = fftwf_plan_dft_c2r_1d(ntfft, (fftwf_complex*)in1b, out1b, FFTW_ESTIMATE);
 
   if (adj){ /* data --> model */
+    out1a = sf_complexalloc(nw);
+    in1a = sf_floatalloc(ntfft);
+    p1a = fftwf_plan_dft_r2c_1d(ntfft, in1a, (fftwf_complex*)out1a, FFTW_ESTIMATE);
     for(it=0;it<nt;it++) in1a[it] = d[it];
     for(it=nt;it<ntfft;it++) in1a[it] = 0;
     fftwf_execute(p1a); 
@@ -624,6 +625,9 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
   }
 
   else{ /* model --> data */
+    out1b = sf_floatalloc(ntfft);
+    in1b = sf_complexalloc(ntfft);
+    p1b = fftwf_plan_dft_c2r_1d(ntfft, (fftwf_complex*)in1b, out1b, FFTW_ESTIMATE);
     for(iw=0;iw<nw;iw++) in1b[iw] = m[iw];
     for(iw=nw;iw<ntfft;iw++) in1b[iw] = czero;
     fftwf_execute(p1b); 
@@ -631,6 +635,8 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
     fftwf_destroy_plan(p1b);
     fftwf_free(in1b); fftwf_free(out1b);
   }
+
+
   return;
 }
 
