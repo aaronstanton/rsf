@@ -27,6 +27,9 @@
 #endif
 
 #include <rsf.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 #include <fftw3.h>
 #include "myfree.h"
 
@@ -53,12 +56,17 @@ void pspi_2d_op(float **d, float **dmig,
                  int nmx, float omx, float dmx,
                  int nz, float oz, float dz,
                  float **c, float fmax,
+                 int nref,
                  bool adj, bool verbose);
+void pspi1f(sf_complex **d_wx,int iw,
+            int nmx,int nk,
+            float dw,float dk,float dz,
+            float velmin,float velmax,float *velref,float **c,
+            sf_complex i, sf_complex czero);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj);
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj);
-float linear_interp(float x1,float y1,float x2,float y2,float x);
-sf_complex clinear_interp(sf_complex x1,sf_complex y1,float x2,sf_complex y2,float x,int mode);
+float linear_interp(float y1,float y2,float x1,float x2,float x);
 
 int main(int argc, char* argv[])
 {
@@ -78,6 +86,7 @@ int main(int argc, char* argv[])
   float fmax;
   int sum_wd;
   int op;  
+  int nref;
 
   sf_init (argc,argv);
   in = sf_input("in");
@@ -86,6 +95,7 @@ int main(int argc, char* argv[])
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
   if (!sf_getint("op",&op)) op = 1; /* extrapolation operator to be used 1=stolt, 2=gazdag*/
+  if (!sf_getint("nref",&nref)) nref = 2; /* number of reference velocities to be used if pspi is selected. */
   if (adj){
     if (!sf_getint("nz",&nz)) sf_error("nz must be specified");
     if (!sf_getfloat("oz",&oz)) sf_error("oz must be specified");
@@ -175,7 +185,7 @@ int main(int argc, char* argv[])
                          (float) 100 - 100*sum_wd/(nmx));
     for (ix=0;ix<nmx;ix++){
       for (iz=0;iz<nz;iz++){
-        dmig[ix][iz] = 0;
+        dmig[ix][iz] = 0.0;
       }
     }
   }
@@ -189,7 +199,7 @@ int main(int argc, char* argv[])
     }
     for (ix=0;ix<nmx;ix++){
       for (it=0;it<nt;it++){
-        d[ix][it] = 0;
+        d[ix][it] = 0.0;
       }
     }
   }
@@ -215,6 +225,7 @@ int main(int argc, char* argv[])
                nmx,omx,dmx,
                nz,oz,dz,
                vp,fmax,
+               nref,
                adj,verbose);
   }
   if (adj){
@@ -375,15 +386,16 @@ void pspi_2d_op(float **d, float **dmig,
                  int nmx, float omx, float dmx,
                  int nz, float oz, float dz,
                  float **c, float fmax,
+                 int nref,
                  bool adj, bool verbose)
 /*< Phase Shift Plus Interpolation zero offset wave equation depth migration operator >*/
 {
-  int iw,ik,iz,ix,it,nw,nk,padt,padx,ntfft;
-  float vel,vel1,vel2,dw,dk;
-  sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero,i,L,L1,L2;
+  int iw,ik,iz,ix,it,nw,nk,padt,padx,ntfft,iref;
+  float vel,velmin,velmax,*velref,dw,dk;
+  sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero,i,L,Lref;
   int ifmax;
   float w,k,kz,s,*d_t;
-  sf_complex *d_w,*d_x,*d_x1,*d_x2,*d_k,*d_k1,*d_k2;
+  sf_complex *d_w,*d_x,**dref,*d_k,*dkref;
   sf_complex **d_wx;
   sf_complex *a,*b;
   int *n;
@@ -397,41 +409,31 @@ void pspi_2d_op(float **d, float **dmig,
   padx = 4;
   ntfft = padt*nt;
   nw=ntfft/2+1;
-
   if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
   else ifmax = nw;
-
   nk = padx*nmx;
   dk = 2*PI/nk/dmx;
   dw = 2*PI/ntfft/dt;
   m = sf_complexalloc2(nw,nk);
-
   dmig_zk = sf_complexalloc2(nz,nk);
   dmig_x = sf_complexalloc(nmx);
   dmig_k = sf_complexalloc(nk);
-
   a  = sf_complexalloc(nk);
   b  = sf_complexalloc(nk);
   n = sf_intalloc(1); n[0] = nk;
   p1 = fftwf_plan_dft(1, n, (fftwf_complex*)a, (fftwf_complex*)a, FFTW_FORWARD, FFTW_ESTIMATE);
   p2 = fftwf_plan_dft(1, n, (fftwf_complex*)b, (fftwf_complex*)b, FFTW_BACKWARD, FFTW_ESTIMATE);
-
+  velref = sf_floatalloc(nref);
   d_wx = sf_complexalloc2(nw,nmx);
   d_t = sf_floatalloc(nt);
   d_w = sf_complexalloc(nw);
   d_x = sf_complexalloc(nmx);
-  d_x1 = sf_complexalloc(nmx);
-  d_x2 = sf_complexalloc(nmx);
+  dref = sf_complexalloc2(nref,nmx);
   d_k = sf_complexalloc(nk);
-  d_k1 = sf_complexalloc(nk);
-  d_k2 = sf_complexalloc(nk);
+  dkref = sf_complexalloc(nk);
   for (it=0;it<nt;it++)  d_t[it] = 0.0;  
   for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
-  for (ix=0;ix<nmx;ix++) d_x[ix] = czero;
-  for (ik=0;ik<nk;ik++)  d_k[ik] = czero;
-
   if (adj){
-MARK
    for (ix=0;ix<nmx;ix++){
       for (it=0;it<nt;it++) d_t[it] = d[ix][it];
       f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
@@ -439,68 +441,14 @@ MARK
       for (iw=ifmax;iw<nw;iw++) d_wx[ix][iw] = czero;
       dmig[ix][0] = d[ix][0]; 
     }
-MARK
   }
   else{
     fprintf(stderr,"Sorry, PSPI forward operator not written yet!\n");
     return;
   }
-
-  for (iz=1;iz<nz;iz++){
-    fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
-    vel1 = c[0][iz]/2;
-    vel2 = c[nmx-1][iz]/2;
-    for (iw=0;iw<ifmax;iw++){
-      w = iw*dw;
-      for (ix=0;ix<nmx;ix++){ 
-        vel = c[ix][iz]/2;
-        L = cexpf(-i*w*dz/vel);
-        d_x[ix] = d_wx[ix][iw]*L;
-      }
-      /*k_op(d_k,d_x,nk,nmx,1);*/ 
-      /************* d_x --> d_k *********/
-      for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
-      for(ix=nmx;ix<nk;ix++) a[ix] = czero;
-      fftwf_execute(p1); 
-      for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
-      /***********************************/
-      for (ik=0;ik<nk;ik++){ 
-        if (ik<nk/2) k = dk*ik;
-        else         k = -(dk*nk - dk*ik);
-        s = (w*w)/(vel1*vel1) - (k*k);
-        if (s>0){
-          kz =-sqrt(s);
-          L1 =  cexpf(-i*(kz-w/vel1)*dz);
-          L2 =  cexpf(-i*(kz-w/vel2)*dz);
-          d_k1[ik] = d_k[ik]*L1;
-          d_k2[ik] = d_k[ik]*L2;
-        }
-      }
-      /* k_op(d_k1,d_x1,nk,nmx,0); */
-      /* k_op(d_k2,d_x2,nk,nmx,0); */
-      /************* d_k1 --> d_x1 *******/
-      for(ik=0; ik<nk;ik++) b[ik] = d_k1[ik];
-      fftwf_execute(p2); 
-      for(ix=0; ix<nmx;ix++) d_x1[ix] = b[ix]/nk; 
-      /***********************************/
-      /************* d_k2 --> d_x2 *******/
-      for(ik=0; ik<nk;ik++) b[ik] = d_k2[ik];
-      fftwf_execute(p2); 
-      for(ix=0; ix<nmx;ix++) d_x2[ix] = b[ix]/nk; 
-      /***********************************/
-      for (ix=0;ix<nmx;ix++){
-        __real__ d_wx[ix][iw] = crealf(d_x1[ix]) + (crealf(d_x2[ix])-crealf(d_x1[ix]))*(omx + dmx*ix)/((omx + dmx*(nmx-1))-(omx + dmx*0));
-        __imag__ d_wx[ix][iw] = cimagf(d_x1[ix]) + (cimagf(d_x2[ix])-cimagf(d_x1[ix]))*(omx + dmx*ix)/((omx + dmx*(nmx-1))-(omx + dmx*0));
-       /* d_wx[ix][iw] = clinear_interp(omx + dmx*0,d_x1[ix],omx + dmx*(nmx-1),d_x2[ix],omx + dmx*ix,1); */
-      }
-    }
-MARK
-    for (ix=0;ix<nmx;ix++){
-      for (iw=0;iw<ifmax;iw++) d_w[iw] = d_wx[ix][iw];
-      f_op(d_w,d_t,nw,nt,0); /* d_w to d_t */
-      dmig[ix][iz] = d_t[0];
-    }
-MARK
+  for (iw=0;iw<ifmax;iw++){ 
+    fprintf(stderr,"extrapolating frequency %d/%d\n",iw+1,ifmax);
+    pspi_extrap_1f();
   }
   fftwf_destroy_plan(p1);fftwf_destroy_plan(p2);
   fftwf_free(a);fftwf_free(b);
@@ -661,7 +609,7 @@ void phase_shift(sf_complex **m, sf_complex **dmig_zk,
       if (ik<nk/2) k = dk*ik;
       else         k = -(dk*nk - dk*ik);
       if ((w*w)/(vel*vel) - (k*k)>0){
-        kz =-sqrt((w*w)/(vel*vel) - (k*k));
+        kz = -sqrt((w*w)/(vel*vel) - (k*k));
         L =  cexpf(-i*kz*dz);
         if (adj){
           m[ik][iw] = m[ik][iw]*L;
@@ -675,28 +623,66 @@ void phase_shift(sf_complex **m, sf_complex **dmig_zk,
   return;
 }
 
-float linear_interp(float x1,float y1,float x2,float y2,float x)
+float linear_interp(float y1,float y2,float x1,float x2,float x)
 /*< linear interpolation between two points. x2-x1 must be nonzero. >*/
 {  
-  return y1 + (y2-y1)*x/(x2-x1);
+  return (y1*(x2-x)+y2*(x-x1))/(x2-x1);
 }
 
-sf_complex clinear_interp(sf_complex x1,sf_complex y1,float x2,sf_complex y2,float x,int mode)
-/*< linear interpolation of complex numbers between two points. x2-x1 must be nonzero. >*/
-{  
-  sf_complex f;
-  float af,pf;
-  if (mode==1){ /* interpolate real and imaginary parts separately */
-    __real__ f = crealf(y1) + (crealf(y2)-crealf(y1))*x/(x2-x1);
-    __imag__ f = cimagf(y1) + (cimagf(y2)-cimagf(y1))*x/(x2-x1);
-  }
-  else{ /* interpolate amplitude and phase separately */
-    af = cabsf(y1) + (cabsf(y2)-cabsf(y1))*x/(x2-x1);
-    pf = cargf(y1) + (cargf(y2)-cargf(y1))*x/(x2-x1);
-    __real__ f = af*cos(pf);
-    __imag__ f = af*sin(pf);
-  }
-  return f;
+void pspi_extrap_1f()
+/*< extrapolate 1 frequency >*/
+{
+    w = iw*dw;
+    for (iz=1;iz<nz;iz++){
+      /*fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);*/
+      velmin=c[0][iz]/2;
+      for (ix=0;ix<nmx;ix++) if (c[ix][iz]/2 < velmin) velmin = c[ix][iz]/2;
+      velmax = c[nmx-1][iz]/2;
+      for (ix=0;ix<nmx;ix++) if (c[ix][iz]/2 > velmax) velmax = c[ix][iz]/2;
+      for (iref=0;iref<nref;iref++) velref[iref] = velmin + iref*(velmax-velmin)/(nref-1);
+      for (ix=0;ix<nmx;ix++){ 
+        vel = c[ix][iz]/2;
+        L = cexpf(-i*w*dz/vel);
+        d_x[ix] = d_wx[ix][iw]*L;
+      }
+      /************* d_x --> d_k *********/
+      for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
+      for(ix=nmx;ix<nk;ix++) a[ix] = czero;
+      fftwf_execute(p1); 
+      for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
+      /***********************************/
+      for (iref=0;iref<nref;iref++){
+        for (ik=0;ik<nk;ik++){ 
+          if (ik<nk/2) k = dk*ik;
+          else         k = -(dk*nk - dk*ik);
+          s = (w*w)/(velref[iref]*velref[iref]) - (k*k);
+          if (s>0){
+            kz = -sqrt(s);
+            Lref = cexpf(-i*(kz-w/velref[iref])*dz);
+            dkref[ik] = d_k[ik]*Lref;
+          }
+        }
+        /************* d_k1 --> d_x1 *******/
+        for(ik=0; ik<nk;ik++) b[ik] = dkref[ik];
+        fftwf_execute(p2); 
+        for(ix=0; ix<nmx;ix++) dref[ix][iref] = b[ix]/nk; 
+        /***********************************/
+      }
+      for (ix=0;ix<nmx;ix++){
+        vel = c[ix][iz]/2;
+        for (iref=0;iref<nref;iref++){
+          velref[iref] = velmin + iref*(velmax-velmin)/(nref-1);
+          if (velref[iref] >=vel) break;
+        }
+        if (iref+1<nref && velmin<velmax){
+          __real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref]),crealf(dref[ix][iref+1]),velref[iref],velref[iref+1],vel);
+          __imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref]),cimagf(dref[ix][iref+1]),velref[iref],velref[iref+1],vel);
+        }
+        else d_wx[ix][iw] = dref[ix][iref];
+      }
+      for (ix=0;ix<nmx;ix++) dmig[ix][iz] += crealf(d_wx[ix][iw]);
+    }
+  return;
 }
 
 
