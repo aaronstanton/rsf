@@ -57,12 +57,14 @@ void pspi_2d_op(float **d, float **dmig,
                  int nz, float oz, float dz,
                  float **c, float fmax,
                  int nref,
+                 int numthreads,
                  bool adj, bool verbose);
-void pspi1f(sf_complex **d_wx,int iw,
-            int nmx,int nk,
-            float dw,float dk,float dz,
-            float velmin,float velmax,float *velref,float **c,
-            sf_complex i, sf_complex czero);
+void pspi_extrap_1f(float **dmig,
+                    sf_complex **d_wx,
+                    int iw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,int nmx,int nref,
+                    float **c,
+                    sf_complex i,sf_complex czero,
+                    fftwf_plan p1,fftwf_plan p2, bool verbose);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj);
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj);
@@ -87,6 +89,7 @@ int main(int argc, char* argv[])
   int sum_wd;
   int op;  
   int nref;
+  int numthreads;
 
   sf_init (argc,argv);
   in = sf_input("in");
@@ -96,6 +99,7 @@ int main(int argc, char* argv[])
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
   if (!sf_getint("op",&op)) op = 1; /* extrapolation operator to be used 1=stolt, 2=gazdag*/
   if (!sf_getint("nref",&nref)) nref = 2; /* number of reference velocities to be used if pspi is selected. */
+  if (!sf_getint("numthreads",&numthreads)) numthreads = 1; /* number of threads to be used for parallel processing (if pspi selected). */
   if (adj){
     if (!sf_getint("nz",&nz)) sf_error("nz must be specified");
     if (!sf_getfloat("oz",&oz)) sf_error("oz must be specified");
@@ -226,6 +230,7 @@ int main(int argc, char* argv[])
                nz,oz,dz,
                vp,fmax,
                nref,
+               numthreads,
                adj,verbose);
   }
   if (adj){
@@ -387,18 +392,20 @@ void pspi_2d_op(float **d, float **dmig,
                  int nz, float oz, float dz,
                  float **c, float fmax,
                  int nref,
+                 int numthreads,
                  bool adj, bool verbose)
 /*< Phase Shift Plus Interpolation zero offset wave equation depth migration operator >*/
 {
-  int iw,ik,iz,ix,it,nw,nk,padt,padx,ntfft,iref;
-  float vel,velmin,velmax,*velref,dw,dk;
-  sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero,i,L,Lref;
+  int ix,ik,iw,it,nw,nk,padt,padx,ntfft;
+  float dw,dk;
+  sf_complex czero,i;
   int ifmax;
-  float w,k,kz,s,*d_t;
-  sf_complex *d_w,*d_x,**dref,*d_k,*dkref;
+  float *d_t;
+  sf_complex *d_w;
   sf_complex **d_wx;
-  sf_complex *a,*b;
-  int *n;
+  fftwf_complex *a,*b;
+
+  int *n; 
   fftwf_plan p1,p2;
 
   __real__ czero = 0;
@@ -414,23 +421,9 @@ void pspi_2d_op(float **d, float **dmig,
   nk = padx*nmx;
   dk = 2*PI/nk/dmx;
   dw = 2*PI/ntfft/dt;
-  m = sf_complexalloc2(nw,nk);
-  dmig_zk = sf_complexalloc2(nz,nk);
-  dmig_x = sf_complexalloc(nmx);
-  dmig_k = sf_complexalloc(nk);
-  a  = sf_complexalloc(nk);
-  b  = sf_complexalloc(nk);
-  n = sf_intalloc(1); n[0] = nk;
-  p1 = fftwf_plan_dft(1, n, (fftwf_complex*)a, (fftwf_complex*)a, FFTW_FORWARD, FFTW_ESTIMATE);
-  p2 = fftwf_plan_dft(1, n, (fftwf_complex*)b, (fftwf_complex*)b, FFTW_BACKWARD, FFTW_ESTIMATE);
-  velref = sf_floatalloc(nref);
   d_wx = sf_complexalloc2(nw,nmx);
   d_t = sf_floatalloc(nt);
   d_w = sf_complexalloc(nw);
-  d_x = sf_complexalloc(nmx);
-  dref = sf_complexalloc2(nref,nmx);
-  d_k = sf_complexalloc(nk);
-  dkref = sf_complexalloc(nk);
   for (it=0;it<nt;it++)  d_t[it] = 0.0;  
   for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
   if (adj){
@@ -439,19 +432,42 @@ void pspi_2d_op(float **d, float **dmig,
       f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
       for (iw=0;iw<ifmax;iw++) d_wx[ix][iw] = d_w[iw];
       for (iw=ifmax;iw<nw;iw++) d_wx[ix][iw] = czero;
-      dmig[ix][0] = d[ix][0]; 
+      dmig[ix][0] = d[ix][0];
     }
   }
   else{
     fprintf(stderr,"Sorry, PSPI forward operator not written yet!\n");
     return;
   }
+
+  a  = fftwf_alloc_complex(nk);
+  b  = fftwf_alloc_complex(nk);
+  n = sf_intalloc(1); 
+  n[0] = nk;
+  p1 = fftwf_plan_dft(1, n, (fftwf_complex*)a, (fftwf_complex*)a, FFTW_FORWARD, FFTW_ESTIMATE);
+  p2 = fftwf_plan_dft(1, n, (fftwf_complex*)b, (fftwf_complex*)b, FFTW_BACKWARD, FFTW_ESTIMATE);
+  for (ik=0;ik<nk;ik++){
+    a[ik] = czero;
+    b[ik] = czero;
+  } 
+  fftwf_execute_dft(p1,a,a); 
+  fftwf_execute_dft(p2,b,b); 
+
+omp_set_num_threads(numthreads);
+#ifdef _OPENMP
+#pragma omp parallel for \
+        private(iw) \
+        shared(dmig,d_wx)
+#endif
   for (iw=0;iw<ifmax;iw++){ 
-    fprintf(stderr,"extrapolating frequency %d/%d\n",iw+1,ifmax);
-    pspi_extrap_1f();
+    pspi_extrap_1f(dmig,d_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,nref,c,i,czero,p1,p2,verbose);
   }
+
+  free1int(n); 
+  fftwf_free(a);
+  fftwf_free(b);
   fftwf_destroy_plan(p1);fftwf_destroy_plan(p2);
-  fftwf_free(a);fftwf_free(b);
+
   return;
 } 
 
@@ -625,63 +641,94 @@ void phase_shift(sf_complex **m, sf_complex **dmig_zk,
 
 float linear_interp(float y1,float y2,float x1,float x2,float x)
 /*< linear interpolation between two points. x2-x1 must be nonzero. >*/
-{  
-  return (y1*(x2-x)+y2*(x-x1))/(x2-x1);
+{
+  return  y1 + (y2-y1)*(x-x1)/(x2-x1);
 }
 
-void pspi_extrap_1f()
+void pspi_extrap_1f(float **dmig,
+                    sf_complex **d_wx,
+                    int iw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,int nmx,int nref,
+                    float **c,
+                    sf_complex i,sf_complex czero,
+                    fftwf_plan p1,fftwf_plan p2,
+                    bool verbose)
 /*< extrapolate 1 frequency >*/
 {
-    w = iw*dw;
-    for (iz=1;iz<nz;iz++){
-      /*fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);*/
-      velmin=c[0][iz]/2;
-      for (ix=0;ix<nmx;ix++) if (c[ix][iz]/2 < velmin) velmin = c[ix][iz]/2;
-      velmax = c[nmx-1][iz]/2;
-      for (ix=0;ix<nmx;ix++) if (c[ix][iz]/2 > velmax) velmax = c[ix][iz]/2;
-      for (iref=0;iref<nref;iref++) velref[iref] = velmin + iref*(velmax-velmin)/(nref-1);
-      for (ix=0;ix<nmx;ix++){ 
-        vel = c[ix][iz]/2;
-        L = cexpf(-i*w*dz/vel);
-        d_x[ix] = d_wx[ix][iw]*L;
-      }
-      /************* d_x --> d_k *********/
-      for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
-      for(ix=nmx;ix<nk;ix++) a[ix] = czero;
-      fftwf_execute(p1); 
-      for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
-      /***********************************/
-      for (iref=0;iref<nref;iref++){
-        for (ik=0;ik<nk;ik++){ 
-          if (ik<nk/2) k = dk*ik;
-          else         k = -(dk*nk - dk*ik);
-          s = (w*w)/(velref[iref]*velref[iref]) - (k*k);
-          if (s>0){
-            kz = -sqrt(s);
-            Lref = cexpf(-i*(kz-w/velref[iref])*dz);
-            dkref[ik] = d_k[ik]*Lref;
-          }
-        }
-        /************* d_k1 --> d_x1 *******/
-        for(ik=0; ik<nk;ik++) b[ik] = dkref[ik];
-        fftwf_execute(p2); 
-        for(ix=0; ix<nmx;ix++) dref[ix][iref] = b[ix]/nk; 
-        /***********************************/
-      }
-      for (ix=0;ix<nmx;ix++){
-        vel = c[ix][iz]/2;
-        for (iref=0;iref<nref;iref++){
-          velref[iref] = velmin + iref*(velmax-velmin)/(nref-1);
-          if (velref[iref] >=vel) break;
-        }
-        if (iref+1<nref && velmin<velmax){
-          __real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref]),crealf(dref[ix][iref+1]),velref[iref],velref[iref+1],vel);
-          __imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref]),cimagf(dref[ix][iref+1]),velref[iref],velref[iref+1],vel);
-        }
-        else d_wx[ix][iw] = dref[ix][iref];
-      }
-      for (ix=0;ix<nmx;ix++) dmig[ix][iz] += crealf(d_wx[ix][iw]);
+  float w,velmin,velmax,vel,k,kz,s,*velref;
+  sf_complex L,Lref;
+  int iz,ix,ik,iref; 
+  sf_complex *d_k,*d_x,**dref;
+  fftwf_complex *a,*b;
+
+  a  = fftwf_alloc_complex(nk);
+  b  = fftwf_alloc_complex(nk);
+  dref = sf_complexalloc2(nref,nmx);
+  d_x = sf_complexalloc(nmx);
+  d_k = sf_complexalloc(nk);
+  velref = sf_floatalloc(nref);
+
+  w = iw*dw;
+  if (verbose) fprintf(stderr,"extrapolating frequency %d/%d\n",iw+1,ifmax);
+  for (iz=1;iz<nz;iz++){
+    /*fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);*/
+    velmin=c[0][iz]/2;
+    for (ix=0;ix<nmx;ix++) if (c[ix][iz]/2 < velmin) velmin = c[ix][iz]/2;
+    velmax = c[nmx-1][iz]/2;
+    for (ix=0;ix<nmx;ix++) if (c[ix][iz]/2 > velmax) velmax = c[ix][iz]/2;
+    for (iref=0;iref<nref;iref++) velref[iref] = velmin + (float) iref*(velmax-velmin)/((float) nref-1);
+    for (ix=0;ix<nmx;ix++){
+      vel = c[ix][iz]/2;
+      L = cexpf(-i*w*dz/vel);
+      d_x[ix] = d_wx[ix][iw]*L;
     }
+    /************* d_x --> d_k *********/
+    for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
+    for(ix=nmx;ix<nk;ix++) a[ix] = czero;
+    fftwf_execute_dft(p1,a,a); 
+    /***********************************/
+    for (iref=0;iref<nref;iref++){
+      for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
+      for (ik=0;ik<nk;ik++){ 
+	if (ik<nk/2) k = dk*ik;
+	else         k = -(dk*nk - dk*ik);
+	s = (w*w)/(velref[iref]*velref[iref]) - (k*k);
+	if (s>0){
+	  kz = -sqrt(s);
+	  Lref = cexpf(-i*(kz-w/velref[iref])*dz);
+	  d_k[ik] = d_k[ik]*Lref;
+	}
+      }
+      /************* d_k1 --> d_x1 *******/
+      for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
+      fftwf_execute_dft(p2,b,b);  
+      for(ix=0; ix<nmx;ix++) dref[ix][iref] = b[ix]/nk; 
+      /***********************************/
+    }
+    for (ix=0;ix<nmx;ix++){
+      vel = c[ix][iz]/2;
+      for (iref=0;iref<nref;iref++){ 
+        if (velref[iref] >=vel) break;
+      }
+      if (iref<0) iref = 0;
+      if (iref>nref-1) iref = nref-1;
+    /*  if (iw==0) fprintf(stderr,"iz=%d ix=%d: nref=%d,velref[%d]=%6.2f,velref[%d]=%6.2f\n",iz,ix,nref,iref,velref[iref],iref+1,velref[iref+1]);*/
+      if (iref+1<nref && velmin<velmax){
+	__real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref]),crealf(dref[ix][iref+1]),velref[iref],velref[iref+1],vel);
+	__imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref]),cimagf(dref[ix][iref+1]),velref[iref],velref[iref+1],vel);
+      }
+      else d_wx[ix][iw] = dref[ix][iref];
+    }
+    for (ix=0;ix<nmx;ix++) dmig[ix][iz] += 2*crealf(d_wx[ix][iw])/ntfft;
+  }
+
+
+  free1float(velref);
+  free2complex(dref);
+  free1complex(d_x);
+  free1complex(d_k);
+  fftwf_free(a);
+  fftwf_free(b);
+
   return;
 }
 
