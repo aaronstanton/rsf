@@ -333,8 +333,8 @@ void gazdag_2d_op(float **d, float **dmig,
 
   __real__ czero = 0;
   __imag__ czero = 0;
-  padt = 4;
-  padx = 4;
+  padt = 2;
+  padx = 2;
   ntfft = padt*nt;
   nw=ntfft/2+1;
 
@@ -412,8 +412,8 @@ void pspi_2d_op(float **d, float **dmig,
   __imag__ czero = 0;
   __real__ i = 0;
   __imag__ i = 1;
-  padt = 4;
-  padx = 4;
+  padt = 2;
+  padx = 2;
   ntfft = padt*nt;
   nw=ntfft/2+1;
   if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
@@ -440,8 +440,8 @@ void pspi_2d_op(float **d, float **dmig,
     return;
   }
 
-  a  = fftwf_alloc_complex(nk);
-  b  = fftwf_alloc_complex(nk);
+  a  = fftwf_malloc(sizeof(fftw_complex) * nk);
+  b  = fftwf_malloc(sizeof(fftw_complex) * nk);
   n = sf_intalloc(1); 
   n[0] = nk;
   p1 = fftwf_plan_dft(1, n, (fftwf_complex*)a, (fftwf_complex*)a, FFTW_FORWARD, FFTW_ESTIMATE);
@@ -660,8 +660,8 @@ void pspi_extrap_1f(float **dmig,
   sf_complex *d_k,*d_x,**dref;
   fftwf_complex *a,*b;
 
-  a  = fftwf_alloc_complex(nk);
-  b  = fftwf_alloc_complex(nk);
+  a  = fftwf_malloc(sizeof(fftw_complex) * nk);
+  b  = fftwf_malloc(sizeof(fftw_complex) * nk);
   dref = sf_complexalloc2(nref,nmx);
   d_x = sf_complexalloc(nmx);
   d_k = sf_complexalloc(nk);
@@ -709,9 +709,10 @@ void pspi_extrap_1f(float **dmig,
       for (iref=0;iref<nref;iref++){ 
         if (velref[iref] >=vel) break;
       }
+      iref--;
       if (iref<0) iref = 0;
-      if (iref>nref-1) iref = nref-1;
-    /*  if (iw==0) fprintf(stderr,"iz=%d ix=%d: nref=%d,velref[%d]=%6.2f,velref[%d]=%6.2f\n",iz,ix,nref,iref,velref[iref],iref+1,velref[iref+1]);*/
+      if (iref>nref-2) iref = nref-2;
+     /* if (iw==0) fprintf(stderr,"iz=%d ix=%d: nref=%d,velref[%d]=%6.2f,velref[%d]=%6.2f\n",iz,ix,nref,iref,velref[iref],iref+1,velref[iref+1]);*/
       if (iref+1<nref && velmin<velmax){
 	__real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref]),crealf(dref[ix][iref+1]),velref[iref],velref[iref+1],vel);
 	__imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref]),cimagf(dref[ix][iref+1]),velref[iref],velref[iref+1],vel);
