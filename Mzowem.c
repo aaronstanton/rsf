@@ -59,6 +59,13 @@ void pspi_2d_op(float **d, float **dmig,
                  int nref,
                  int numthreads,
                  bool adj, bool verbose);
+void ss_2d_op(float **d, float **dmig,
+              int nt, float ot, float dt, 
+              int nmx, float omx, float dmx,
+              int nz, float oz, float dz,
+              float **c, float fmax,
+              int numthreads,
+              bool adj, bool verbose);
 void pspi_extrap_1f(float **dmig,
                     sf_complex **d_wx,
                     int iw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,int nmx,int nref,
@@ -76,7 +83,7 @@ void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj);
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj);
 float linear_interp(float y1,float y2,float x1,float x2,float x);
-void progress_bar(float progress);
+void progress_msg(float progress);
 
 int main(int argc, char* argv[])
 {
@@ -241,7 +248,7 @@ int main(int argc, char* argv[])
                numthreads,
                adj,verbose);
   }
-  else if (op==3){
+  else if (op==4){
     ss_2d_op(d,dmig,
              nt,ot,dt, 
              nmx,omx,dmx,
@@ -345,7 +352,7 @@ void gazdag_2d_op(float **d, float **dmig,
 /*< Gazdag zero offset wave equation depth migration operator >*/
 {
   int iw,ik,iz,ix,nw,nk,padt,padx,ntfft;
-  float vel,dw,dk;
+  float vel,dw,dk,progress;
   sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero;
   int ifmax;
 
@@ -385,9 +392,10 @@ void gazdag_2d_op(float **d, float **dmig,
     }
     for (ix=0;ix<nmx;ix++) d[ix][0] = dmig[ix][0];
   }
-
+  progress = 0.0;
   for (iz=1;iz<nz;iz++){
-    fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);
+    progress += 1.0/((float) nz);
+    if (verbose) progress_msg(progress);
     vel = c[0][iz]/2;
     if (adj){
       phase_shift(m,dmig_zk,iz,dz,ifmax,dw,nk,dk,vel,adj,verbose);
@@ -398,6 +406,7 @@ void gazdag_2d_op(float **d, float **dmig,
       phase_shift(m,dmig_zk,nz-iz,-dz,ifmax,dw,nk,dk,vel,adj,verbose);
     }
   }
+  if (verbose) fprintf(stderr,"\r                   \n");
   if (!adj){ 
     fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */ 
   }
@@ -472,23 +481,18 @@ void pspi_2d_op(float **d, float **dmig,
     for (iref=0;iref<nref;iref++) vref[iref][iz] = vmin + (float) iref*(vmax-vmin)/((float) nref-1);
     for (ix=0;ix<nmx;ix++){
       v = c[ix][iz]/2;
-      for (iref=0;iref<nref;iref++){ 
-        if (vref[iref][iz] >=v){ 
-          iref--;
-          break;
-        }
-      }
-      if (iref < 0){
-        iref1[ix][iz] = 0;
-        iref2[ix][iz] = 0;
-      }
-      else if (iref > nref-2){
-        iref1[ix][iz] = nref-1;
-        iref2[ix][iz] = nref-1;
-      }
-      else{
+      if (vmax>vmin+10){
+        iref = (int) truncf((nref-1)*(v-vmin)/(vmax-vmin));
         iref1[ix][iz] = iref;
         iref2[ix][iz] = iref+1;
+        if (iref>nref-2){
+          iref1[ix][iz] = nref-1;
+          iref2[ix][iz] = nref-1;
+        }
+      }
+      else{
+        iref1[ix][iz] = 0;
+        iref2[ix][iz] = 0;
       }
     }
   }
@@ -515,10 +519,11 @@ omp_set_num_threads(numthreads);
         shared(dmig,d_wx,progress)
 #endif
   for (iw=0;iw<ifmax;iw++){ 
-    progress = progress + (float) 1/(ifmax-1);
-    if (verbose) progress_bar(progress);
+    progress += 1.0/((float) ifmax);
+    if (verbose) progress_msg(progress);
     pspi_extrap_1f(dmig,d_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,nref,c,vref,iref1,iref2,i,czero,p1,p2,verbose);
   }
+  if (verbose) fprintf(stderr,"\r                   \n");
 
   free1int(n); 
   fftwf_free(a);
@@ -587,9 +592,9 @@ void ss_2d_op(float **d, float **dmig,
   pd = sf_floatalloc2(nz,nmx); 
   for (iz=0;iz<nz;iz++){
     po[iz] = 0.0;
-    for (ix=0;ix<nmx;ix++) po[iz] += 2/c[ix][iz];
-    po[iz] /= nmx;
-    for (ix=0;ix<nmx;ix++) pd[ix][iz] = c[ix][iz] - po[iz];
+    for (ix=0;ix<nmx;ix++) po[iz] += 2.0/c[ix][iz];
+    po[iz] /= (float) nmx;
+    for (ix=0;ix<nmx;ix++) pd[ix][iz] = 2.0/c[ix][iz] - po[iz];
   }
 
   a  = fftwf_malloc(sizeof(fftw_complex) * nk);
@@ -614,11 +619,11 @@ omp_set_num_threads(numthreads);
         shared(dmig,d_wx,progress)
 #endif
   for (iw=0;iw<ifmax;iw++){ 
-    progress = progress + (float) 1/(ifmax-1);
-    if (verbose) progress_bar(progress);
+    progress += 1.0/((float) ifmax);
+    if (verbose) progress_msg(progress);
     ss_extrap_1f(dmig,d_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,po,pd,i,czero,p1,p2,verbose);
   }
-
+  if (verbose) fprintf(stderr,"\r                   \n");
   free1int(n); 
   fftwf_free(a);
   fftwf_free(b);
@@ -800,12 +805,6 @@ void phase_shift(sf_complex **m, sf_complex **dmig_zk,
   return;
 }
 
-float linear_interp(float y1,float y2,float x1,float x2,float x)
-/*< linear interpolation between two points. x2-x1 must be nonzero. >*/
-{
-  return  y1 + (y2-y1)*(x-x1)/(x2-x1);
-}
-
 void pspi_extrap_1f(float **dmig,
                     sf_complex **d_wx,
                     int iw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,int nmx,int nref,
@@ -816,7 +815,7 @@ void pspi_extrap_1f(float **dmig,
 /*< extrapolate 1 frequency using the PSPI method >*/
 {
   float w,v,k,kz,s,vref1,vref2;
-  sf_complex Lref;
+  sf_complex L,Lref;
   int iz,ix,ik,iref; 
   sf_complex *d_k,*d_x,**dref;
   fftwf_complex *a,*b;
@@ -828,13 +827,11 @@ void pspi_extrap_1f(float **dmig,
   d_k = sf_complexalloc(nk);
 
   w = iw*dw;
-  /*if (verbose) fprintf(stderr,"extrapolating frequency %d/%d\n",iw+1,ifmax);*/
   for (iz=1;iz<nz;iz++){
-    /*fprintf(stderr,"extrapolating depth step %d/%d\n",iz+1,nz);*/
     for (ix=0;ix<nmx;ix++){
       v = c[ix][iz]/2;
-      /*L = cexpf(-i*w*dz/v);*/
-      d_x[ix] = d_wx[ix][iw]; /*d_x[ix] = d_wx[ix][iw]*L;*/
+      L = cexpf(i*w*dz/v);
+      d_x[ix] = d_wx[ix][iw]*L; 
     }
     /************* d_x --> d_k *********/
     for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
@@ -847,13 +844,15 @@ void pspi_extrap_1f(float **dmig,
 	if (ik<nk/2) k = dk*ik;
 	else         k = -(dk*nk - dk*ik);
 	s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
-	if (s>0){
-	  kz = -sqrtf(s);
-	  Lref = cexpf(-i*(kz)*dz);/*Lref = cexpf(-i*(kz-w/vref[iref][iz])*dz);*/
+        if (s>0){
+	  kz = sqrtf(s);
+	  /*Lref = cexpf(i*kz*dz);*/
+	  Lref = cexpf(i*(kz-w/vref[iref][iz])*dz);
 	  d_k[ik] = d_k[ik]*Lref;
-	}
+        }
         else {
-	  d_k[ik] = czero;
+	  Lref = cexpf(i*(i*sqrtf(-s)-w/vref[iref][iz])*dz);
+	  d_k[ik] = d_k[ik]*Lref;
         }
       }
       /************* d_k1 --> d_x1 *******/
@@ -866,11 +865,13 @@ void pspi_extrap_1f(float **dmig,
       v = c[ix][iz]/2;
       vref1 = vref[iref1[ix][iz]][iz];
       vref2 = vref[iref2[ix][iz]][iz];
-      if (vref1<vref2){
+      if (vref2 - vref1 > 10){
 	__real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref1[ix][iz]]),crealf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
 	__imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref1[ix][iz]]),cimagf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
       }
-      else d_wx[ix][iw] = dref[ix][iref1[ix][iz]];
+      else{
+       d_wx[ix][iw] = dref[ix][iref1[ix][iz]];
+      }
     }
     for (ix=0;ix<nmx;ix++) dmig[ix][iz] += 2*crealf(d_wx[ix][iw])/ntfft;
   }
@@ -918,10 +919,10 @@ void ss_extrap_1f(float **dmig,
     for (ik=0;ik<nk;ik++){ 
       if (ik<nk/2) k = dk*ik;
       else         k = -(dk*nk - dk*ik);
-      s = (w*w)*po[iz]*po[iz] - (k*k);
+      s = (w*w)*(po[iz]*po[iz]) - (k*k);
       if (s>0){
-        kz = -sqrtf(s);
-	L = cexpf(-i*kz*dz);
+        kz = sqrtf(s);
+	L = cexpf(i*kz*dz);
 	d_k[ik] = d_k[ik]*L;
       }
       else {
@@ -933,7 +934,7 @@ void ss_extrap_1f(float **dmig,
     fftwf_execute_dft(p2,b,b);  
     /***********************************/
     for (ix=0;ix<nmx;ix++){
-      d_wx[ix][iw] = b[ix]*cexpf(-i*w*pd[ix][iz]*dz);
+      d_wx[ix][iw] = b[ix]*cexpf(i*w*pd[ix][iz]*dz)/nk;
     }
     for (ix=0;ix<nmx;ix++) dmig[ix][iz] += 2*crealf(d_wx[ix][iw])/ntfft;
   }
@@ -946,19 +947,14 @@ void ss_extrap_1f(float **dmig,
   return;
 }
 
-void progress_bar(float progress)
-{ 
-  int i,n;
+float linear_interp(float y1,float y2,float x1,float x2,float x)
+/*< linear interpolation between two points. x2-x1 must be nonzero. >*/
+{
+  return  y1 + (y2-y1)*(x-x1)/(x2-x1);
+}
 
-  n = truncf(progress*50);
-  if (n>1){
-    fprintf(stderr,"[");
-    for (i=0;i<n;i++) fprintf(stderr,"=");
-    fprintf(stderr,">");
-    for (i=n+1;i<50;i++) fprintf(stderr," ");
-    fprintf(stderr,"][%6.2f%% complete]",progress*100);
-    if (progress<1) fprintf(stderr,"\r");
-    else fprintf(stderr,"\n");
-  }
+void progress_msg(float progress)
+{ 
+  fprintf(stderr,"\r[%6.2f%% complete]",progress*100);
   return;
 }
