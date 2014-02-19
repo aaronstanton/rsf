@@ -33,6 +33,12 @@
 #include <fftw3.h>
 #include "myfree.h"
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <time.h>
+
 void stolt_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
@@ -45,12 +51,12 @@ void gazdag_2d_op(float **d, float **dmig,
                  int nz, float oz, float dz,
                  float **c, float fmax,
                  bool adj, bool verbose);
-void phase_shift(sf_complex **m, sf_complex **dmig_zk,
+void phase_shift(sf_complex **m,
                  int iz, float dz,
                  int ifmax, float dw,
                  int nk, float dk,
                  float vel,
-                 bool adj, bool verbose);
+                 bool verbose);
 void pspi_2d_op(float **d, float **dmig,
                  int nt, float ot, float dt, 
                  int nmx, float omx, float dmx,
@@ -71,7 +77,8 @@ void pspi_extrap_1f(float **dmig,
                     int iw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,int nmx,int nref,
                     float **c,float **vref,int **iref1,int **iref2,
                     sf_complex i,sf_complex czero,
-                    fftwf_plan p1,fftwf_plan p2, bool verbose);
+                    fftwf_plan p1,fftwf_plan p2,
+                    bool adj, bool verbose);
 void ss_extrap_1f(float **dmig,
                     sf_complex **d_wx,
                     int iw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,int nmx,
@@ -105,6 +112,9 @@ int main(int argc, char* argv[])
   int op;  
   int nref;
   int numthreads;
+  bool dottest;
+  float **d_rand,**d_1,**d_2,**dmig_rand,**dmig_1,**dmig_2,tmp_sum1,tmp_sum2;
+  unsigned long mseed, dseed;
 
   sf_init (argc,argv);
   in = sf_input("in");
@@ -115,7 +125,8 @@ int main(int argc, char* argv[])
   if (!sf_getint("op",&op)) op = 1; /* extrapolation operator to be used 1=stolt, 2=gazdag, 3=PSPI, 4=Split-Step */
   if (!sf_getint("nref",&nref)) nref = 2; /* number of reference velocities to be used if pspi is selected. */
   if (!sf_getint("numthreads",&numthreads)) numthreads = 1; /* number of threads to be used for parallel processing (if pspi selected). */
-  if (adj){
+  if (!sf_getbool("dottest",&dottest)) dottest = false; /* flag for dot product test, input should be the unmigrated data */
+  if (adj || dottest){
     if (!sf_getint("nz",&nz)) sf_error("nz must be specified");
     if (!sf_getfloat("oz",&oz)) sf_error("oz must be specified");
     if (!sf_getfloat("dz",&dz)) sf_error("dz must be specified");
@@ -137,7 +148,7 @@ int main(int argc, char* argv[])
   nmx=n2;  
   dmx=d2;  
   omx=o2;
-  if (adj){
+  if (adj || dottest){
     nt=n1;  
     dt=d1;  
     ot=o1;
@@ -222,6 +233,107 @@ int main(int argc, char* argv[])
       }
     }
   }
+
+
+  if (dottest){
+    mseed = (unsigned long) time(NULL);
+    init_genrand(mseed);
+    dseed = genrand_int32();
+    d_rand = sf_floatalloc2(nt,nmx);
+    d_1 = sf_floatalloc2(nt,nmx);
+    d_2 = sf_floatalloc2(nt,nmx);
+    dmig_rand = sf_floatalloc2(nz,nmx);
+    dmig_1 = sf_floatalloc2(nz,nmx);
+    dmig_2 = sf_floatalloc2(nz,nmx);
+    init_genrand(dseed);
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++){
+        d_rand[ix][it] = genrand_real1();
+      }
+      for (iz=0;iz<nz;iz++){
+        dmig_rand[ix][iz] = genrand_real1();
+      }
+    }
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++){
+        d_1[ix][it] = 0.0;
+        d_2[ix][it] = d_rand[ix][it];
+      }
+      for (iz=0;iz<nz;iz++){
+        dmig_1[ix][iz] = dmig_rand[ix][iz];
+        dmig_2[ix][iz] = 0.0;
+      }
+    }
+    if (op==1){
+      stolt_2d_op(d_1,dmig_rand,
+                  nt,ot,dt, 
+                  nmx,omx,dmx,
+                  nz,oz,dz,
+                  vp[0][0],fmax,
+                  false,verbose);
+      stolt_2d_op(d_rand,dmig_2,
+                  nt,ot,dt, 
+                  nmx,omx,dmx,
+                  nz,oz,dz,
+                  vp[0][0],fmax,
+                  true,verbose);
+    }
+    else if (op==2){
+      gazdag_2d_op(d_1,dmig_rand,
+                   nt,ot,dt, 
+                   nmx,omx,dmx,
+                   nz,oz,dz,
+                   vp,fmax,
+                   false,verbose);
+      gazdag_2d_op(d_rand,dmig_2,
+                   nt,ot,dt, 
+                   nmx,omx,dmx,
+                   nz,oz,dz,
+                   vp,fmax,
+                   true,verbose);
+    }
+    else if (op==3){
+      pspi_2d_op(d_1,dmig_rand,
+                 nt,ot,dt, 
+                 nmx,omx,dmx,
+                 nz,oz,dz,
+                 vp,fmax,
+                 nref,
+                 numthreads,
+                 false,verbose);
+      pspi_2d_op(d_rand,dmig_2,
+                 nt,ot,dt, 
+                 nmx,omx,dmx,
+                 nz,oz,dz,
+                 vp,fmax,
+                 nref,
+                 numthreads,
+                 true,verbose);
+    }
+    else if (op==4){
+      ss_2d_op(d_1,dmig_rand,
+               nt,ot,dt, 
+               nmx,omx,dmx,
+               nz,oz,dz,
+               vp,fmax,
+               numthreads,
+               false,verbose);
+      ss_2d_op(d_rand,dmig_2,
+               nt,ot,dt, 
+               nmx,omx,dmx,
+               nz,oz,dz,
+               vp,fmax,
+               numthreads,
+               true,verbose);
+    }
+    tmp_sum1=0;
+    for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) tmp_sum1 += d_1[ix][it]*d_2[ix][it];
+    tmp_sum2=0;
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2 += dmig_1[ix][iz]*dmig_2[ix][iz];
+    fprintf(stderr,"DOT PRODUCT: %6.2f and %6.2f\n",tmp_sum1,tmp_sum2);
+    exit (0);
+  }
+
   if (op==1){
     stolt_2d_op(d,dmig,
                 nt,ot,dt, 
@@ -257,6 +369,7 @@ int main(int argc, char* argv[])
              numthreads,
              adj,verbose);
   }
+
 
   if (adj){
     for (ix=0; ix<nmx; ix++) {
@@ -377,7 +490,7 @@ void gazdag_2d_op(float **d, float **dmig,
 
   if (adj){
     fk_op(m,d,nw,nk,nt,nmx,1); /* d to m */
-    for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0]; 
+    for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0];
     for (iw=ifmax;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero; 
   }
   else{
@@ -392,24 +505,33 @@ void gazdag_2d_op(float **d, float **dmig,
     }
     for (ix=0;ix<nmx;ix++) d[ix][0] = dmig[ix][0];
   }
+
   progress = 0.0;
-  for (iz=1;iz<nz;iz++){
-    progress += 1.0/((float) nz);
-    if (verbose) progress_msg(progress);
-    vel = c[0][iz]/2;
-    if (adj){
-      phase_shift(m,dmig_zk,iz,dz,ifmax,dw,nk,dk,vel,adj,verbose);
+  if (adj){
+    for (iz=0;iz<nz;iz++){
+      progress += 1.0/((float) nz);
+      if (verbose) progress_msg(progress);
+      vel = c[0][iz]/2;
+      phase_shift(m,iz,dz,ifmax,dw,nk,dk,vel,verbose);
       fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */
       for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d[ix][0];  
     }
-    else{ 
-      phase_shift(m,dmig_zk,nz-iz,-dz,ifmax,dw,nk,dk,vel,adj,verbose);
+  }
+  else{
+    for (iz=nz-1;iz>=0;iz--){
+      progress += 1.0/((float) nz);
+      if (verbose) progress_msg(progress);
+      vel = c[0][iz]/2;
+      for (iw=0;iw<ifmax;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] += dmig_zk[ik][iz];
+      phase_shift(m,iz,-dz,ifmax,dw,nk,dk,vel,verbose);
     }
   }
+
   if (verbose) fprintf(stderr,"\r                   \n");
   if (!adj){ 
     fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */ 
   }
+
   return;
 } 
 
@@ -464,8 +586,9 @@ void pspi_2d_op(float **d, float **dmig,
     }
   }
   else{
-    fprintf(stderr,"Sorry, PSPI forward operator not written yet!\n");
-    return;
+    for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<nw;iw++) d_wx[ix][iw] = czero;
+    }
   }
 
   /* generate reference velocities for each layer */
@@ -521,9 +644,24 @@ omp_set_num_threads(numthreads);
   for (iw=0;iw<ifmax;iw++){ 
     progress += 1.0/((float) ifmax);
     if (verbose) progress_msg(progress);
-    pspi_extrap_1f(dmig,d_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,nref,c,vref,iref1,iref2,i,czero,p1,p2,verbose);
+    pspi_extrap_1f(dmig,d_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,nref,c,vref,iref1,iref2,i,czero,p1,p2,adj,verbose);
   }
   if (verbose) fprintf(stderr,"\r                   \n");
+
+  if (adj){
+   for (ix=0;ix<nmx;ix++){
+      dmig[ix][0] = d[ix][0]; 
+    }
+  }
+  else{
+   for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<ifmax;iw++) d_w[iw] = d_wx[ix][iw];
+      for (iw=ifmax;iw<nw;iw++) d_w[iw] = czero;
+      f_op(d_w,d_t,nw,nt,0); /* d_w to d_t */
+      for (it=0;it<nt;it++) d[ix][it] = d_t[it];
+      d[ix][0] = dmig[ix][0];
+    }
+  }
 
   free1int(n); 
   fftwf_free(a);
@@ -767,17 +905,17 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
   return;
 }
 
-void phase_shift(sf_complex **m, sf_complex **dmig_zk,
+void phase_shift(sf_complex **m,
                  int iz, float dz,
                  int ifmax, float dw,
                  int nk, float dk,
                  float vel,
-                 bool adj, bool verbose)
+                 bool verbose)
 /*< phase shift >*/
 {
 
   sf_complex L,i,czero;
-  float w,k,kz;
+  float w,k,kz,s;
   int iw,ik;
   __real__ i = 0;
   __imag__ i = 1;
@@ -789,17 +927,15 @@ void phase_shift(sf_complex **m, sf_complex **dmig_zk,
     for (ik=0;ik<nk;ik++){ 
       if (ik<nk/2) k = dk*ik;
       else         k = -(dk*nk - dk*ik);
-      if ((w*w)/(vel*vel) - (k*k)>0){
-        kz = -sqrtf((w*w)/(vel*vel) - (k*k));
-        L =  cexpf(-i*kz*dz);
-        if (adj){
-          m[ik][iw] = m[ik][iw]*L;
-        }
-        else{
-          m[ik][iw] = m[ik][iw]*L + dmig_zk[ik][iz];
-        }
+      s = (w*w)/(vel*vel) - (k*k);
+      if (s>0){
+        kz = sqrtf(s);
+        L =  cexpf(i*kz*dz);
       }
-      else m[ik][iw] = czero;
+      else{
+        L =  czero;
+      }
+      m[ik][iw] = m[ik][iw]*L;
     }
   }
   return;
@@ -811,7 +947,7 @@ void pspi_extrap_1f(float **dmig,
                     float **c,float **vref,int **iref1,int **iref2,
                     sf_complex i,sf_complex czero,
                     fftwf_plan p1,fftwf_plan p2,
-                    bool verbose)
+                    bool adj, bool verbose)
 /*< extrapolate 1 frequency using the PSPI method >*/
 {
   float w,v,k,kz,s,vref1,vref2;
@@ -827,53 +963,117 @@ void pspi_extrap_1f(float **dmig,
   d_k = sf_complexalloc(nk);
 
   w = iw*dw;
-  for (iz=1;iz<nz;iz++){
-    for (ix=0;ix<nmx;ix++){
-      v = c[ix][iz]/2;
-      L = cexpf(i*w*dz/v);
-      d_x[ix] = d_wx[ix][iw]*L; 
-    }
-    /************* d_x --> d_k *********/
-    for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
-    for(ix=nmx;ix<nk;ix++) a[ix] = czero;
-    fftwf_execute_dft(p1,a,a); 
-    /***********************************/
-    for (iref=0;iref<nref;iref++){
-      for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
-      for (ik=0;ik<nk;ik++){ 
-	if (ik<nk/2) k = dk*ik;
-	else         k = -(dk*nk - dk*ik);
-	s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
-        if (s>0){
-	  kz = sqrtf(s);
-	  /*Lref = cexpf(i*kz*dz);*/
-	  Lref = cexpf(i*(kz-w/vref[iref][iz])*dz);
-	  d_k[ik] = d_k[ik]*Lref;
-        }
-        else {
-	  Lref = cexpf(i*(i*sqrtf(-s)-w/vref[iref][iz])*dz);
-	  d_k[ik] = d_k[ik]*Lref;
-        }
+
+  if (adj){
+    for (iz=0;iz<nz;iz++){
+      for (ix=0;ix<nmx;ix++){
+        v = c[ix][iz]/2;
+        L = cexpf(i*w*dz/v);
+        d_x[ix] = d_wx[ix][iw]*L; 
       }
-      /************* d_k1 --> d_x1 *******/
-      for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
-      fftwf_execute_dft(p2,b,b);  
-      for(ix=0; ix<nmx;ix++) dref[ix][iref] = b[ix]/nk; 
+      /************* d_x --> d_k *********/
+      for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
+      for(ix=nmx;ix<nk;ix++) a[ix] = czero;
+      fftwf_execute_dft(p1,a,a); 
       /***********************************/
-    }
-    for (ix=0;ix<nmx;ix++){
-      v = c[ix][iz]/2;
-      vref1 = vref[iref1[ix][iz]][iz];
-      vref2 = vref[iref2[ix][iz]][iz];
-      if (vref2 - vref1 > 10){
-	__real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref1[ix][iz]]),crealf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
-	__imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref1[ix][iz]]),cimagf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
+      for (iref=0;iref<nref;iref++){
+        for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
+        for (ik=0;ik<nk;ik++){ 
+	  if (ik<nk/2) k = dk*ik;
+	  else         k = -(dk*nk - dk*ik);
+	  s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
+          if (s>0){
+	    kz = sqrtf(s);
+	    Lref = cexpf(i*(kz-w/vref[iref][iz])*dz);
+	    d_k[ik] = d_k[ik]*Lref;
+          }
+/*
+          else {
+	    Lref = cexpf(i*(i*sqrtf(-s)-w/vref[iref][iz])*dz);
+	    d_k[ik] = d_k[ik]*Lref;
+          }
+*/
+          else {
+	    d_k[ik] = czero;
+          }
+        }
+        /************* d_k1 --> d_x1 *******/
+        for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
+        fftwf_execute_dft(p2,b,b);  
+        for(ix=0; ix<nmx;ix++) dref[ix][iref] = b[ix]/nk; 
+        /***********************************/
       }
-      else{
-       d_wx[ix][iw] = dref[ix][iref1[ix][iz]];
+      for (ix=0;ix<nmx;ix++){
+        v = c[ix][iz]/2;
+        vref1 = vref[iref1[ix][iz]][iz];
+        vref2 = vref[iref2[ix][iz]][iz];
+        if (vref2 - vref1 > 10){
+	  __real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref1[ix][iz]]),crealf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
+	  __imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref1[ix][iz]]),cimagf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
+        }
+        else{
+         d_wx[ix][iw] = dref[ix][iref1[ix][iz]];
+        }
+      }
+      for (ix=0;ix<nmx;ix++) dmig[ix][iz] += 2*crealf(d_wx[ix][iw])/ntfft;
+    }
+  }
+  else{
+    for (iz=nz-1;iz>=0;iz--){
+      for (ix=0;ix<nmx;ix++){ 
+        __real__ d_x[ix] = crealf(d_wx[ix][iw]) + dmig[ix][iz]; 
+        __imag__ d_x[ix] = cimagf(d_wx[ix][iw]); 
+      }
+      for (ix=0;ix<nmx;ix++){
+        v = c[ix][iz]/2;
+        L = conjf(cexpf(i*w*(dz)/v));
+        d_x[ix] = d_x[ix]*L; 
+      }
+      /************* d_x --> d_k *********/
+      for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
+      for(ix=nmx;ix<nk;ix++) a[ix] = czero;
+      fftwf_execute_dft(p1,a,a); 
+      /***********************************/
+      for (iref=0;iref<nref;iref++){
+        for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
+        for (ik=0;ik<nk;ik++){ 
+	  if (ik<nk/2) k = dk*ik;
+	  else         k = -(dk*nk - dk*ik);
+	  s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
+          if (s>0){
+	    kz = sqrtf(s);
+	    Lref = conjf(cexpf(i*(kz-w/vref[iref][iz])*(dz)));
+	    d_k[ik] = d_k[ik]*Lref;
+          }
+/*
+          else {
+	    Lref = cexpf(i*(i*sqrtf(-s)-w/vref[iref][iz])*(-dz));
+	    d_k[ik] = d_k[ik]*Lref;
+          }
+*/
+          else {
+	    d_k[ik] = czero;
+          }
+        }
+        /************* d_k1 --> d_x1 *******/
+        for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
+        fftwf_execute_dft(p2,b,b);  
+        for(ix=0; ix<nmx;ix++) dref[ix][iref] = b[ix]/nk; 
+        /***********************************/
+      }
+      for (ix=0;ix<nmx;ix++){
+        v = c[ix][iz]/2;
+        vref1 = vref[iref1[ix][iz]][iz];
+        vref2 = vref[iref2[ix][iz]][iz];
+        if (vref2 - vref1 > 10){
+	  __real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref1[ix][iz]]),crealf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
+	  __imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref1[ix][iz]]),cimagf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
+        }
+        else{
+         d_wx[ix][iw] = dref[ix][iref1[ix][iz]];
+        }
       }
     }
-    for (ix=0;ix<nmx;ix++) dmig[ix][iz] += 2*crealf(d_wx[ix][iw])/ntfft;
   }
 
   free2complex(dref);
