@@ -85,7 +85,7 @@ void ss_extrap_1f(float **dmig,
                     float *po,float **pd,
                     sf_complex i,sf_complex czero,
                     fftwf_plan p1,fftwf_plan p2,
-                    bool verbose);
+                    bool adj, bool verbose);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj);
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj);
@@ -113,7 +113,7 @@ int main(int argc, char* argv[])
   int nref;
   int numthreads;
   bool dottest;
-  float **d_rand,**d_1,**d_2,**dmig_rand,**dmig_1,**dmig_2,tmp_sum1,tmp_sum2;
+  float **d_1,**d_2,**dmig_1,**dmig_2,tmp_sum1,tmp_sum2;
   unsigned long mseed, dseed;
 
   sf_init (argc,argv);
@@ -239,39 +239,29 @@ int main(int argc, char* argv[])
     mseed = (unsigned long) time(NULL);
     init_genrand(mseed);
     dseed = genrand_int32();
-    d_rand = sf_floatalloc2(nt,nmx);
     d_1 = sf_floatalloc2(nt,nmx);
     d_2 = sf_floatalloc2(nt,nmx);
-    dmig_rand = sf_floatalloc2(nz,nmx);
     dmig_1 = sf_floatalloc2(nz,nmx);
     dmig_2 = sf_floatalloc2(nz,nmx);
     init_genrand(dseed);
     for (ix=0;ix<nmx;ix++){
       for (it=0;it<nt;it++){
-        d_rand[ix][it] = genrand_real1();
-      }
-      for (iz=0;iz<nz;iz++){
-        dmig_rand[ix][iz] = genrand_real1();
-      }
-    }
-    for (ix=0;ix<nmx;ix++){
-      for (it=0;it<nt;it++){
         d_1[ix][it] = 0.0;
-        d_2[ix][it] = d_rand[ix][it];
+        d_2[ix][it] = genrand_real1();
       }
       for (iz=0;iz<nz;iz++){
-        dmig_1[ix][iz] = dmig_rand[ix][iz];
+        dmig_1[ix][iz] = genrand_real1();
         dmig_2[ix][iz] = 0.0;
       }
     }
     if (op==1){
-      stolt_2d_op(d_1,dmig_rand,
+      stolt_2d_op(d_1,dmig_1,
                   nt,ot,dt, 
                   nmx,omx,dmx,
                   nz,oz,dz,
                   vp[0][0],fmax,
                   false,verbose);
-      stolt_2d_op(d_rand,dmig_2,
+      stolt_2d_op(d_2,dmig_2,
                   nt,ot,dt, 
                   nmx,omx,dmx,
                   nz,oz,dz,
@@ -279,13 +269,13 @@ int main(int argc, char* argv[])
                   true,verbose);
     }
     else if (op==2){
-      gazdag_2d_op(d_1,dmig_rand,
+      gazdag_2d_op(d_1,dmig_1,
                    nt,ot,dt, 
                    nmx,omx,dmx,
                    nz,oz,dz,
                    vp,fmax,
                    false,verbose);
-      gazdag_2d_op(d_rand,dmig_2,
+      gazdag_2d_op(d_2,dmig_2,
                    nt,ot,dt, 
                    nmx,omx,dmx,
                    nz,oz,dz,
@@ -293,7 +283,7 @@ int main(int argc, char* argv[])
                    true,verbose);
     }
     else if (op==3){
-      pspi_2d_op(d_1,dmig_rand,
+      pspi_2d_op(d_1,dmig_1,
                  nt,ot,dt, 
                  nmx,omx,dmx,
                  nz,oz,dz,
@@ -301,7 +291,7 @@ int main(int argc, char* argv[])
                  nref,
                  numthreads,
                  false,verbose);
-      pspi_2d_op(d_rand,dmig_2,
+      pspi_2d_op(d_2,dmig_2,
                  nt,ot,dt, 
                  nmx,omx,dmx,
                  nz,oz,dz,
@@ -311,14 +301,14 @@ int main(int argc, char* argv[])
                  true,verbose);
     }
     else if (op==4){
-      ss_2d_op(d_1,dmig_rand,
+      ss_2d_op(d_1,dmig_1,
                nt,ot,dt, 
                nmx,omx,dmx,
                nz,oz,dz,
                vp,fmax,
                numthreads,
                false,verbose);
-      ss_2d_op(d_rand,dmig_2,
+      ss_2d_op(d_2,dmig_2,
                nt,ot,dt, 
                nmx,omx,dmx,
                nz,oz,dz,
@@ -394,16 +384,16 @@ void stolt_2d_op(float **d, float **dmig,
                  bool adj, bool verbose)
 /*< Stolt zero offset wave equation depth migration operator >*/
 {
-  int iw,iwz,ik,nw,nwz,nk,padt,padx,padz,ntfft,nzfft;
+  int iw,ikz,ik,nw,nkz,nk,padt,padx,padz,ntfft,nzfft;
   float w,kz,k,vel,dw,dk,dkz;
   sf_complex **m,**mig;
   sf_complex czero;
   int ifmax;
-
+  int ix,iz,it;
   vel = c/2;
   __real__ czero = 0;
   __imag__ czero = 0;
-  padt = 4;
+  padt = 2;
   padz = 4;
   padx = 4;
   ntfft = padt*nt;
@@ -413,7 +403,7 @@ void stolt_2d_op(float **d, float **dmig,
   else ifmax = nw;
 
   nzfft = padz*nz;
-  nwz = nzfft/2+1;
+  nkz = nzfft/2+1;
   nk = padx*nmx;
   dk = 2*PI/nk/dmx;
   dw = 2*PI/ntfft/dt;
@@ -424,15 +414,22 @@ void stolt_2d_op(float **d, float **dmig,
       m[ik][iw] = czero;
     }
   }
-  mig = sf_complexalloc2(nwz,nk);
+  mig = sf_complexalloc2(nkz,nk);
   for (ik=0;ik<nk;ik++){
-    for (iwz=0;iwz<nwz;iwz++){
-      mig[ik][iwz] = czero;
+    for (ikz=0;ikz<nkz;ikz++){
+      mig[ik][ikz] = czero;
     }
   }
 
-  if (adj) fk_op(m,d,nw,nk,nt,nmx,1); /* adjoint: d to m */
-  else     fk_op(mig,dmig,nwz,nk,nz,nmx,1); /* adjoint: dmig to mig */
+  if (adj){ 
+    fk_op(m,d,nw,nk,nt,nmx,1); /* adjoint: d to m */
+    for (ik=0;ik<nk;ik++){ 
+      for (iw=ifmax;iw<nw;iw++) m[ik][iw] = czero;
+    }
+  }
+  else{
+    fk_op(mig,dmig,nkz,nk,nz,nmx,1); /* adjoint: dmig to mig */
+  }
   for (ik=0;ik<nk;ik++){
     if (ik<nk/2) k = dk*ik;
     else         k = -(dk*nk - dk*ik);
@@ -440,19 +437,27 @@ void stolt_2d_op(float **d, float **dmig,
       w = dw*iw;
       if ((w*w)/(vel*vel) - (k*k) > 0){ 
         kz = sqrtf((w*w)/(vel*vel) - (k*k));
-        iwz = trunc(kz/dkz); 
-       /* fprintf(stderr,"kz=%f, iwz=%d\n",kz,iwz);*/
-      }
-      else iwz = nwz;
-      /*fprintf(stderr,"kz=%f, (kz*c/2)*sqrtf(1 + (k*k)/(kz*kz))=%f, w=%f \n",kz,(kz*c/2)*sqrtf(1 + (k*k)/(kz*kz)),w);*/
-      if (iwz>=0 && iwz<nwz){ 
-        if (adj) mig[ik][iwz] = m[ik][iw]/sqrtf(1 + (k*k)/(kz*kz));
-        else     m[ik][iw] = mig[ik][iwz]/sqrtf(1 + (k*k)/(kz*kz));
+        ikz = (int) trunc((float) kz/dkz);
+        if (ikz>=0 && ikz<nkz){
+          if (adj){
+            mig[ik][ikz] = m[ik][iw]/sqrtf(1 + (k*k)/(kz*kz));
+          }
+          else{
+            m[ik][iw] = mig[ik][ikz]/sqrtf(1 + (k*k)/(kz*kz));
+          }
+        }
       }
     }
   }
-  if (adj) fk_op(mig,dmig,nwz,nk,nz,nmx,0); /* forward: mig to dmig */
-  else     fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d */
+  if (adj){ 
+    for (iw=ifmax;iw<nw;iw++) for (ik=0;ik<nk;ik++) mig[ik][iw] = czero;
+    fk_op(mig,dmig,nkz,nk,nz,nmx,0); /* forward: mig to dmig */
+  }
+  else{
+    for (iw=ifmax;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero;
+    fk_op(m,d,nw,nk,nt,nmx,0); /* forward: m to d */
+    for (it=0;it<nt;it++) for (ix=0;ix<nmx;ix++) d[ix][it] = d[ix][it]/(2*((float) nz)/((float)nt));
+  }
   return;
 } 
 
@@ -464,8 +469,8 @@ void gazdag_2d_op(float **d, float **dmig,
                  bool adj, bool verbose)
 /*< Gazdag zero offset wave equation depth migration operator >*/
 {
-  int iw,ik,iz,ix,nw,nk,padt,padx,ntfft;
-  float vel,dw,dk,progress;
+  int it,iw,ik,iz,ix,nw,nk,padt,padx,ntfft;
+  float **d2,vel,dw,dk,progress;
   sf_complex **m,*dmig_x,*dmig_k,**dmig_zk,czero;
   int ifmax;
 
@@ -484,13 +489,14 @@ void gazdag_2d_op(float **d, float **dmig,
   dw = 2*PI/ntfft/dt;
   m = sf_complexalloc2(nw,nk);
 
+  d2 = sf_floatalloc2(nt,nmx);
   dmig_zk = sf_complexalloc2(nz,nk);
   dmig_x = sf_complexalloc(nmx);
   dmig_k = sf_complexalloc(nk);
 
   if (adj){
-    fk_op(m,d,nw,nk,nt,nmx,1); /* d to m */
-    for (ix=0;ix<nmx;ix++) dmig[ix][0] = d[ix][0];
+    for (it=0;it<nt;it++) for (ix=0;ix<nmx;ix++) d2[ix][it] = d[ix][it];
+    fk_op(m,d2,nw,nk,nt,nmx,1); /* d2 to m */
     for (iw=ifmax;iw<nw;iw++) for (ik=0;ik<nk;ik++) m[ik][iw] = czero; 
   }
   else{
@@ -503,7 +509,6 @@ void gazdag_2d_op(float **d, float **dmig,
       k_op(dmig_k,dmig_x,nk,nmx,1); /* dmig_x to dmig_k */
       for (ik=0;ik<nk;ik++) dmig_zk[ik][iz] = dmig_k[ik];
     }
-    for (ix=0;ix<nmx;ix++) d[ix][0] = dmig[ix][0];
   }
 
   progress = 0.0;
@@ -513,8 +518,8 @@ void gazdag_2d_op(float **d, float **dmig,
       if (verbose) progress_msg(progress);
       vel = c[0][iz]/2;
       phase_shift(m,iz,dz,ifmax,dw,nk,dk,vel,verbose);
-      fk_op(m,d,nw,nk,nt,nmx,0); /* m to d */
-      for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d[ix][0];  
+      fk_op(m,d2,nw,nk,nt,nmx,0); /* m to d2 */
+      for (ix=0;ix<nmx;ix++) dmig[ix][iz] = d2[ix][0];
     }
   }
   else{
@@ -582,7 +587,6 @@ void pspi_2d_op(float **d, float **dmig,
       f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
       for (iw=0;iw<ifmax;iw++) d_wx[ix][iw] = d_w[iw];
       for (iw=ifmax;iw<nw;iw++) d_wx[ix][iw] = czero;
-      dmig[ix][0] = d[ix][0];
     }
   }
   else{
@@ -647,19 +651,12 @@ omp_set_num_threads(numthreads);
     pspi_extrap_1f(dmig,d_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,nref,c,vref,iref1,iref2,i,czero,p1,p2,adj,verbose);
   }
   if (verbose) fprintf(stderr,"\r                   \n");
-
-  if (adj){
-   for (ix=0;ix<nmx;ix++){
-      dmig[ix][0] = d[ix][0]; 
-    }
-  }
-  else{
+  if (!adj){
    for (ix=0;ix<nmx;ix++){
       for (iw=0;iw<ifmax;iw++) d_w[iw] = d_wx[ix][iw];
       for (iw=ifmax;iw<nw;iw++) d_w[iw] = czero;
       f_op(d_w,d_t,nw,nt,0); /* d_w to d_t */
       for (it=0;it<nt;it++) d[ix][it] = d_t[it];
-      d[ix][0] = dmig[ix][0];
     }
   }
 
@@ -717,12 +714,12 @@ void ss_2d_op(float **d, float **dmig,
       f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
       for (iw=0;iw<ifmax;iw++) d_wx[ix][iw] = d_w[iw];
       for (iw=ifmax;iw<nw;iw++) d_wx[ix][iw] = czero;
-      dmig[ix][0] = d[ix][0];
     }
   }
   else{
-    fprintf(stderr,"Sorry, Split Step forward operator not written yet!\n");
-    return;
+    for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<nw;iw++) d_wx[ix][iw] = czero;
+    }
   }
 
   /* decompose slowness into layer average, and layer purturbation */
@@ -759,9 +756,17 @@ omp_set_num_threads(numthreads);
   for (iw=0;iw<ifmax;iw++){ 
     progress += 1.0/((float) ifmax);
     if (verbose) progress_msg(progress);
-    ss_extrap_1f(dmig,d_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,po,pd,i,czero,p1,p2,verbose);
+    ss_extrap_1f(dmig,d_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,po,pd,i,czero,p1,p2,adj,verbose);
   }
   if (verbose) fprintf(stderr,"\r                   \n");
+  if (!adj){
+   for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<ifmax;iw++) d_w[iw] = d_wx[ix][iw];
+      for (iw=ifmax;iw<nw;iw++) d_w[iw] = czero;
+      f_op(d_w,d_t,nw,nt,0); /* d_w to d_t */
+      for (it=0;it<nt;it++) d[ix][it] = d_t[it];
+    }
+  }
   free1int(n); 
   fftwf_free(a);
   fftwf_free(b);
@@ -950,8 +955,8 @@ void pspi_extrap_1f(float **dmig,
                     bool adj, bool verbose)
 /*< extrapolate 1 frequency using the PSPI method >*/
 {
-  float w,v,k,kz,s,vref1,vref2;
-  sf_complex L,Lref;
+  float w,v,k,s,vref1,vref2;
+  sf_complex L;
   int iz,ix,ik,iref; 
   sf_complex *d_k,*d_x,**dref;
   fftwf_complex *a,*b;
@@ -966,11 +971,7 @@ void pspi_extrap_1f(float **dmig,
 
   if (adj){
     for (iz=0;iz<nz;iz++){
-      for (ix=0;ix<nmx;ix++){
-        v = c[ix][iz]/2;
-        L = cexpf(i*w*dz/v);
-        d_x[ix] = d_wx[ix][iw]*L; 
-      }
+      for (ix=0;ix<nmx;ix++) d_x[ix] = d_wx[ix][iw]; 
       /************* d_x --> d_k *********/
       for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
       for(ix=nmx;ix<nk;ix++) a[ix] = czero;
@@ -982,20 +983,9 @@ void pspi_extrap_1f(float **dmig,
 	  if (ik<nk/2) k = dk*ik;
 	  else         k = -(dk*nk - dk*ik);
 	  s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
-          if (s>0){
-	    kz = sqrtf(s);
-	    Lref = cexpf(i*(kz-w/vref[iref][iz])*dz);
-	    d_k[ik] = d_k[ik]*Lref;
-          }
-/*
-          else {
-	    Lref = cexpf(i*(i*sqrtf(-s)-w/vref[iref][iz])*dz);
-	    d_k[ik] = d_k[ik]*Lref;
-          }
-*/
-          else {
-	    d_k[ik] = czero;
-          }
+          if (s>0) L = cexpf(i*sqrtf(s)*dz);
+	  else     L = czero;
+          d_k[ik] = d_k[ik]*L;
         }
         /************* d_k1 --> d_x1 *******/
         for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
@@ -1007,7 +997,7 @@ void pspi_extrap_1f(float **dmig,
         v = c[ix][iz]/2;
         vref1 = vref[iref1[ix][iz]][iz];
         vref2 = vref[iref2[ix][iz]][iz];
-        if (vref2 - vref1 > 10){
+        if (vref2 - vref1 > 10.0){
 	  __real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref1[ix][iz]]),crealf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
 	  __imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref1[ix][iz]]),cimagf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
         }
@@ -1024,11 +1014,6 @@ void pspi_extrap_1f(float **dmig,
         __real__ d_x[ix] = crealf(d_wx[ix][iw]) + dmig[ix][iz]; 
         __imag__ d_x[ix] = cimagf(d_wx[ix][iw]); 
       }
-      for (ix=0;ix<nmx;ix++){
-        v = c[ix][iz]/2;
-        L = conjf(cexpf(i*w*(dz)/v));
-        d_x[ix] = d_x[ix]*L; 
-      }
       /************* d_x --> d_k *********/
       for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
       for(ix=nmx;ix<nk;ix++) a[ix] = czero;
@@ -1040,20 +1025,9 @@ void pspi_extrap_1f(float **dmig,
 	  if (ik<nk/2) k = dk*ik;
 	  else         k = -(dk*nk - dk*ik);
 	  s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
-          if (s>0){
-	    kz = sqrtf(s);
-	    Lref = conjf(cexpf(i*(kz-w/vref[iref][iz])*(dz)));
-	    d_k[ik] = d_k[ik]*Lref;
-          }
-/*
-          else {
-	    Lref = cexpf(i*(i*sqrtf(-s)-w/vref[iref][iz])*(-dz));
-	    d_k[ik] = d_k[ik]*Lref;
-          }
-*/
-          else {
-	    d_k[ik] = czero;
-          }
+          if (s>0) L = cexpf(-i*sqrtf(s)*dz);
+	  else     L = czero;
+          d_k[ik] = d_k[ik]*L;
         }
         /************* d_k1 --> d_x1 *******/
         for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
@@ -1065,7 +1039,7 @@ void pspi_extrap_1f(float **dmig,
         v = c[ix][iz]/2;
         vref1 = vref[iref1[ix][iz]][iz];
         vref2 = vref[iref2[ix][iz]][iz];
-        if (vref2 - vref1 > 10){
+        if (vref2 - vref1 > 10.0){
 	  __real__ d_wx[ix][iw] = linear_interp(crealf(dref[ix][iref1[ix][iz]]),crealf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
 	  __imag__ d_wx[ix][iw] = linear_interp(cimagf(dref[ix][iref1[ix][iz]]),cimagf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
         }
@@ -1091,7 +1065,7 @@ void ss_extrap_1f(float **dmig,
                     float *po,float **pd,
                     sf_complex i,sf_complex czero,
                     fftwf_plan p1,fftwf_plan p2,
-                    bool verbose)
+                    bool adj, bool verbose)
 /*< extrapolate 1 frequency using the Split Step method >*/
 {
   float w,k,kz,s;
@@ -1106,7 +1080,8 @@ void ss_extrap_1f(float **dmig,
   d_k = sf_complexalloc(nk);
 
   w = iw*dw;
-  for (iz=1;iz<nz;iz++){
+  if (adj){
+  for (iz=0;iz<nz;iz++){
     for (ix=0;ix<nmx;ix++){
       d_x[ix] = d_wx[ix][iw];
     }
@@ -1137,6 +1112,44 @@ void ss_extrap_1f(float **dmig,
       d_wx[ix][iw] = b[ix]*cexpf(i*w*pd[ix][iz]*dz)/nk;
     }
     for (ix=0;ix<nmx;ix++) dmig[ix][iz] += 2*crealf(d_wx[ix][iw])/ntfft;
+  }
+  }
+  else{
+  for (iz=nz-1;iz>=0;iz--){
+    for (ix=0;ix<nmx;ix++){ 
+      __real__ d_x[ix] = crealf(d_wx[ix][iw]) + dmig[ix][iz]; 
+      __imag__ d_x[ix] = cimagf(d_wx[ix][iw]); 
+    }
+    for (ix=0;ix<nmx;ix++){
+      d_x[ix] = d_x[ix]*cexpf(-i*w*pd[ix][iz]*dz);
+    }
+    /************* d_x --> d_k *********/
+    for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
+    for(ix=nmx;ix<nk;ix++) a[ix] = czero;
+    fftwf_execute_dft(p1,a,a); 
+    /***********************************/
+    for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]; 
+    for (ik=0;ik<nk;ik++){ 
+      if (ik<nk/2) k = dk*ik;
+      else         k = -(dk*nk - dk*ik);
+      s = (w*w)*(po[iz]*po[iz]) - (k*k);
+      if (s>0){
+        kz = sqrtf(s);
+	L = cexpf(-i*kz*dz);
+	d_k[ik] = d_k[ik]*L;
+      }
+      else {
+	d_k[ik] = czero;
+      }
+    }
+    /************* d_k1 --> d_x1 *******/
+    for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
+    fftwf_execute_dft(p2,b,b);  
+    /***********************************/
+    for (ix=0;ix<nmx;ix++){
+      d_wx[ix][iw] = b[ix]/nk;
+    }
+  }
   }
 
   free1complex(d_x);
