@@ -13,6 +13,7 @@ pstm
 linearevents5d
 zowem
 spbpdn
+shotwem
 '''
 
 pyprogs='''
