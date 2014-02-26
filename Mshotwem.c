@@ -439,9 +439,8 @@ void pspiop(sf_complex *d_x,
       if (ik<nk/2) k = dk*ik;
       else         k = -(dk*nk - dk*ik);
       s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
-      if (s>0) L = cexpf(i*sqrtf(s)*dz - i*w*dz/vref[iref][iz]);
-      else     L = cexpf(-sqrtf(-s)*dz - i*w*dz/vref[iref][iz]);
-      if (cabsf(L)>1) L = cexpf(i*cargf(L));
+      if (s>=0.0) L = cexpf(i*sqrtf(s)*dz - i*w*dz/vref[iref][iz]);
+      else        L = 0.9*cexpf(-i*w*dz/vref[iref][iz]);
       d_k[ik] = d_k[ik]*L;
     }
     /************* d_k1 --> d_x1 *******/
@@ -454,12 +453,15 @@ void pspiop(sf_complex *d_x,
     v = c[ix][iz];
     vref1 = vref[iref1[ix][iz]][iz];
     vref2 = vref[iref2[ix][iz]][iz];
-    if (vref2 - vref1 > 10.0){
+    if (vref2 - vref1 > 10.0 && v - vref1 > 1.0 && vref2 - v > 1.0){
       __real__ d_x[ix] = linear_interp(crealf(dref[ix][iref1[ix][iz]]),crealf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
       __imag__ d_x[ix] = linear_interp(cimagf(dref[ix][iref1[ix][iz]]),cimagf(dref[ix][iref2[ix][iz]]),vref1,vref2,v);
     }
+    else if (v - vref1 < 1.0){
+      d_x[ix] = dref[ix][iref1[ix][iz]];    
+    }
     else{
-      d_x[ix] = dref[ix][iref1[ix][iz]];
+      d_x[ix] = dref[ix][iref2[ix][iz]];
     }
   }
 
