@@ -98,6 +98,7 @@ int main(int argc, char* argv[])
   bool dottest;
 /*  float **d_1,**d_2,**dmig_1,**dmig_2,tmp_sum1,tmp_sum2;
   unsigned long mseed, dseed;*/
+  float sx;
   int isx;
 
   sf_init (argc,argv);
@@ -143,7 +144,8 @@ int main(int argc, char* argv[])
     dz=d1;  
     oz=o1;  
   }
-  if (!sf_getint("isx",&isx)) isx = (int) nmx/2.0; /* index of position of source */ 
+  if (!sf_getfloat("sx",&sx)) sx = dmx*((float) nmx)/2.0; /* index of position of source */
+  isx = (int) truncf((sx - omx)/dmx); 
   if (!sf_getfloat("fmin",&fmin)) fmin = 0; /* min frequency to process */
   if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/dt; /* max frequency to process */
   if (fmax > 0.5/dt) fmax = 0.5/dt;

@@ -91,11 +91,21 @@ void k_op(sf_complex *m,sf_complex *d,int nk,int nx,bool adj);
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj);
 float linear_interp(float y1,float y2,float x1,float x2,float x);
 void progress_msg(float progress);
+void ls_zowem(float **d,float **dmig,float *wd,
+             int nt,float ot,float dt, 
+             int nmx,float omx,float dmx,
+             int nz,float oz,float dz,
+             float **vp,float fmax,
+             int nref,
+             int numthreads,
+             float *misfit,
+             int op,int Niter,bool verbose);
+float cgdot(float **x,int nt,int nm);
 
 int main(int argc, char* argv[])
 {
 
-  sf_file in,out,velp;
+  sf_file in,out,velp,misfitfile;
   int n1,n2;
   int nt,nmx,nz;
   int it,ix,iz;
@@ -115,6 +125,10 @@ int main(int argc, char* argv[])
   bool dottest;
   float **d_1,**d_2,**dmig_1,**dmig_2,tmp_sum1,tmp_sum2;
   unsigned long mseed, dseed;
+  bool inv;
+  int Niter;
+  float *misfit;
+  char *misfitname;
 
   sf_init (argc,argv);
   in = sf_input("in");
@@ -135,6 +149,29 @@ int main(int argc, char* argv[])
     if (!sf_getint("nt",&nt)) sf_error("nt must be specified");
     if (!sf_getfloat("ot",&ot)) sf_error("ot must be specified");
     if (!sf_getfloat("dt",&dt)) sf_error("dt must be specified");
+  }
+
+  if (!sf_getbool("inv",&inv)) inv = false; /* flag for LS migration*/
+  if (!sf_getint("Niter",&Niter)) Niter = 20; /* number of CG iterations for LS migration */
+
+
+  if (inv){ 
+    adj = true; /* activate adjoint flags */
+    misfitname = sf_getstring("misfit");
+    misfitfile = sf_output(misfitname);
+    sf_putint(misfitfile,"n1",Niter);
+    sf_putfloat(misfitfile,"d1",1);
+    sf_putfloat(misfitfile,"o1",1);
+    sf_putstring(misfitfile,"label1","Iteration Number");
+    sf_putstring(misfitfile,"label2","Misfit");
+    sf_putstring(misfitfile,"unit1"," ");
+    sf_putstring(misfitfile,"unit2"," ");
+    sf_putstring(misfitfile,"title","Misfit");
+    sf_putint(misfitfile,"n2",1);
+    sf_putint(misfitfile,"n3",1);
+    sf_putint(misfitfile,"n4",1);
+    sf_putint(misfitfile,"n5",1);
+    misfit = sf_floatalloc(Niter);
   }
 
   /* read input file parameters */
@@ -324,6 +361,7 @@ int main(int argc, char* argv[])
     exit (0);
   }
 
+  if (!inv){
   if (op==1){
     stolt_2d_op(d,dmig,
                 nt,ot,dt, 
@@ -359,9 +397,12 @@ int main(int argc, char* argv[])
              numthreads,
              adj,verbose);
   }
+  }
+  else{
+    ls_zowem(d,dmig,wd,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,nref,numthreads,misfit,op,Niter,verbose);
+  }
 
-
-  if (adj){
+  if (adj || inv){
     for (ix=0; ix<nmx; ix++) {
       for (iz=0; iz<nz; iz++) trace[iz] = dmig[ix][iz];	
       sf_floatwrite(trace,nz,out);
@@ -373,6 +414,11 @@ int main(int argc, char* argv[])
       sf_floatwrite(trace,nt,out);
     }
   }
+
+  if (inv){
+    sf_floatwrite(misfit,Niter,misfitfile);
+  }   
+
   exit (0);
 }
 
@@ -389,7 +435,7 @@ void stolt_2d_op(float **d, float **dmig,
   sf_complex **m,**mig;
   sf_complex czero;
   int ifmax;
-  int ix,iz,it;
+  int ix,it;
   vel = c/2;
   __real__ czero = 0;
   __imag__ czero = 0;
@@ -982,10 +1028,17 @@ void pspi_extrap_1f(float **dmig,
         for (ik=0;ik<nk;ik++){ 
 	  if (ik<nk/2) k = dk*ik;
 	  else         k = -(dk*nk - dk*ik);
-	  s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
-          if (s>0) L = cexpf(i*sqrtf(s)*dz);
-	  else     L = czero;
-          d_k[ik] = d_k[ik]*L;
+	 /* s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
+          if (s>=0.0) L = cexpf(i*sqrtf(s)*dz);
+	  else     L = czero;*/
+          s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
+          if (s>0){ 
+            L = cexpf(i*sqrtf(s)*dz);
+            d_k[ik] = d_k[ik]*L;
+          }
+          else{
+            d_k[ik] = czero;
+          }
         }
         /************* d_k1 --> d_x1 *******/
         for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
@@ -1024,10 +1077,14 @@ void pspi_extrap_1f(float **dmig,
         for (ik=0;ik<nk;ik++){ 
 	  if (ik<nk/2) k = dk*ik;
 	  else         k = -(dk*nk - dk*ik);
-	  s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
-          if (s>0) L = cexpf(-i*sqrtf(s)*dz);
-	  else     L = czero;
-          d_k[ik] = d_k[ik]*L;
+          s = (w*w)/(vref[iref][iz]*vref[iref][iz]) - (k*k);
+          if (s>0){
+            L = cexpf(-i*sqrtf(s)*dz);
+            d_k[ik] = d_k[ik]*L;
+          }
+          else{
+            d_k[ik] = czero;
+          }
         }
         /************* d_k1 --> d_x1 *******/
         for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
@@ -1167,7 +1224,99 @@ float linear_interp(float y1,float y2,float x1,float x2,float x)
 }
 
 void progress_msg(float progress)
+/*< progress message (progress is the ratio between 0 and 1 for the progress you wish to print). >*/
 { 
   fprintf(stderr,"\r[%6.2f%% complete]",progress*100);
   return;
 }
+
+void ls_zowem(float **d,float **dmig,float *wd,
+             int nt,float ot,float dt, 
+             int nmx,float omx,float dmx,
+             int nz,float oz,float dz,
+             float **vp,float fmax,
+             int nref,
+             int numthreads,
+             float *misfit,
+             int op,int Niter,bool verbose)
+/*< Least squares migration. >*/
+{
+  int k,ix,it,iz;
+  float progress,gamma,gamma_old,delta,alpha,beta,**r,**ss,**g,**s,**v;
+
+  r = sf_floatalloc2(nt,nmx);
+  ss = sf_floatalloc2(nt,nmx);
+  g = sf_floatalloc2(nz,nmx);
+  s = sf_floatalloc2(nz,nmx);
+  v = sf_floatalloc2(nz,nmx);
+ 
+  for (ix=0;ix<nmx;ix++){
+    for (iz=0;iz<nz;iz++){
+      dmig[ix][iz] = 0.0;				
+      v[ix][iz] = dmig[ix][iz];
+      g[ix][iz] = 0.0;
+    }
+  }
+  for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) r[ix][it] = d[ix][it];
+  for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) r[ix][it] = r[ix][it]*wd[ix];
+  if (op==1) stolt_2d_op(r,g,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp[0][0],fmax,true,false);
+  else if (op==2) gazdag_2d_op(r,g,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,true,false);
+  else if (op==3) pspi_2d_op(r,g,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,nref,numthreads,true,false);
+  else if (op==4) ss_2d_op(r,g,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,numthreads,true,false);
+  for (ix=0;ix<nmx;ix++){
+    for (iz=0;iz<nz;iz++){
+      s[ix][iz] = g[ix][iz];
+    }
+  }
+  gamma = cgdot(g,nz,nmx);
+  gamma_old = gamma;
+  progress = 0.0;
+  for (k=0;k<Niter;k++){
+    progress += 1.0/((float) Niter);
+    if (verbose) progress_msg(progress);
+    for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) ss[ix][it] = 0.0;
+    if (op==1) stolt_2d_op(ss,s,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp[0][0],fmax,false,false);
+    else if (op==2) gazdag_2d_op(ss,s,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,false,false);
+    else if (op==3) pspi_2d_op(ss,s,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,nref,numthreads,false,false);
+    else if (op==4) ss_2d_op(ss,s,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,numthreads,false,false);
+    for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) ss[ix][it] = ss[ix][it]*wd[ix];
+    delta = cgdot(ss,nt,nmx);
+    alpha = gamma/(delta + 0.00000001);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v[ix][iz] = v[ix][iz] +  s[ix][iz]*alpha;
+    for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) r[ix][it] = (r[ix][it] -  ss[ix][it]*alpha)*wd[ix];
+    misfit[k] = cgdot(r,nt,nmx);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) g[ix][iz] = 0.0;
+    if (op==1) stolt_2d_op(r,g,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp[0][0],fmax,true,false);
+    else if (op==2) gazdag_2d_op(r,g,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,true,false);
+    else if (op==3) pspi_2d_op(r,g,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,nref,numthreads,true,false);
+    else if (op==4) ss_2d_op(r,g,nt,ot,dt,nmx,omx,dmx,nz,oz,dz,vp,fmax,numthreads,true,false);
+    gamma = cgdot(g,nz,nmx);
+    beta = gamma/(gamma_old + 0.00000001);
+    gamma_old = gamma;
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s[ix][iz] = g[ix][iz] + s[ix][iz]*beta;
+  }
+  if (verbose) fprintf(stderr,"\r                   \n");
+  for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmig[ix][iz] = v[ix][iz];
+
+  free2float(r);
+  free2float(ss);
+  free2float(g);
+  free2float(s);
+  free2float(v);
+
+  return;
+}
+
+float cgdot(float **x,int nt,int nm)
+/*< Compute the inner product for matrix of floats, x >*/
+{
+  int it,ix;
+  float cgdot;
+  cgdot = 0.0;
+  for (ix=0;ix<nm;ix++) for (it=0;it<nt;it++) cgdot = cgdot + x[ix][it]*x[ix][it];
+  return(cgdot);
+}
+
+
+
+
