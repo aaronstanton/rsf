@@ -14,6 +14,7 @@ linearevents5d
 zowem
 spbpdn
 shotwem
+wavsep
 '''
 
 pyprogs='''
