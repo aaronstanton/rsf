@@ -108,8 +108,8 @@ int main(int argc, char* argv[])
   sf_putstring(out2,"label2","x");
   sf_putstring(out2,"unit2","m");
   sf_putstring(out2,"title","SV");
-  vp = sf_floatalloc2(nt,nmx);
-  vs = sf_floatalloc2(nt,nmx);
+  vp = sf_floatalloc2(nz,nmx);
+  vs = sf_floatalloc2(nz,nmx);
   trace = sf_floatalloc( nt > nz ? nt : nz  );
   for (ix=0;ix<nmx;ix++){
     sf_floatread(trace,nz,velp);
@@ -133,14 +133,11 @@ int main(int argc, char* argv[])
       d_sv[ix][it] = 0.0;
     }
   }
-
   if (!adj){
     fprintf(stderr,"forward operator hasn't been added yet.\n");
     exit (0);
   }
-
   wesep2dop(d_z,d_x,d_p,d_sv,nt,ot,dt,nmx,omx,dmx,vp,vs,fmin,fmax,verbose);
-
   for (ix=0; ix<nmx; ix++) {
     for (it=0; it<nt; it++) trace[it] = d_p[ix][it];	
     sf_floatwrite(trace,nt,out1);
@@ -177,10 +174,13 @@ void wesep2dop(float **d_z,float **d_x,float **d_p,float **d_sv,
   padx = 2;
   ntfft = padt*nt;
   nw=ntfft/2+1;
+  nk = padx*nmx;
+
   D_z = sf_complexalloc2(nw,nk);
   D_x = sf_complexalloc2(nw,nk);
   D_p = sf_complexalloc2(nw,nk);
   D_sv = sf_complexalloc2(nw,nk);
+
   if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
   else ifmax = nw;
   nk = padx*nmx;
