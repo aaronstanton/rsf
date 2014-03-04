@@ -209,13 +209,18 @@ int main(int argc, char* argv[])
       }
     }
   }
+  else{
+    for (ix=0;ix<nmx;ix++){
+      sf_floatread(trace,n1,in);
+      for (iz=0;iz<nz;iz++) dmig[ix][iz] = trace[iz];
+    }
+    for (ix=0;ix<nmx;ix++){
+      for (it=0;it<nt;it++) d[ix][it] = 0.0;
+    }
+  }
 
   if (dottest){
     fprintf(stderr,"dottest hasn't been added yet.\n");
-    exit (0);
-  }
-  if (!adj){
-    fprintf(stderr,"forward operator hasn't been added yet.\n");
     exit (0);
   }
 
@@ -284,17 +289,27 @@ void wem2dop(float **d, float **dmig,float *wav,
   d_w = sf_complexalloc(nw);
   for (it=0;it<nt;it++)  d_t[it] = 0.0;  
   for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
+
+  /* source wavefield*/
+  for (ix=0;ix<nmx;ix++){
+    for (iw=0;iw<nw;iw++) d_s_wx[ix][iw] = czero;
+  }
+  for (it=0;it<nt;it++) d_t[it] = wav[it];
+  f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
+  for (iw=0;iw<nw;iw++) d_s_wx[isx][iw] = d_w[iw];
+  /* receiver wavefield*/
   if (adj){
     for (ix=0;ix<nmx;ix++){
       for (it=0;it<nt;it++) d_t[it] = d[ix][it];
       f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
       for (iw=0;iw<ifmax;iw++) d_g_wx[ix][iw] = d_w[iw];
       for (iw=ifmax;iw<nw;iw++) d_g_wx[ix][iw] = czero;
-      for (iw=0;iw<nw;iw++) d_s_wx[ix][iw] = czero;
     }
-    for (it=0;it<nt;it++) d_t[it] = wav[it];
-    f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
-    for (iw=0;iw<nw;iw++) d_s_wx[isx][iw] = d_w[iw];
+  }
+  else{
+    for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<nw;iw++) d_g_wx[ix][iw] = czero;
+    }
   }
 
   if (op==1){ /* Phase-Shift Plus Interpolation operator */
@@ -365,6 +380,14 @@ omp_set_num_threads(numthreads);
     extrap1f(dmig,d_g_wx,d_s_wx,iw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,nref,c,vref,iref1,iref2,po,pd,i,czero,p1,p2,op,adj,verbose);
   }
   if (verbose) fprintf(stderr,"\r                   \n");
+  if (!adj){
+   for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<ifmax;iw++) d_w[iw] = d_g_wx[ix][iw];
+      for (iw=ifmax;iw<nw;iw++) d_w[iw] = czero;
+      f_op(d_w,d_t,nw,nt,0); /* d_w to d_t */
+      for (it=0;it<nt;it++) d[ix][it] = d_t[it];
+    }
+  }
 
   free1int(n); 
   fftwf_free(a);
@@ -386,7 +409,7 @@ void extrap1f(float **dmig,
 {
   float w;
   int iz,ix; 
-  sf_complex *d_x;
+  sf_complex *d_x,**smig;
   d_x = sf_complexalloc(nmx);
 
   w = iw*dw;
@@ -407,6 +430,26 @@ void extrap1f(float **dmig,
     }
   }
 
+  else{
+    smig = sf_complexalloc2(nz,nmx);
+    for (iz=0;iz<nz;iz++){
+      /*########## extrapolate shot wavefield ##########*/
+      for (ix=0;ix<nmx;ix++) d_x[ix] = d_s_wx[ix][iw];
+      if (op==1) pspiop(d_x,w,dk,nk,nmx,nref,dz,iz,c,vref,iref1,iref2,i,czero,p1,p2,adj,verbose); 
+      else if (op==2) ssop(d_x,w,dk,nk,nmx,dz,iz,po,pd,i,czero,p1,p2,adj,verbose); 
+      for (ix=0;ix<nmx;ix++) smig[ix][iz] = d_x[ix];
+    }
+    for (iz=nz-1;iz>=0;iz--){
+      /*########## REVERSE THE zero-lag cross-correlation imaging condition ##########*/
+      for (ix=0;ix<nmx;ix++) d_g_wx[ix][iw] = d_g_wx[ix][iw] + smig[ix][iz]*dmig[ix][iz];
+      /*########## extrapolate receiver wavefield ##########*/
+      for (ix=0;ix<nmx;ix++) d_x[ix] = d_g_wx[ix][iw];
+      if (op==1) pspiop(d_x,w,dk,nk,nmx,nref,-dz,iz,c,vref,iref1,iref2,i,czero,p1,p2,adj,verbose);
+      else if (op==2) ssop(d_x,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,adj,verbose);
+      for (ix=0;ix<nmx;ix++) d_g_wx[ix][iw] = d_x[ix];
+    }
+    free2complex(smig);
+  }
   free1complex(d_x);
 
   return;
