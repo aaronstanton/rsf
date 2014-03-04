@@ -15,6 +15,7 @@ zowem
 spbpdn
 shotwem
 wavsep
+shotewem
 '''
 
 pyprogs='''

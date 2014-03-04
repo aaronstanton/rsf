@@ -142,11 +142,11 @@ int main(int argc, char* argv[])
     for (it=0; it<nt; it++) trace[it] = d_p[ix][it];	
     sf_floatwrite(trace,nt,out1);
     if (ix<isx){
-      for (it=0; it<nt; it++) trace[it] = d_sv[ix][it];
+      for (it=0; it<nt; it++) trace[it] = -d_sv[ix][it];
     }
     else{
-      for (it=0; it<nt; it++) trace[it] = -d_sv[ix][it];
-    }	
+      for (it=0; it<nt; it++) trace[it] = d_sv[ix][it];
+    }
     sf_floatwrite(trace,nt,out2);
   }
 
@@ -170,8 +170,8 @@ void wesep2dop(float **d_z,float **d_x,float **d_p,float **d_sv,
   __real__ i = 0;
   __imag__ i = 1;
 
-  padt = 2;
-  padx = 2;
+  padt = 4;
+  padx = 4;
   ntfft = padt*nt;
   nw=ntfft/2+1;
   nk = padx*nmx;
@@ -197,8 +197,8 @@ void wesep2dop(float **d_z,float **d_x,float **d_p,float **d_sv,
       s1 = (w*w)/(vs[0][0]*vs[0][0]) - (k*k);
       s2 = (w*w)/(vp[0][0]*vp[0][0]) - (k*k);
       if (s1 > 0 && s2 > 0){ 
-        D_p[ik][iw]  = i*k*D_x[ik][iw] - i*sqrtf(s1)*D_z[ik][iw];
-        D_sv[ik][iw] = i*k*D_z[ik][iw] + i*sqrtf(s2)*D_x[ik][iw];
+        D_p[ik][iw]  = i*k*D_x[ik][iw] + i*sqrtf(s1)*D_z[ik][iw];
+        D_sv[ik][iw] = i*k*D_z[ik][iw] - i*sqrtf(s2)*D_x[ik][iw];
       }
       else{
         D_p[ik][iw]  = czero;
