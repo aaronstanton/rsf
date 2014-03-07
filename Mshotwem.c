@@ -229,10 +229,10 @@ int main(int argc, char* argv[])
     for (ix=0;ix<nmx;ix++){
       for (it=0;it<nt;it++){
         d_1[ix][it] = 0.0;
-        d_2[ix][it] = (float) 10*sf_randn_one_bm();
+        d_2[ix][it] = (float) 100*sf_randn_one_bm();
       }
       for (iz=0;iz<nz;iz++){
-        dmig_1[ix][iz] = (float) 10*sf_randn_one_bm();
+        dmig_1[ix][iz] = (float) 100*sf_randn_one_bm();
         dmig_2[ix][iz] = 0.0;
       }
     }
@@ -243,7 +243,7 @@ int main(int argc, char* argv[])
     for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) tmp_sum1 += d_1[ix][it]*d_2[ix][it];
     tmp_sum2=0;
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2 += dmig_1[ix][iz]*dmig_2[ix][iz];
-    fprintf(stderr,"DOT PRODUCT: %f and %f\n",tmp_sum1,tmp_sum2);
+    fprintf(stderr,"DOT PRODUCT: %6.2f and %6.2f\n",tmp_sum1,tmp_sum2);
     exit (0);
   }
 
@@ -373,12 +373,14 @@ void wem2dop(float **d, float **dmig,float *wav,
       po[iz] = 0.0;
       for (ix=0;ix<nmx;ix++) po[iz] += 1.0/c[ix][iz];
       po[iz] /= (float) nmx;
-      for (ix=0;ix<nmx;ix++) pd[ix][iz] = 1.0/c[ix][iz] - po[iz];
+      for (ix=0;ix<nmx;ix++){ 
+        pd[ix][iz] = 1.0/c[ix][iz] - po[iz];
+      }
     }
   }
 
-  a  = fftwf_malloc(sizeof(fftw_complex) * nk);
-  b  = fftwf_malloc(sizeof(fftw_complex) * nk);
+  a  = fftwf_malloc(sizeof(fftwf_complex) * nk);
+  b  = fftwf_malloc(sizeof(fftwf_complex) * nk);
   n = sf_intalloc(1); 
   n[0] = nk;
   p1 = fftwf_plan_dft(1, n, (fftwf_complex*)a, (fftwf_complex*)a, FFTW_FORWARD, FFTW_ESTIMATE);
@@ -454,7 +456,7 @@ void extrap1f(float **dmig,
   else{
     smig = sf_complexalloc2(nz,nmx);
     for (ix=0;ix<nmx;ix++) d_xs[ix] = d_s_wx[ix][iw];
-    for (iz=0;iz<nz;iz++){ /* extrapolate shot wavefield */
+    for (iz=0;iz<nz;iz++){ /* extrapolate source wavefield */
       if (op==1) pspiop(d_xs,w,dk,nk,nmx,nref,-dz,iz,c,vref,iref1,iref2,i,czero,p1,p2,adj,verbose); 
       else if (op==2) ssop(d_xs,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,adj,verbose); 
       for (ix=0;ix<nmx;ix++) smig[ix][iz] = d_xs[ix];
@@ -487,8 +489,8 @@ void pspiop(sf_complex *d_x,
   sf_complex *d_k,**dref;
   fftwf_complex *a,*b;
 
-  a  = fftwf_malloc(sizeof(fftw_complex) * nk);
-  b  = fftwf_malloc(sizeof(fftw_complex) * nk);
+  a  = fftwf_malloc(sizeof(fftwf_complex) * nk);
+  b  = fftwf_malloc(sizeof(fftwf_complex) * nk);
   dref = sf_complexalloc2(nref,nmx);
   d_k = sf_complexalloc(nk);
 
@@ -550,28 +552,28 @@ void ssop(sf_complex *d_x,
   sf_complex *d_k;
   fftwf_complex *a,*b;
 
-  a  = fftwf_malloc(sizeof(fftw_complex) * nk);
-  b  = fftwf_malloc(sizeof(fftw_complex) * nk);
+  a  = fftwf_malloc(sizeof(fftwf_complex) * nk);
+  b  = fftwf_malloc(sizeof(fftwf_complex) * nk);
   d_k = sf_complexalloc(nk);
 
 
   for(ix=0 ;ix<nmx;ix++) a[ix] = d_x[ix];
   for(ix=nmx;ix<nk;ix++) a[ix] = czero;
   fftwf_execute_dft(p1,a,a); 
-  for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik];
+  for(ik=0 ;ik<nk;ik++) d_k[ik] = a[ik]/sqrtf((float) nk);
   for (ik=0;ik<nk;ik++){ 
     if (ik<nk/2) k = dk*ik;
     else         k = -(dk*nk - dk*ik);
     s = (w*w)*(po[iz]*po[iz]) - (k*k);
-    if (s>=0.0) L = cexpf(i*sqrtf(s)*dz);
-    else L = 0.0;
+    if (s>0) L = cexpf(i*sqrtf(s)*dz);
+    else L = czero;
     d_k[ik] = d_k[ik]*L;        
   }
   for(ik=0; ik<nk;ik++) b[ik] = d_k[ik];
   fftwf_execute_dft(p2,b,b);
 
   for(ix=0; ix<nmx;ix++){
-    d_x[ix] = b[ix]*cexpf(i*w*pd[ix][iz]*dz)/((float) nk);
+    d_x[ix] = b[ix]*cexpf(i*w*pd[ix][iz]*dz)/sqrtf((float) nk);
   }
 
   free1complex(d_k);
@@ -583,7 +585,8 @@ void ssop(sf_complex *d_x,
 
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
 {
-  sf_complex *out1a,*in1b,czero;
+  fftwf_complex *out1a,*in1b;
+  sf_complex czero;
   float *in1a,*out1b;
   int ntfft,it,iw;
   fftwf_plan p1a,p1b;
@@ -593,7 +596,7 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
   __imag__ czero = 0;
 
   if (adj){ /* data --> model */
-    out1a = sf_complexalloc(nw);
+    out1a = fftwf_malloc(sizeof(fftwf_complex) * nw);
     in1a = sf_floatalloc(ntfft);
     p1a = fftwf_plan_dft_r2c_1d(ntfft, in1a, (fftwf_complex*)out1a, FFTW_ESTIMATE);
     for(it=0;it<nt;it++) in1a[it] = d[it];
@@ -606,7 +609,7 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
 
   else{ /* model --> data */
     out1b = sf_floatalloc(ntfft);
-    in1b = sf_complexalloc(ntfft);
+    in1b = fftwf_malloc(sizeof(fftwf_complex) * ntfft);
     p1b = fftwf_plan_dft_c2r_1d(ntfft, (fftwf_complex*)in1b, out1b, FFTW_ESTIMATE);
     for(iw=0;iw<nw;iw++) in1b[iw] = m[iw];
     for(iw=nw;iw<ntfft;iw++) in1b[iw] = czero;
