@@ -305,7 +305,7 @@ void wem2dop(float **d, float **dmig,float *wav,
   }
   for (it=0;it<nt;it++) d_t[it] = wav[it];
   f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
-  for (iw=0;iw<nw;iw++) d_s_wx[isx][iw] = d_w[iw];
+  for (iw=0;iw<nw;iw++) d_s_wx[isx][iw] = d_w[iw]/((float) ntfft);
   /* receiver wavefield*/
   if (adj){
     for (ix=0;ix<nmx;ix++){
