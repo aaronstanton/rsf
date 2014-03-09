@@ -232,7 +232,7 @@ int main(int argc, char* argv[])
     for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) tmp_sum1 += d_1[ix][it]*d_2[ix][it];
     tmp_sum2=0;
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2 += dmig_1[ix][iz]*dmig_2[ix][iz];
-    fprintf(stderr,"DOT PRODUCT: %6.2f and %6.2f\n",tmp_sum1,tmp_sum2);
+    fprintf(stderr,"DOT PRODUCT: %6.5f and %6.5f\n",tmp_sum1,tmp_sum2);
     exit (0);
   }
 
@@ -403,7 +403,7 @@ void extrap1f(float **dmig,
     for (iz=0;iz<nz;iz++){ /* extrapolate source and receiver wavefields */
       ssop(d_xs,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,true,verbose); 
       ssop(d_xg,w,dk,nk,nmx,dz,iz,po,pd,i,czero,p1,p2,true,verbose);
-      for (ix=0;ix<nmx;ix++) dmig[ix][iz] += 2*dz*crealf(conjf(d_xs[ix])*d_xg[ix])/((float) ntfft);
+      for (ix=0;ix<nmx;ix++) dmig[ix][iz] += 2*crealf(conjf(d_xs[ix])*d_xg[ix])/((float) ntfft);
     }
   }
 
@@ -419,7 +419,7 @@ void extrap1f(float **dmig,
       for (ix=0;ix<nmx;ix++) d_xg[ix] = d_xg[ix] + smig[ix][iz]*dmig[ix][iz];
       ssop(d_xg,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,false,verbose);
     }
-    for (ix=0;ix<nmx;ix++) d_g_wx[ix][iw] = dz*d_xg[ix];
+    for (ix=0;ix<nmx;ix++) d_g_wx[ix][iw] = d_xg[ix];
     free2complex(smig);
   }
   free1complex(d_xg);
