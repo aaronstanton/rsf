@@ -47,6 +47,14 @@ void free2float(float **p)
 	free(p);
 }
 
+void free3float(float ***p)
+/*< free3float >*/
+{
+	free(**p);
+	free(*p);
+	free(p);
+}
+
 void free1complex(sf_complex *p)
 /*< free1complex >*/
 {
