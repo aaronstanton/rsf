@@ -16,6 +16,8 @@ spbpdn
 shotwem
 wavsep
 shotewem
+fkfilter
+taper
 '''
 
 pyprogs='''

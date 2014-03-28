@@ -76,13 +76,15 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
 float cgdot(float **x,int nt,int nm);
 float cgdotc(sf_complex **x,int nt,int nm);
 float cgdotc1d(sf_complex *x,int nt);
-void match_weights(float **w1, float **w2, float **m1, float **m2, int nz, int nmx, float e);
-void triangle_filter(sf_complex **m,int nz,int nmx,bool adj);
+void update_weights(float **w1, float **w2, float **m1, float **m2, int nz, int nmx, int mode);
+void apply_weight(float **m1, float **w1, int nz, int nmx, int mode);
+void triangle_filter(float **m,int nz,int nmx,bool adj);
 void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d);
-void adapt(sf_complex *f, sf_complex **m, sf_complex **d, int nw, int nmx, int Niter);
-void conv_op(sf_complex *filter,sf_complex **d,sf_complex **m,int nw,int nmx,bool adj);
+void adapt(sf_complex **f, sf_complex **m, sf_complex **d, int nw, int nmx, int Niter);
+void conv_op(sf_complex **filter,sf_complex **d,sf_complex **m,int nw,int nmx,bool adj);
 void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb, float pc, float pd);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
+void window_match(float **w,float **d1,float **d2,int nt,int nLt,int nLx,int nx);
 
 int main(int argc, char* argv[])
 {
@@ -340,13 +342,15 @@ int main(int argc, char* argv[])
     sf_putfloat(weights2file,"d3",0);
     sf_putfloat(weights2file,"n3",1);
     ewem_sp2d_op(dp,ds,dmigpp,dmigps,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,adj,verbose);
-    weights1 = sf_floatalloc2(nz,nmx);
-    weights2 = sf_floatalloc2(nz,nmx);
-    match_weights(weights1,weights2,dmigpp,dmigps,nz,nmx,1);
     sf_floatwrite(dmigpp[0],nz*nmx,out1);
     sf_floatwrite(dmigps[0],nz*nmx,out2);
-    sf_floatwrite(weights1[0],nz*nmx,weights1file);
-    sf_floatwrite(weights2[0],nz*nmx,weights2file);
+    weights1 = sf_floatalloc2(nz,nmx);
+    weights2 = sf_floatalloc2(nz,nmx);
+    update_weights(weights1,weights2,dmigpp,dmigps,nz,nmx,2);
+    apply_weight(dmigpp,weights2,nz,nmx,2); 
+    apply_weight(dmigps,weights1,nz,nmx,2);
+    sf_floatwrite(dmigps[0],nz*nmx,weights1file);
+    sf_floatwrite(dmigpp[0],nz*nmx,weights2file);
     exit (0);
   }
 
@@ -546,7 +550,7 @@ for (isx=0;isx<nsx;isx++){
       offset = fabs(((float) ix*dmx + omx) - sx);
       for (iz=0;iz<nz;iz++){
         z = iz*dz + oz;
-        if (offset <= z){ 
+        if (offset <= z*2){ 
           dmigpp1shot[ix][iz] = dmigpp[ix][iz];
           dmigps1shot[ix][iz] = dmigps[ix][iz];
         }
@@ -626,13 +630,12 @@ for (isx=0;isx<nsx;isx++){
     fkfilter(dmigpp1shot,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
     fkfilter(dmigps1shot,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
 
-
     sx = (float) isx*dsx + osx;
     for (ix=0;ix<nmx;ix++){
       offset = fabs(((float) ix*dmx + omx) - sx);
       for (iz=0;iz<nz;iz++){
         z = iz*dz + oz;
-        if (offset <= z){ 
+        if (offset <= z*2){ 
           dmigpp[ix][iz] += dmigpp1shot[ix][iz];
           dmigps[ix][iz] += dmigps1shot[ix][iz];
         }
@@ -874,20 +877,23 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
   float gamma1,gamma1_old,delta1,alpha1,beta1,**r1,**ss1,**g1,**s1,**v1,**v1wm;
   float gamma2,gamma2_old,delta2,alpha2,beta2,**r2,**ss2,**g2,**s2,**v2,**v2wm;
   float **wm1,**wm2;
+  float denom;
+  float *d_z;
+
+  d_z = sf_floatalloc(nz);
 
   r1 = sf_floatalloc2(nt,nmx*nsx);
   ss1 = sf_floatalloc2(nt,nmx*nsx);
   g1 = sf_floatalloc2(nz,nmx);
   s1 = sf_floatalloc2(nz,nmx);
   v1 = sf_floatalloc2(nz,nmx);
+  v1wm = sf_floatalloc2(nz,nmx);
 
   r2 = sf_floatalloc2(nt,nmx*nsx);
   ss2 = sf_floatalloc2(nt,nmx*nsx);
   g2 = sf_floatalloc2(nz,nmx);
   s2 = sf_floatalloc2(nz,nmx);
   v2 = sf_floatalloc2(nz,nmx);
-
-  v1wm = sf_floatalloc2(nz,nmx);
   v2wm = sf_floatalloc2(nz,nmx);
 
   wm1 = sf_floatalloc2(nz,nmx);
@@ -906,16 +912,16 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
   progress = 0.0;
 
 
-  for (k2=0;k2<Nextern;k2++){
+  Nextern=1;
 
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1wm[ix][iz] = v1[ix][iz];
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1wm[ix][iz] = v2[ix][iz]*wm2[ix][iz];
-    ewem_sp2d_op(r1,r2,v1wm,v2wm,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,false);
-    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = (dp[ix][it] -  r1[ix][it])*wd[ix];
-    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (ds[ix][it] -  r2[ix][it])*wd[ix];
+  for (k2=0;k2<Nextern;k2++){
+  //  apply_weight(dmigpp,wm2,nz,nmx,2);
+    /* notice below that dmigpp and dmigps are flipped as we are propagating the "matched" wavefields to update our residual */
+ //   ewem_sp2d_op(r1,r2,dmigps,dmigpp,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,false);
+    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = dp[ix][it]*wd[ix];
+    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = ds[ix][it]*wd[ix];
+ //   for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (ds[ix][it] - r2[ix][it])*wd[ix];
     ewem_sp2d_op(r1,r2,g1,g2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,false);
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) g1[ix][iz] = g1[ix][iz];
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) g2[ix][iz] = g2[ix][iz]*wm2[ix][iz];
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz];
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz];
     
@@ -941,8 +947,6 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
       misfit1[k2*Niter + k] = cgdot(r1,nt,nmx*nsx);
       misfit2[k2*Niter + k] = cgdot(r2,nt,nmx*nsx);
       ewem_sp2d_op(r1,r2,g1,g2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,false);
-      for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) g1[ix][iz] = g1[ix][iz];
-      for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) g2[ix][iz] = g2[ix][iz]*wm2[ix][iz];
       gamma1 = cgdot(g1,nz,nmx);
       gamma2 = cgdot(g2,nz,nmx);
       beta1 = gamma1/(gamma1_old + 0.00000001);
@@ -952,11 +956,26 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
       for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz] + s1[ix][iz]*beta1;
       for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz] + s2[ix][iz]*beta2;
     }
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = v1[ix][iz];
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = v2[ix][iz]*wm2[ix][iz];
-    match_weights(wm1,wm2,v1,v2,nz,nmx,0.001); 
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] =  v1[ix][iz];
+   // for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1wm[ix][iz] =  v1[ix][iz];
+   // apply_weight(v1wm,wm2,nz,nmx,2);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] =  v2[ix][iz];// + v1wm[ix][iz];
+ /*   update_weights(wm1,wm2,dmigpp,dmigps,nz,nmx,2);*/
   }
-  
+   
+  fkfilter(dmigpp,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
+  fkfilter(dmigps,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
+  for (ix=0;ix<nmx;ix++){
+    for (iz=0;iz<nz;iz++) d_z[iz] = dmigpp[ix][iz];
+    bpfilter(d_z,0.004,nz,5,10,50,60);
+    for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = d_z[iz];
+  }
+  for (ix=0;ix<nmx;ix++){
+    for (iz=0;iz<nz;iz++) d_z[iz] = dmigps[ix][iz];
+    bpfilter(d_z,0.004,nz,5,10,50,60);
+    for (iz=0;iz<nz;iz++) dmigps[ix][iz] = d_z[iz];
+  }
+
   if (verbose) fprintf(stderr,"\r                   \n");
 
   free2float(r1);
@@ -964,12 +983,14 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
   free2float(g1);
   free2float(s1);
   free2float(v1);
+  free2float(v1wm);
 
   free2float(r2);
   free2float(ss2);
   free2float(g2);
   free2float(s2);
   free2float(v2);
+  free2float(v2wm);
 
   free2float(wm1);
   free2float(wm2);
@@ -1017,115 +1038,13 @@ float cgdotc1d(sf_complex *x,int nt)
   return(cgdot);
 }
 
-void match_weights(float **w1, float **w2, float **m1, float **m2, int nz, int nmx, float e)
-/* create weights to improve the similarity of m1 and m2 */
-{
-  float *d_z;
-  sf_complex *d_w,*W1,*W2,**M1,**M2,czero;
-  int padz,nzfft,nw,ix,iz,iw;
-  float norm1,norm2;
-  int ifmax;
-  
-  __real__ czero = 0;
-  __imag__ czero = 0;
-  padz = 2;
-  nzfft = padz*nz;
-  nw=nzfft/2+1;
-  ifmax = (int) nw/8;
-  d_z = sf_floatalloc(nz);
-  d_w = sf_complexalloc(nw);
-  M1 = sf_complexalloc2(nw,nmx);
-  M2 = sf_complexalloc2(nw,nmx);
-
-  for (iz=0;iz<nz;iz++)  d_z[iz] = 0.0;  
-  for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
-
-  for (ix=0;ix<nmx;ix++){
-    for (iz=0;iz<nz;iz++) d_z[iz] = m1[ix][iz];
-    f_op(d_w,d_z,nw,nz,1); /* d_z to d_w */
-    for (iw=0;iw<nw;iw++) M1[ix][iw] = d_w[iw]/((float) nzfft);
-  }
-  for (ix=0;ix<nmx;ix++){
-    for (iz=0;iz<nz;iz++) d_z[iz] = m2[ix][iz];
-    f_op(d_w,d_z,nw,nz,1); /* d_z to d_w */
-    for (iw=0;iw<nw;iw++) M2[ix][iw] = d_w[iw]/((float) nzfft);
-  }
- 
-  W1 = sf_complexalloc(nw);
-  W2 = sf_complexalloc(nw);
-
-  adapt(W1,M2,M1,nw,nmx,20);
-  adapt(W2,M1,M2,nw,nmx,20);
-
-  for (ix=0;ix<nmx;ix++){
-    for (iw=0;iw<nw;iw++) d_w[iw] = M1[ix][iw] - W1[iw]*M2[ix][iw];
-    f_op(d_w,d_z,nw,nz,0); /* d_w to d_z */
-    for (iz=0;iz<nz;iz++) w1[ix][iz] = d_z[iz];
-  }
-
-  for (ix=0;ix<nmx;ix++){
-    for (iw=0;iw<nw;iw++) d_w[iw] = M2[ix][iw] - W2[iw]*M1[ix][iw];
-    f_op(d_w,d_z,nw,nz,0); /* d_w to d_z */
-    for (iz=0;iz<nz;iz++) w2[ix][iz] = d_z[iz];
-  }
-
-/* band limit the weights along the z axis */
-/*
-  for (ix=0;ix<nmx;ix++){
-    for (iz=0;iz<nz;iz++) d_z[iz] = w1[ix][iz];
-    bpfilter(d_z,0.004,nz,0,0,10,20);
-    for (iz=0;iz<nz;iz++) w1[ix][iz] = d_z[iz];
-  }
-
-  for (ix=0;ix<nmx;ix++){
-    for (iz=0;iz<nz;iz++) d_z[iz] = w2[ix][iz];
-    bpfilter(d_z,0.004,nz,0,0,10,20);
-    for (iz=0;iz<nz;iz++) w2[ix][iz] = d_z[iz];
-  }
-*/
-/* normalize the weights */
-  norm1 = 0.0;
-  for (ix=0;ix<nmx;ix++){
-    for (iz=0;iz<nz;iz++){ 
-      if (fabs(w1[ix][iz]) > norm1) norm1 = fabs(w1[ix][iz]);
-    }
-  }
-  norm2 = 0.0;
-  for (ix=0;ix<nmx;ix++){
-    for (iz=0;iz<nz;iz++){ 
-      if (fabs(w2[ix][iz]) > norm2) norm2 = fabs(w2[ix][iz]);
-    }
-  }
- 
-  for (ix=0;ix<nmx;ix++){
-    for (iz=0;iz<nz;iz++){
-      w1[ix][iz] = 1.0 - fabs(w1[ix][iz])/norm1;
-    }
-  }
-
-  for (ix=0;ix<nmx;ix++){
-    for (iz=0;iz<nz;iz++){
-      w2[ix][iz] = 1.0 - fabs(w2[ix][iz])/norm2;
-    }
-  }
-
-  free1complex(d_w);
-  free1complex(W1);
-  free1complex(W2);
-  free2complex(M1);
-  free2complex(M2);
-
-  return;
-}
-
-
-void triangle_filter(sf_complex **m,int nz,int nmx,bool adj)
+void triangle_filter(float **m,int nz,int nmx,bool adj)
 /*< 5 point triangle filter forward and adjoint operator. It acts on the x axis. The operator does nothing if the x axis has a length less than or equal to 5. >*/
 {
 
   int iz, ix;
-  sf_complex **a;
-  a = sf_complexalloc2(nz,nmx);
+  float **a;
+  a = sf_floatalloc2(nz,nmx);
 
   if (nmx>5){ 
     if (!adj){
@@ -1165,7 +1084,7 @@ void triangle_filter(sf_complex **m,int nz,int nmx,bool adj)
     }
   }
   for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = a[ix][iz]; 
-  free2complex(a);
+  free2float(a);
 
   return;
 }
@@ -1318,72 +1237,199 @@ else{ /* model --> data */
 
 }
 
+void update_weights(float **w1, float **w2, float **m1, float **m2, int nz, int nmx, int mode)
+/* create weights to improve the similarity of m1 and m2 */
+{
+  int ix,iz,iw,padz,nzfft,nw;
+  sf_complex **M1,**M2,**W1,**W2,*d_w,czero;
+  float *d_z;
 
-void adapt(sf_complex *f, sf_complex **m, sf_complex **d, int nw, int nmx, int Niter)
-/* find a 1D filter that best matches m to d */
+  if (mode==1){
+    window_match(w2,m1,m2,nz,nmx,10,10); /* m1*m2/m1*m1 => multiply against m1 */
+    window_match(w1,m2,m1,nz,nmx,10,10); /* m2*m1/m2*m2 => multiply against m2 */
+  }
+  else if (mode==2){
+    padz = 2;
+    nzfft = padz*nz;
+    nw=nzfft/2+1;
+    M1 = sf_complexalloc2(nw,nmx);
+    M2 = sf_complexalloc2(nw,nmx);
+    W1 = sf_complexalloc2(nw,nmx);
+    W2 = sf_complexalloc2(nw,nmx);
+    __real__ czero = 0;
+    __imag__ czero = 0;
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) W1[ix][iw] = czero;
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) W2[ix][iw] = czero;
+    d_z = sf_floatalloc(nz);
+    d_w = sf_complexalloc(nw);
+    for (ix=0;ix<nmx;ix++){
+      for (iz=0;iz<nz;iz++) d_z[iz] = m1[ix][iz];
+      f_op(d_w,d_z,nw,nz,1);
+      for (iw=0;iw<nw;iw++) M1[ix][iw] = d_w[iw]/sqrtf((float) nzfft);
+      for (iz=0;iz<nz;iz++) d_z[iz] = m2[ix][iz];
+      f_op(d_w,d_z,nw,nz,1);
+      for (iw=0;iw<nw;iw++) M2[ix][iw] = d_w[iw]/sqrtf((float) nzfft);
+    }
+    adapt(W2,M1,M2,nw,nmx,100);
+    adapt(W1,M2,M1,nw,nmx,100);
+    for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<nw;iw++) d_w[iw] = W1[ix][iw];
+      f_op(d_w,d_z,nw,nz,0);
+      for (iz=0;iz<nz;iz++) w1[ix][iz] = d_z[iz]/sqrtf((float) nzfft);
+      for (iw=0;iw<nw;iw++) d_w[iw] = W2[ix][iw];
+      f_op(d_w,d_z,nw,nz,0);
+      for (iz=0;iz<nz;iz++) w2[ix][iz] = d_z[iz]/sqrtf((float) nzfft);
+    }
+
+    /* bandpass filter */
+    for (ix=0;ix<nmx;ix++){
+      for (iz=0;iz<nz;iz++) d_z[iz] = w1[ix][iz];
+      bpfilter(d_z,0.004,nz,5,12,80,90);
+      for (iz=0;iz<nz;iz++) w1[ix][iz] = d_z[iz];
+    }
+    for (ix=0;ix<nmx;ix++){
+      for (iz=0;iz<nz;iz++) d_z[iz] = w2[ix][iz];
+      bpfilter(d_z,0.004,nz,5,12,80,90);
+      for (iz=0;iz<nz;iz++) w2[ix][iz] = d_z[iz];
+    }
+
+    free2complex(M1);
+    free2complex(M2);
+    free2complex(W1);
+    free2complex(W2);
+    free1float(d_z);
+    free1complex(d_w);
+  }
+
+  return;
+}
+
+void apply_weight(float **m1, float **w1, int nz, int nmx, int mode)
+/* apply weights. multiplication if mode=1 and convolution if mode=2. */
+{
+  int ix,iz,iw,padz,nzfft,nw;
+  sf_complex **M1,**W1,*d_w;
+  float *d_z;
+  
+  if (mode==1){
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m1[ix][iz] = m1[ix][iz]*w1[ix][iz];
+  }
+  else if (mode==2){
+    padz = 2;
+    nzfft = padz*nz;
+    nw=nzfft/2+1;
+    M1 = sf_complexalloc2(nw,nmx);
+    W1 = sf_complexalloc2(nw,nmx);
+    d_z = sf_floatalloc(nz);
+    d_w = sf_complexalloc(nw);
+    for (ix=0;ix<nmx;ix++){
+      for (iz=0;iz<nz;iz++) d_z[iz] = m1[ix][iz];
+      f_op(d_w,d_z,nw,nz,1);
+      for (iw=0;iw<nw;iw++) M1[ix][iw] = d_w[iw]/sqrtf((float) nzfft);
+      for (iz=0;iz<nz;iz++) d_z[iz] = w1[ix][iz];
+      f_op(d_w,d_z,nw,nz,1);
+      for (iw=0;iw<nw;iw++) W1[ix][iw] = d_w[iw]/sqrtf((float) nzfft);
+    }
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) M1[ix][iw] = M1[ix][iw]*W1[ix][iw];
+    for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<nw;iw++) d_w[iw] = M1[ix][iw];
+      f_op(d_w,d_z,nw,nz,0);
+      for (iz=0;iz<nz;iz++) m1[ix][iz] = d_z[iz]/sqrtf((float) nzfft);
+    }
+    free2complex(M1);
+    free2complex(W1);
+    free1float(d_z);
+    free1complex(d_w);
+  }
+
+  return;
+}
+
+
+void adapt(sf_complex **f, sf_complex **m, sf_complex **d, int nw, int nmx, int Niter)
+/* find nmx 1-D filters that best match m to d */
 {
   int ix,iw,k;
   float gamma,gamma_old,delta,alpha,beta,misfit;
-  sf_complex **r,**ss,*g,*s,*v,czero;
+  sf_complex **r,**ss,**g,**s,**v,czero;
 
   r = sf_complexalloc2(nw,nmx);
   ss = sf_complexalloc2(nw,nmx);
-  g = sf_complexalloc(nw);
-  s = sf_complexalloc(nw);
-  v = sf_complexalloc(nw);
-
+  g = sf_complexalloc2(nw,nmx);
+  s = sf_complexalloc2(nw,nmx);
+  v = sf_complexalloc2(nw,nmx);
   __real__ czero = 0;
   __imag__ czero = 0;
+  for (ix=0;ix<nmx;ix++){
     for (iw=0;iw<nw;iw++){
-      f[iw] = czero;				
-      v[iw] = czero;
-      g[iw] = czero;
+      f[ix][iw] = czero;				
+      v[ix][iw] = czero;
+      g[ix][iw] = czero;
     }
+  }
   for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) r[ix][iw] = d[ix][iw];
   conv_op(g,r,m,nw,nmx,true);     /* ADJOINT */
-  for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) s[iw] = g[iw];
-  gamma = cgdotc1d(g,nw);
+  for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) s[ix][iw] = g[ix][iw];
+  gamma = cgdotc(g,nw,nmx);
   gamma_old = gamma;
   for (k=0;k<Niter;k++){
     conv_op(s,ss,m,nw,nmx,false); /* FORWARD */
     delta = cgdotc(ss,nw,nmx);
     alpha = gamma/(delta + 0.00000001);
-    for (iw=0;iw<nw;iw++) v[iw] = v[iw] +  s[iw]*alpha;
-    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) r[ix][iw] = r[ix][iw] -  ss[ix][iw]*alpha;
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) v[ix][iw] = v[ix][iw] +  s[ix][iw]*alpha;
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) r[ix][iw] = r[ix][iw] - ss[ix][iw]*alpha;
     misfit = cgdotc(r,nw,nmx);
-    fprintf(stderr,"misfit=%f\n",misfit);
+    /*fprintf(stderr,"misfit=%f\n",misfit);*/
     conv_op(g,r,m,nw,nmx,true);   /* ADJOINT */
-    gamma = cgdotc1d(g,nw);
+    gamma = cgdotc(g,nw,nmx);
     beta = gamma/(gamma_old + 0.00000001);
     gamma_old = gamma;
-    for (iw=0;iw<nw;iw++) s[iw] = g[iw] + s[iw]*beta;
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) s[ix][iw] = g[ix][iw] + s[ix][iw]*beta;
   }
-  for (iw=0;iw<nw;iw++) f[iw] = v[iw];
-
+  for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) f[ix][iw] = v[ix][iw];
   free2complex(r);
   free2complex(ss);
-  free1complex(g);
-  free1complex(s);
-  free1complex(v);
-
+  free2complex(g);
+  free2complex(s);
+  free2complex(v);
   return;
 }
 
-void conv_op(sf_complex *filter,sf_complex **d,sf_complex **m,int nw,int nmx,bool adj)
+void conv_op(sf_complex **filter,sf_complex **d,sf_complex **m,int nw,int nmx,bool adj)
 /* convolution/correlation fwd adj pair */
 {
   int ix,iw;
 
   if (adj){
-    for (iw=0;iw<nw;iw++){ 
-      __real__ filter[iw] = 0.0;
-      __imag__ filter[iw] = 0.0;
-    }
-    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) filter[iw] += d[ix][iw]*conjf(m[ix][iw]);
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) filter[ix][iw] = d[ix][iw]*conjf(m[ix][iw]);
   }
   else{
-    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) d[ix][iw] = filter[iw]*m[ix][iw];
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) d[ix][iw] = filter[ix][iw]*m[ix][iw];
   }
   return;
 }
+
+void window_match(float **w,float **d1,float **d2,int nt,int nx,int nLt,int nLx)
+{
+  int it,ix,iLt,iLx;
+  float a,b;
+  for (ix=0;ix<nx;ix++){
+  for (it=0;it<nt;it++){
+    a = 0.0;
+    b = 0.0;
+    for (iLx=-nLx/2;iLx<=nLx/2;iLx++){
+    for (iLt=-nLt/2;iLt<=nLt/2;iLt++){
+      if (it+iLt > 0 && it+iLt < nt && ix+iLx > 0 && ix+iLx < nx){ 
+        a += d1[ix+iLx][it+iLt]*d2[ix+iLx][it+iLt];
+        b += d1[ix+iLx][it+iLt]*d1[ix+iLx][it+iLt];
+      }
+    }
+    }
+    w[ix][it] = a/(b+0.001);
+  }
+  }
+  
+  return;
+}
+
 

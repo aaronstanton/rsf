@@ -196,13 +196,17 @@ void wesep2dop(float **d_z,float **d_x,float **d_p,float **d_sv,
       w = dw*iw;
       s1 = (w*w)/(vs[0][0]*vs[0][0]) - (k*k);
       s2 = (w*w)/(vp[0][0]*vp[0][0]) - (k*k);
-      if (s1 > 0 && s2 > 0){ 
+      if (s1 >= 0){ 
         D_p[ik][iw]  = i*k*D_x[ik][iw] + i*sqrtf(s1)*D_z[ik][iw];
+      }
+      else{
+        D_p[ik][iw]  = i*k*D_x[ik][iw] -   sqrtf(-s1)*D_z[ik][iw];
+      }
+      if (s2 >= 0){ 
         D_sv[ik][iw] = i*k*D_z[ik][iw] - i*sqrtf(s2)*D_x[ik][iw];
       }
       else{
-        D_p[ik][iw]  = czero;
-        D_sv[ik][iw] = czero;
+        D_sv[ik][iw] = i*k*D_z[ik][iw] +   sqrtf(-s2)*D_x[ik][iw];
       }
     }  
   }
