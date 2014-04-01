@@ -86,6 +86,7 @@ void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb,
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void window_match(float **w,float **d1,float **d2,int nt,int nLt,int nLx,int nx);
 void my_taper(float **d,int nt,int nx1,int nx2,int nx3,int nx4,int lt,int lx1,int lx2,int lx3,int lx4);
+void triangle_filter2(float **z,int nt,int nmx,int nhx,bool adj);
 
 int main(int argc, char* argv[])
 {
@@ -227,17 +228,17 @@ int main(int argc, char* argv[])
     sf_putfloat(out1,"n1",nz);
     sf_putstring(out1,"label1","Depth");
     sf_putstring(out1,"unit1","m");
-    sf_putfloat(out1,"o3",0);
-    sf_putfloat(out1,"d3",0);
-    sf_putfloat(out1,"n3",1);
+    sf_putfloat(out1,"o3",osx);
+    sf_putfloat(out1,"d3",dsx);
+    sf_putfloat(out1,"n3",nsx);
     sf_putfloat(out2,"o1",oz);
     sf_putfloat(out2,"d1",dz);
     sf_putfloat(out2,"n1",nz);
     sf_putstring(out2,"label1","Depth");
     sf_putstring(out2,"unit1","m");
-    sf_putfloat(out2,"o3",0);
-    sf_putfloat(out2,"d3",0);
-    sf_putfloat(out2,"n3",1);
+    sf_putfloat(out2,"o3",osx);
+    sf_putfloat(out2,"d3",dsx);
+    sf_putfloat(out2,"n3",nsx);
   }
   else{
     sf_putfloat(out1,"o1",ot);
@@ -283,8 +284,8 @@ int main(int argc, char* argv[])
   sf_floatread(vs[0],nz*nmx,vels);
   dp = sf_floatalloc2(nt,nmx*nsx);
   ds = sf_floatalloc2(nt,nmx*nsx);
-  dmigpp = sf_floatalloc2(nz,nmx);
-  dmigps = sf_floatalloc2(nz,nmx);
+  dmigpp = sf_floatalloc2(nz,nmx*nsx);
+  dmigps = sf_floatalloc2(nz,nmx*nsx);
   wd = sf_floatalloc(nmx*nsx);
   sum_wd = 0;
   if (adj){
@@ -303,12 +304,12 @@ int main(int argc, char* argv[])
     }
     if (verbose && adj) fprintf(stderr,"There are %6.2f %% missing traces.\n", 
                          (float) 100 - 100*sum_wd/((float) nmx*nsx));
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = 0.0;
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = 0.0;
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = 0.0;
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = 0.0;
   }
   else{
-    sf_floatread(dmigpp[0],nz*nmx,in1);
-    sf_floatread(dmigps[0],nz*nmx,in2);
+    sf_floatread(dmigpp[0],nz*nmx*nsx,in1);
+    sf_floatread(dmigps[0],nz*nmx*nsx,in2);
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) dp[ix][it] = 0.0;
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) ds[ix][it] = 0.0;
   }
@@ -326,9 +327,9 @@ int main(int argc, char* argv[])
     sf_putfloat(weights1file,"n2",nmx);
     sf_putstring(weights1file,"label1","Depth");
     sf_putstring(weights1file,"unit1","m");
-    sf_putfloat(weights1file,"o3",0);
-    sf_putfloat(weights1file,"d3",0);
-    sf_putfloat(weights1file,"n3",1);
+    sf_putfloat(weights1file,"o3",osx);
+    sf_putfloat(weights1file,"d3",dsx);
+    sf_putfloat(weights1file,"n3",nsx);
     weights2name = sf_getstring("weights2");
     weights2file = sf_output(weights2name);
     sf_putfloat(weights2file,"o1",oz);
@@ -339,19 +340,19 @@ int main(int argc, char* argv[])
     sf_putfloat(weights2file,"n2",nmx);
     sf_putstring(weights2file,"label1","Depth");
     sf_putstring(weights2file,"unit1","m");
-    sf_putfloat(weights2file,"o3",0);
-    sf_putfloat(weights2file,"d3",0);
-    sf_putfloat(weights2file,"n3",1);
+    sf_putfloat(weights2file,"o3",osx);
+    sf_putfloat(weights2file,"d3",dsx);
+    sf_putfloat(weights2file,"n3",nsx);
     ewem_sp2d_op(dp,ds,dmigpp,dmigps,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,adj,verbose);
-    sf_floatwrite(dmigpp[0],nz*nmx,out1);
-    sf_floatwrite(dmigps[0],nz*nmx,out2);
-    weights1 = sf_floatalloc2(nz,nmx);
-    weights2 = sf_floatalloc2(nz,nmx);
-    update_weights(weights1,weights2,dmigpp,dmigps,nz,nmx,1);
-    apply_weight(dmigpp,weights2,nz,nmx,1); 
-    apply_weight(dmigps,weights1,nz,nmx,1);
-    sf_floatwrite(dmigps[0],nz*nmx,weights1file);
-    sf_floatwrite(dmigpp[0],nz*nmx,weights2file);
+    sf_floatwrite(dmigpp[0],nz*nmx*nsx,out1);
+    sf_floatwrite(dmigps[0],nz*nmx*nsx,out2);
+    weights1 = sf_floatalloc2(nz,nmx*nsx);
+    weights2 = sf_floatalloc2(nz,nmx*nsx);
+    update_weights(weights1,weights2,dmigpp,dmigps,nz,nmx*nsx,1);
+    apply_weight(dmigpp,weights2,nz,nmx*nsx,1); 
+    apply_weight(dmigps,weights1,nz,nmx*nsx,1);
+    sf_floatwrite(dmigps[0],nz*nmx*nsx,weights1file);
+    sf_floatwrite(dmigpp[0],nz*nmx*nsx,weights2file);
     exit (0);
   }
 
@@ -364,10 +365,10 @@ int main(int argc, char* argv[])
     dp_2 = sf_floatalloc2(nt,nmx*nsx);
     ds_1 = sf_floatalloc2(nt,nmx*nsx);
     ds_2 = sf_floatalloc2(nt,nmx*nsx);
-    dmigpp_1 = sf_floatalloc2(nz,nmx);
-    dmigpp_2 = sf_floatalloc2(nz,nmx);
-    dmigps_1 = sf_floatalloc2(nz,nmx);
-    dmigps_2 = sf_floatalloc2(nz,nmx);
+    dmigpp_1 = sf_floatalloc2(nz,nmx*nsx);
+    dmigpp_2 = sf_floatalloc2(nz,nmx*nsx);
+    dmigps_1 = sf_floatalloc2(nz,nmx*nsx);
+    dmigps_2 = sf_floatalloc2(nz,nmx*nsx);
     init_genrand(dseed);
     for (ix=0;ix<nmx*nsx;ix++){
       for (it=0;it<nt;it++){
@@ -377,7 +378,7 @@ int main(int argc, char* argv[])
         ds_2[ix][it] = (float) 1.0*sf_randn_one_bm();
       }
     }
-    for (ix=0;ix<nmx;ix++){
+    for (ix=0;ix<nmx*nsx;ix++){
       for (iz=0;iz<nz;iz++){
         dmigpp_1[ix][iz] = (float) 1.0*sf_randn_one_bm();
         dmigpp_2[ix][iz] = 0.0;
@@ -387,15 +388,20 @@ int main(int argc, char* argv[])
     }
     ewem_sp2d_op(dp_1,ds_1,dmigpp_1,dmigps_1,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,verbose);
     ewem_sp2d_op(dp_2,ds_2,dmigpp_2,dmigps_2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,verbose);
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) dmigpp_2[ix][iz] = dp_2[ix][iz];
+    triangle_filter2(dmigpp_2,nz,nmx,nsx,1);
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) dmigps_2[ix][iz] = ds_2[ix][iz];
+    triangle_filter2(dmigps_2,nz,nmx,nsx,1);
+
     tmp_sum1_p=0;
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) tmp_sum1_p += dp_1[ix][it]*dp_2[ix][it];
     tmp_sum2_p=0;
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2_p += dmigpp_1[ix][iz]*dmigpp_2[ix][iz];
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2_p += dmigpp_1[ix][iz]*dmigpp_2[ix][iz];
     fprintf(stderr,"DOT PRODUCT (PP): %6.5f and %6.5f\n",tmp_sum1_p,tmp_sum2_p);
     tmp_sum1_s=0;
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) tmp_sum1_s += ds_1[ix][it]*ds_2[ix][it];
     tmp_sum2_s=0;
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2_s += dmigps_1[ix][iz]*dmigps_2[ix][iz];
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2_s += dmigps_1[ix][iz]*dmigps_2[ix][iz];
     fprintf(stderr,"DOT PRODUCT (PS): %6.5f and %6.5f\n",tmp_sum1_s,tmp_sum2_s);
     free2float(dp_1);
     free2float(dp_2);
@@ -418,8 +424,8 @@ int main(int argc, char* argv[])
   }
 
   if (adj || inv){
-    sf_floatwrite(dmigpp[0],nz*nmx,out1);
-    sf_floatwrite(dmigps[0],nz*nmx,out2);
+    sf_floatwrite(dmigpp[0],nz*nmx*nsx,out1);
+    sf_floatwrite(dmigps[0],nz*nmx*nsx,out2);
   }
   else{
     sf_floatwrite(dp[0],nt*nmx*nsx,out1);
@@ -465,9 +471,11 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
   float *po_p,**pd_p,*po_s,**pd_s;
   float sx,offset,z;
   float **dmigpp1shot,**dmigps1shot;
+  float **tmp;
 
   dmigpp1shot = sf_floatalloc2(nz,nmx); 
   dmigps1shot = sf_floatalloc2(nz,nmx); 
+  tmp = sf_floatalloc2(nz,nsx);
 
   __real__ czero = 0;
   __imag__ czero = 0;
@@ -494,8 +502,8 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
   for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
 
   if (adj){
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = 0.0;
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = 0.0;
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = 0.0;
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = 0.0;
   }
   else{
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) dp[ix][it] = 0.0;
@@ -542,7 +550,10 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
     my_taper(dp,nt,nmx,nsx,1,1,0,0,0,0,0);
     my_taper(ds,nt,nmx,nsx,1,1,0,0,0,0,0);
   }
-
+  else{ /* smooth along the shot axis with a triangle filter */
+    triangle_filter2(dmigpp,nz,nmx,nsx,0);
+    triangle_filter2(dmigps,nz,nmx,nsx,0);
+  }
 for (isx=0;isx<nsx;isx++){
 
   for (ix=0;ix<nmx;ix++){
@@ -559,8 +570,8 @@ for (isx=0;isx<nsx;isx++){
       for (iz=0;iz<nz;iz++){
         z = iz*dz + oz;
         if (offset <= z*2){ 
-          dmigpp1shot[ix][iz] = dmigpp[ix][iz];
-          dmigps1shot[ix][iz] = dmigps[ix][iz];
+          dmigpp1shot[ix][iz] = dmigpp[isx*nmx + ix][iz];
+          dmigps1shot[ix][iz] = dmigps[isx*nmx + ix][iz];
         }
       }
     } 
@@ -644,8 +655,8 @@ for (isx=0;isx<nsx;isx++){
       for (iz=0;iz<nz;iz++){
         z = iz*dz + oz;
         if (offset <= z*2){ 
-          dmigpp[ix][iz] += dmigpp1shot[ix][iz];
-          dmigps[ix][iz] += dmigps1shot[ix][iz];
+          dmigpp[isx*nmx + ix][iz] = dmigpp1shot[ix][iz];
+          dmigps[isx*nmx + ix][iz] = dmigps1shot[ix][iz];
         }
       }
     }  
@@ -668,8 +679,11 @@ for (isx=0;isx<nsx;isx++){
   }
   if (verbose) fprintf(stderr,"\r                     ");
 }
-
-  if (!adj){
+  if (adj){ /* smooth along the shot axis with a triangle filter */
+    triangle_filter2(dmigpp,nz,nmx,nsx,1);
+    triangle_filter2(dmigps,nz,nmx,nsx,1);
+  }
+  else{
     /* taper the edges of the data */
     my_taper(dp,nt,nmx,nsx,1,1,0,0,0,0,0);
     my_taper(ds,nt,nmx,nsx,1,1,0,0,0,0,0);
@@ -692,6 +706,7 @@ for (isx=0;isx<nsx;isx++){
   free2float(pd_s);
   free2float(dmigpp1shot);
   free2float(dmigps1shot);
+  free2float(tmp);
 
   return;
 } 
@@ -885,34 +900,38 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
                  bool verbose)
 /*< Least squares migration. >*/
 {
-  int k,k2,ix,it,iz;
+  int k,k2,ix,it,iz,isx;
   float progress;
   float gamma1,gamma1_old,delta1,alpha1,beta1,**r1,**ss1,**g1,**s1,**v1,**v1wm;
   float gamma2,gamma2_old,delta2,alpha2,beta2,**r2,**ss2,**g2,**s2,**v2,**v2wm;
   float **wm1,**wm2;
   float denom;
   float *d_z;
+  float **tmp,**tmp2;
 
   d_z = sf_floatalloc(nz);
 
   r1 = sf_floatalloc2(nt,nmx*nsx);
   ss1 = sf_floatalloc2(nt,nmx*nsx);
-  g1 = sf_floatalloc2(nz,nmx);
-  s1 = sf_floatalloc2(nz,nmx);
-  v1 = sf_floatalloc2(nz,nmx);
-  v1wm = sf_floatalloc2(nz,nmx);
+  g1 = sf_floatalloc2(nz,nmx*nsx);
+  s1 = sf_floatalloc2(nz,nmx*nsx);
+  v1 = sf_floatalloc2(nz,nmx*nsx);
+  v1wm = sf_floatalloc2(nz,nmx*nsx);
 
   r2 = sf_floatalloc2(nt,nmx*nsx);
   ss2 = sf_floatalloc2(nt,nmx*nsx);
-  g2 = sf_floatalloc2(nz,nmx);
-  s2 = sf_floatalloc2(nz,nmx);
-  v2 = sf_floatalloc2(nz,nmx);
-  v2wm = sf_floatalloc2(nz,nmx);
+  g2 = sf_floatalloc2(nz,nmx*nsx);
+  s2 = sf_floatalloc2(nz,nmx*nsx);
+  v2 = sf_floatalloc2(nz,nmx*nsx);
+  v2wm = sf_floatalloc2(nz,nmx*nsx);
 
-  wm1 = sf_floatalloc2(nz,nmx);
-  wm2 = sf_floatalloc2(nz,nmx);
+  wm1 = sf_floatalloc2(nz,nmx*nsx);
+  wm2 = sf_floatalloc2(nz,nmx*nsx);
 
-  for (ix=0;ix<nmx;ix++){
+  tmp = sf_floatalloc2(nz,nmx);
+  tmp2 = sf_floatalloc2(nz,nsx);
+
+  for (ix=0;ix<nmx*nsx;ix++){
     for (iz=0;iz<nz;iz++){
       dmigpp[ix][iz] = 0.0;				
       dmigps[ix][iz] = 0.0;				
@@ -923,20 +942,20 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
   progress = 0.0;
 
   for (k2=0;k2<Nextern;k2++){
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = 0.0;
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = 0.0;
-    apply_weight(dmigpp,wm2,nz,nmx,1);
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = 0.0;
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = 0.0;
+    apply_weight(dmigpp,wm2,nz,nmx*nsx,1);
     /* notice below that dmigpp and dmigps are flipped as we are propagating the "matched" wavefields to update our residual */
     ewem_sp2d_op(r1,r2,dmigps,dmigpp,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,false);
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = dp[ix][it]*wd[ix];
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (ds[ix][it] - r2[ix][it])*wd[ix];
     ewem_sp2d_op(r1,r2,g1,g2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,false);
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz];
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz];
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz];
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz];
     
-    gamma1 = cgdot(g1,nz,nmx);
+    gamma1 = cgdot(g1,nz,nmx*nsx);
     gamma1_old = gamma1;
-    gamma2 = cgdot(g2,nz,nmx);
+    gamma2 = cgdot(g2,nz,nmx*nsx);
     gamma2_old = gamma2;
     
     for (k=0;k<Niter;k++){
@@ -949,41 +968,52 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
       alpha1 = gamma1/(delta1 + 0.00000001);
       delta2 = cgdot(ss2,nt,nmx*nsx);
       alpha2 = gamma2/(delta2 + 0.00000001);
-      for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = v1[ix][iz] +  s1[ix][iz]*alpha1;
-      for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = v2[ix][iz] +  s2[ix][iz]*alpha2;
+      for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = v1[ix][iz] +  s1[ix][iz]*alpha1;
+      for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = v2[ix][iz] +  s2[ix][iz]*alpha2;
       for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = (r1[ix][it] -  ss1[ix][it]*alpha1)*wd[ix];
       for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (r2[ix][it] -  ss2[ix][it]*alpha2)*wd[ix];
       misfit1[k2*Niter + k] = cgdot(r1,nt,nmx*nsx);
       misfit2[k2*Niter + k] = cgdot(r2,nt,nmx*nsx);
       ewem_sp2d_op(r1,r2,g1,g2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,false);
-      gamma1 = cgdot(g1,nz,nmx);
-      gamma2 = cgdot(g2,nz,nmx);
+      gamma1 = cgdot(g1,nz,nmx*nsx);
+      gamma2 = cgdot(g2,nz,nmx*nsx);
       beta1 = gamma1/(gamma1_old + 0.00000001);
       beta2 = gamma2/(gamma2_old + 0.00000001);
       gamma1_old = gamma1;
       gamma2_old = gamma2;
-      for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz] + s1[ix][iz]*beta1;
-      for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz] + s2[ix][iz]*beta2;
+      for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz] + s1[ix][iz]*beta1;
+      for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz] + s2[ix][iz]*beta2;
     }
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] =  v1[ix][iz];
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1wm[ix][iz] =  v1[ix][iz];
-    apply_weight(v1wm,wm2,nz,nmx,1);
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] =  v2[ix][iz] + v1wm[ix][iz];
-    update_weights(wm1,wm2,dmigpp,dmigps,nz,nmx,1);
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = v1[ix][iz];
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) v1wm[ix][iz] = v1[ix][iz];
+    apply_weight(v1wm,wm2,nz,nmx*nsx,1);
+    for (ix=0;ix<nmx*nsx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = v2[ix][iz] + v1wm[ix][iz];
+    update_weights(wm1,wm2,dmigpp,dmigps,nz,nmx*nsx,1);
   }
    
-  fkfilter(dmigpp,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
-  fkfilter(dmigps,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
-  for (ix=0;ix<nmx;ix++){
+  for (isx=0;isx<nsx;isx++){ 
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) tmp[ix][iz] =  dmigpp[isx*nmx + ix][iz];
+    fkfilter(tmp,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigpp[isx*nmx + ix][iz] = tmp[ix][iz];
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) tmp[ix][iz] =  dmigps[isx*nmx + ix][iz];
+    fkfilter(tmp,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigps[isx*nmx + ix][iz] = tmp[ix][iz];
+  }
+
+  for (ix=0;ix<nmx*nsx;ix++){
     for (iz=0;iz<nz;iz++) d_z[iz] = dmigpp[ix][iz];
     bpfilter(d_z,0.004,nz,0,10,80,90);
     for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = d_z[iz];
   }
-  for (ix=0;ix<nmx;ix++){
+  for (ix=0;ix<nmx*nsx;ix++){
     for (iz=0;iz<nz;iz++) d_z[iz] = dmigps[ix][iz];
     bpfilter(d_z,0.004,nz,0,10,80,90);
     for (iz=0;iz<nz;iz++) dmigps[ix][iz] = d_z[iz];
   }
+
+  /* smooth along the shot axis with a triangle filter */
+  triangle_filter2(dmigpp,nz,nmx,nsx,1);
+  triangle_filter2(dmigps,nz,nmx,nsx,1);
 
   if (verbose) fprintf(stderr,"\r                   \n");
 
@@ -1003,6 +1033,8 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
 
   free2float(wm1);
   free2float(wm2);
+
+  free2float(tmp);
 
   return;
 }
@@ -1057,13 +1089,11 @@ void triangle_filter(float **m,int nz,int nmx,bool adj)
 
   if (nmx>5){ 
     if (!adj){
-      for (ix=0;ix<nmx;ix++){
-        for (iz=0;iz<nz;iz++){
-          a[0][iz] = (3*m[0][iz] + 4*m[1][iz] + 2*m[2][iz])/9;
-          a[1][iz] = (2*m[0][iz] + 3*m[1][iz] + 2*m[2][iz] + 2*m[3][iz])/9;
-          a[nmx-2][iz] = (2*m[nmx-4][iz] + 2*m[nmx-3][iz] + 3*m[nmx-2][iz] + 2*m[nmx-1][iz])/9;
-          a[nmx-1][iz] = (2*m[nmx-3][iz] + 4*m[nmx-2][iz] + 3*m[nmx-1][iz])/9;
-        }
+      for (iz=0;iz<nz;iz++){
+        a[0][iz] = (3*m[0][iz] + 4*m[1][iz] + 2*m[2][iz])/9;
+        a[1][iz] = (2*m[0][iz] + 3*m[1][iz] + 2*m[2][iz] + 2*m[3][iz])/9;
+        a[nmx-2][iz] = (2*m[nmx-4][iz] + 2*m[nmx-3][iz] + 3*m[nmx-2][iz] + 2*m[nmx-1][iz])/9;
+        a[nmx-1][iz] = (2*m[nmx-3][iz] + 4*m[nmx-2][iz] + 3*m[nmx-1][iz])/9;
       }
       for (ix=2;ix<nmx-2;ix++){
         for (iz=0;iz<nz;iz++){
@@ -1072,18 +1102,16 @@ void triangle_filter(float **m,int nz,int nmx,bool adj)
       }
     }
     else {
-      for (ix=0;ix<nmx;ix++){
-        for (iz=0;iz<nz;iz++){
-    	  a[0][iz]  = (3*m[0][iz] +   2*m[1][iz] + 1*m[2][iz])/9;
-    	  a[1][iz]  = (4*m[0][iz] +   3*m[1][iz] + 2*m[2][iz] + 1*m[3][iz])/9;
-    	  a[2][iz]  = (2*m[0][iz] +   2*m[1][iz] + 3*m[2][iz] + 2*m[3][iz] + 1*m[4][iz])/9;
-    	  a[3][iz]  = (2*m[1][iz] +   2*m[2][iz] + 3*m[3][iz] + 2*m[4][iz] + 1*m[5][iz])/9;
+      for (iz=0;iz<nz;iz++){
+    	a[0][iz]  = (3*m[0][iz] +   2*m[1][iz] + 1*m[2][iz])/9;
+    	a[1][iz]  = (4*m[0][iz] +   3*m[1][iz] + 2*m[2][iz] + 1*m[3][iz])/9;
+    	a[2][iz]  = (2*m[0][iz] +   2*m[1][iz] + 3*m[2][iz] + 2*m[3][iz] + 1*m[4][iz])/9;
+    	a[3][iz]  = (2*m[1][iz] +   2*m[2][iz] + 3*m[3][iz] + 2*m[4][iz] + 1*m[5][iz])/9;
 
-    	  a[nmx-1][iz]  = (3*m[nmx-1][iz] +   2*m[nmx-2][iz] + 1*m[nmx-3][iz])/9;
-    	  a[nmx-2][iz]  = (4*m[nmx-1][iz] +   3*m[nmx-2][iz] + 2*m[nmx-3][iz] + 1*m[nmx-4][iz])/9;
-    	  a[nmx-3][iz]  = (2*m[nmx-1][iz] +   2*m[nmx-2][iz] + 3*m[nmx-3][iz] + 2*m[nmx-4][iz] + 1*m[nmx-5][iz])/9;
-    	  a[nmx-4][iz]  = (2*m[nmx-2][iz] +   2*m[nmx-3][iz] + 3*m[nmx-4][iz] + 2*m[nmx-5][iz] + 1*m[nmx-6][iz])/9;
-        }
+    	a[nmx-1][iz]  = (3*m[nmx-1][iz] +   2*m[nmx-2][iz] + 1*m[nmx-3][iz])/9;
+    	a[nmx-2][iz]  = (4*m[nmx-1][iz] +   3*m[nmx-2][iz] + 2*m[nmx-3][iz] + 1*m[nmx-4][iz])/9;
+    	a[nmx-3][iz]  = (2*m[nmx-1][iz] +   2*m[nmx-2][iz] + 3*m[nmx-3][iz] + 2*m[nmx-4][iz] + 1*m[nmx-5][iz])/9;
+    	a[nmx-4][iz]  = (2*m[nmx-2][iz] +   2*m[nmx-3][iz] + 3*m[nmx-4][iz] + 2*m[nmx-5][iz] + 1*m[nmx-6][iz])/9;
       }
       for (ix=4;ix<nmx-4;ix++){
         for (iz=0;iz<nz;iz++){
@@ -1094,6 +1122,66 @@ void triangle_filter(float **m,int nz,int nmx,bool adj)
   }
   for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = a[ix][iz]; 
   free2float(a);
+
+  return;
+}
+
+void triangle_filter2(float **z,int nt,int nmx,int nhx,bool adj)
+/*< 5 point triangle filter forward and adjoint operator. It acts on the offset axis. The operator does nothing if the offset axis has a length less than or equal to 5. >*/
+{
+  
+  float **m;
+  m = sf_floatalloc2(nt,nmx*nhx);
+
+  int it, imx, ihx;
+  if (nhx>5){ 
+    if (!adj){
+      for (imx=0;imx<nmx;imx++){
+        for (it=0;it<nt;it++){
+              m[(0)*nmx + imx][it] = (3*z[(0)*nmx + imx][it] + 4*z[(1)*nmx + imx][it] + 2*z[(2)*nmx + imx][it])/9;
+              m[(1)*nmx + imx][it] = (2*z[(0)*nmx + imx][it] + 3*z[(1)*nmx + imx][it] + 2*z[(2)*nmx + imx][it] + 2*z[(3)*nmx + imx][it])/9;
+              m[(nhx-2)*nmx + imx][it] = (2*z[(nhx-4)*nmx + imx][it] + 2*z[(nhx-3)*nmx + imx][it] + 3*z[(nhx-2)*nmx + imx][it] + 2*z[(nhx-1)*nmx + imx][it])/9;
+              m[(nhx-1)*nmx + imx][it] = (2*z[(nhx-3)*nmx + imx][it] + 4*z[(nhx-2)*nmx + imx][it] + 3*z[(nhx-1)*nmx + imx][it])/9;
+        }
+      }
+      for (ihx=2;ihx<nhx-2;ihx++){
+        for (imx=0;imx<nmx;imx++){
+          for (it=0;it<nt;it++){
+            m[(ihx)*nmx + imx][it] = (z[(ihx-2)*nmx + imx][it] + 2*z[(ihx-1)*nmx + imx][it] + 3*z[(ihx)*nmx + imx][it] + 2*z[(ihx+1)*nmx + imx][it] + z[(ihx+2)*nmx + imx][it])/9;
+    	  }
+        }
+      }
+    }
+    else {
+      for (imx=0;imx<nmx;imx++){
+        for (it=0;it<nt;it++){
+    	      m[(0)*nmx + imx][it]  = (3*z[(0)*nmx + imx][it] +   2*z[(1)*nmx + imx][it] + 1*z[(2)*nmx + imx][it])/9;
+    	      m[(1)*nmx + imx][it]  = (4*z[(0)*nmx + imx][it] +   3*z[(1)*nmx + imx][it] + 2*z[(2)*nmx + imx][it] + 1*z[(3)*nmx + imx][it])/9;
+    	      m[(2)*nmx + imx][it]  = (2*z[(0)*nmx + imx][it] +   2*z[(1)*nmx + imx][it] + 3*z[(2)*nmx + imx][it] + 2*z[(3)*nmx + imx][it] + 1*z[(4)*nmx + imx][it])/9;
+    	      m[(3)*nmx + imx][it]  = (2*z[(1)*nmx + imx][it] +   2*z[(2)*nmx + imx][it] + 3*z[(3)*nmx + imx][it] + 2*z[(4)*nmx + imx][it] + 1*z[(5)*nmx + imx][it])/9;
+
+    	      m[(nhx-1)*nmx + imx][it]  = (3*z[(nhx-1)*nmx + imx][it] +   2*z[(nhx-2)*nmx + imx][it] + 1*z[(nhx-3)*nmx + imx][it])/9;
+    	      m[(nhx-2)*nmx + imx][it]  = (4*z[(nhx-1)*nmx + imx][it] +   3*z[(nhx-2)*nmx + imx][it] + 2*z[(nhx-3)*nmx + imx][it] + 1*z[(nhx-4)*nmx + imx][it])/9;
+    	      m[(nhx-3)*nmx + imx][it]  = (2*z[(nhx-1)*nmx + imx][it] +   2*z[(nhx-2)*nmx + imx][it] + 3*z[(nhx-3)*nmx + imx][it] + 2*z[(nhx-4)*nmx + imx][it] + 1*z[(nhx-5)*nmx + imx][it])/9;
+    	      m[(nhx-4)*nmx + imx][it]  = (2*z[(nhx-2)*nmx + imx][it] +   2*z[(nhx-3)*nmx + imx][it] + 3*z[(nhx-4)*nmx + imx][it] + 2*z[(nhx-5)*nmx + imx][it] + 1*z[(nhx-6)*nmx + imx][it])/9;
+        }
+      }
+      for (ihx=4;ihx<nhx-4;ihx++){
+        for (imx=0;imx<nmx;imx++){
+          for (it=0;it<nt;it++){
+            m[ihx*nmx + imx][it] = (  1*z[(ihx-2)*nmx + imx][it] 
+                                    + 2*z[(ihx-1)*nmx + imx][it] 
+                                    + 3*z[(ihx)*nmx   + imx][it] 
+                                    + 2*z[(ihx+1)*nmx + imx][it] 
+                                    + 1*z[(ihx+2)*nmx + imx][it])/9;
+  	  }
+        }
+      }
+    }
+  }
+    
+  for (ihx=0;ihx<nhx;ihx++) for (imx=0;imx<nmx;imx++) for (it=0;it<nt;it++) z[ihx*nmx + imx][it] = m[ihx*nmx + imx][it];
+  free2float(m);
 
   return;
 }
