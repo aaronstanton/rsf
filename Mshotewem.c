@@ -85,6 +85,7 @@ void conv_op(sf_complex **filter,sf_complex **d,sf_complex **m,int nw,int nmx,bo
 void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb, float pc, float pd);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void window_match(float **w,float **d1,float **d2,int nt,int nLt,int nLx,int nx);
+void my_taper(float **d,int nt,int nx1,int nx2,int nx3,int nx4,int lt,int lx1,int lx2,int lx3,int lx4);
 
 int main(int argc, char* argv[])
 {
@@ -346,9 +347,9 @@ int main(int argc, char* argv[])
     sf_floatwrite(dmigps[0],nz*nmx,out2);
     weights1 = sf_floatalloc2(nz,nmx);
     weights2 = sf_floatalloc2(nz,nmx);
-    update_weights(weights1,weights2,dmigpp,dmigps,nz,nmx,2);
-    apply_weight(dmigpp,weights2,nz,nmx,2); 
-    apply_weight(dmigps,weights1,nz,nmx,2);
+    update_weights(weights1,weights2,dmigpp,dmigps,nz,nmx,1);
+    apply_weight(dmigpp,weights2,nz,nmx,1); 
+    apply_weight(dmigps,weights1,nz,nmx,1);
     sf_floatwrite(dmigps[0],nz*nmx,weights1file);
     sf_floatwrite(dmigpp[0],nz*nmx,weights2file);
     exit (0);
@@ -472,8 +473,8 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
   __imag__ czero = 0;
   __real__ i = 0;
   __imag__ i = 1;
-  padt = 2;
-  padx = 2;
+  padt = 4;
+  padx = 4;
   ntfft = padt*nt;
   nw=ntfft/2+1;
   if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
@@ -535,7 +536,13 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
   } 
   fftwf_execute_dft(p1,a,a); 
   fftwf_execute_dft(p2,b,b); 
-  
+
+  if (adj){
+    /* taper the edges of the data */
+    my_taper(dp,nt,nmx,nsx,1,1,0,0,0,0,0);
+    my_taper(ds,nt,nmx,nsx,1,1,0,0,0,0,0);
+  }
+
 for (isx=0;isx<nsx;isx++){
 
   for (ix=0;ix<nmx;ix++){
@@ -543,7 +550,8 @@ for (isx=0;isx<nsx;isx++){
       dmigpp1shot[ix][iz] = 0.0;
       dmigps1shot[ix][iz] = 0.0;
     }
-  }  
+  }
+  
   if (!adj){
     sx = (float) isx*dsx + osx;
     for (ix=0;ix<nmx;ix++){
@@ -557,17 +565,17 @@ for (isx=0;isx<nsx;isx++){
       }
     } 
     /* F-K filter dmigpp1shot and dmigps1shot */
-    fkfilter(dmigpp1shot,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
-    fkfilter(dmigps1shot,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
+    fkfilter(dmigpp1shot,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
+    fkfilter(dmigps1shot,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
     /* bandpass filter dmigpp1shot and dmigps1shot */
     for (ix=0;ix<nmx;ix++){
       for (iz=0;iz<nz;iz++) d_z[iz] = dmigpp1shot[ix][iz];
-      bpfilter(d_z,0.004,nz,5,10,40,50);
+      bpfilter(d_z,0.004,nz,0,10,80,90);
       for (iz=0;iz<nz;iz++) dmigpp1shot[ix][iz] = d_z[iz];
     }
     for (ix=0;ix<nmx;ix++){
       for (iz=0;iz<nz;iz++) d_z[iz] = dmigps1shot[ix][iz];
-      bpfilter(d_z,0.004,nz,5,10,40,50);
+      bpfilter(d_z,0.004,nz,0,10,80,90);
       for (iz=0;iz<nz;iz++) dmigps1shot[ix][iz] = d_z[iz];
     }
   }
@@ -617,18 +625,18 @@ for (isx=0;isx<nsx;isx++){
     /* bandpass filter dmigpp1shot and dmigps1shot */
     for (ix=0;ix<nmx;ix++){
       for (iz=0;iz<nz;iz++) d_z[iz] = dmigpp1shot[ix][iz];
-      bpfilter(d_z,0.004,nz,5,10,40,50);
+      bpfilter(d_z,0.004,nz,0,10,80,90);
       for (iz=0;iz<nz;iz++) dmigpp1shot[ix][iz] = d_z[iz];
     }
     for (ix=0;ix<nmx;ix++){
       for (iz=0;iz<nz;iz++) d_z[iz] = dmigps1shot[ix][iz];
-      bpfilter(d_z,0.004,nz,5,10,40,50);
+      bpfilter(d_z,0.004,nz,0,10,80,90);
       for (iz=0;iz<nz;iz++) dmigps1shot[ix][iz] = d_z[iz];
     }
 
     /* F-K filter dmigpp1shot and dmigps1shot */
-    fkfilter(dmigpp1shot,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
-    fkfilter(dmigps1shot,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
+    fkfilter(dmigpp1shot,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
+    fkfilter(dmigps1shot,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
 
     sx = (float) isx*dsx + osx;
     for (ix=0;ix<nmx;ix++){
@@ -661,6 +669,11 @@ for (isx=0;isx<nsx;isx++){
   if (verbose) fprintf(stderr,"\r                     ");
 }
 
+  if (!adj){
+    /* taper the edges of the data */
+    my_taper(dp,nt,nmx,nsx,1,1,0,0,0,0,0);
+    my_taper(ds,nt,nmx,nsx,1,1,0,0,0,0,0);
+  }
 
   if (verbose) fprintf(stderr,"\r                   \n");
 
@@ -903,24 +916,20 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
     for (iz=0;iz<nz;iz++){
       dmigpp[ix][iz] = 0.0;				
       dmigps[ix][iz] = 0.0;				
-      v1[ix][iz] = 0.0;
-      v2[ix][iz] = 0.0;
-      wm1[ix][iz] = 1.0;
-      wm2[ix][iz] = 1.0;
+      wm1[ix][iz] = 0.0;
+      wm2[ix][iz] = 0.0;
     }
   }
   progress = 0.0;
 
-
-  Nextern=1;
-
   for (k2=0;k2<Nextern;k2++){
-  //  apply_weight(dmigpp,wm2,nz,nmx,2);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = 0.0;
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = 0.0;
+    apply_weight(dmigpp,wm2,nz,nmx,1);
     /* notice below that dmigpp and dmigps are flipped as we are propagating the "matched" wavefields to update our residual */
- //   ewem_sp2d_op(r1,r2,dmigps,dmigpp,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,false);
+    ewem_sp2d_op(r1,r2,dmigps,dmigpp,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,false);
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = dp[ix][it]*wd[ix];
-    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = ds[ix][it]*wd[ix];
- //   for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (ds[ix][it] - r2[ix][it])*wd[ix];
+    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (ds[ix][it] - r2[ix][it])*wd[ix];
     ewem_sp2d_op(r1,r2,g1,g2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,false);
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz];
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz];
@@ -957,22 +966,22 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
       for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz] + s2[ix][iz]*beta2;
     }
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] =  v1[ix][iz];
-   // for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1wm[ix][iz] =  v1[ix][iz];
-   // apply_weight(v1wm,wm2,nz,nmx,2);
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] =  v2[ix][iz];// + v1wm[ix][iz];
- /*   update_weights(wm1,wm2,dmigpp,dmigps,nz,nmx,2);*/
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) v1wm[ix][iz] =  v1[ix][iz];
+    apply_weight(v1wm,wm2,nz,nmx,1);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] =  v2[ix][iz] + v1wm[ix][iz];
+    update_weights(wm1,wm2,dmigpp,dmigps,nz,nmx,1);
   }
    
-  fkfilter(dmigpp,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
-  fkfilter(dmigps,dz,nz,dmx,nmx,-0.5,-0.3,0.3,0.5);
+  fkfilter(dmigpp,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
+  fkfilter(dmigps,dz,nz,dmx,nmx,-1,-0.5,0.5,1);
   for (ix=0;ix<nmx;ix++){
     for (iz=0;iz<nz;iz++) d_z[iz] = dmigpp[ix][iz];
-    bpfilter(d_z,0.004,nz,5,10,50,60);
+    bpfilter(d_z,0.004,nz,0,10,80,90);
     for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = d_z[iz];
   }
   for (ix=0;ix<nmx;ix++){
     for (iz=0;iz<nz;iz++) d_z[iz] = dmigps[ix][iz];
-    bpfilter(d_z,0.004,nz,5,10,50,60);
+    bpfilter(d_z,0.004,nz,0,10,80,90);
     for (iz=0;iz<nz;iz++) dmigps[ix][iz] = d_z[iz];
   }
 
@@ -1145,8 +1154,8 @@ void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb,
   sf_complex czero;
   __real__ czero = 0;
   __imag__ czero = 0;
-  padt = 2;
-  padx = 2;
+  padt = 4;
+  padx = 4;
   ntfft = padt*nt;
   nw=ntfft/2+1;
   nk = padx*nx;
@@ -1248,8 +1257,71 @@ void update_weights(float **w1, float **w2, float **m1, float **m2, int nz, int 
     window_match(w2,m1,m2,nz,nmx,10,10); /* m1*m2/m1*m1 => multiply against m1 */
     window_match(w1,m2,m1,nz,nmx,10,10); /* m2*m1/m2*m2 => multiply against m2 */
   }
-  else if (mode==2){
-    padz = 2;
+  else if (mode==2){ /* estimate convolutional filters */
+    padz = 4;
+    nzfft = padz*nz;
+    nw=nzfft/2+1;
+    M1 = sf_complexalloc2(nw,nmx);
+    M2 = sf_complexalloc2(nw,nmx);
+    W1 = sf_complexalloc2(nw,nmx);
+    W2 = sf_complexalloc2(nw,nmx);
+    __real__ czero = 0;
+    __imag__ czero = 0;
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) W1[ix][iw] = czero;
+    for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) W2[ix][iw] = czero;
+    d_z = sf_floatalloc(nz);
+    d_w = sf_complexalloc(nw);
+    for (ix=0;ix<nmx;ix++){
+      for (iz=0;iz<nz;iz++) d_z[iz] = m1[ix][iz];
+      f_op(d_w,d_z,nw,nz,1);
+      for (iw=0;iw<nw;iw++) M1[ix][iw] = d_w[iw]/sqrtf((float) nzfft);
+      for (iz=0;iz<nz;iz++) d_z[iz] = m2[ix][iz];
+      f_op(d_w,d_z,nw,nz,1);
+      for (iw=0;iw<nw;iw++) M2[ix][iw] = d_w[iw]/sqrtf((float) nzfft);
+    } 
+   
+    for (ix=0;ix<nmx;ix++){
+     for (iw=0;iw<nw;iw++){ 
+       W1[ix][iw] = conjf(M2[ix][iw])*M1[ix][iw]/(conjf(M2[ix][iw])*M2[ix][iw] + 0.01);
+       W2[ix][iw] = conjf(M1[ix][iw])*M2[ix][iw]/(conjf(M1[ix][iw])*M1[ix][iw] + 0.01);
+     }
+    }
+
+    for (ix=0;ix<nmx;ix++){
+      for (iw=0;iw<nw;iw++) d_w[iw] = W1[ix][iw];
+      f_op(d_w,d_z,nw,nz,0);
+      for (iz=0;iz<nz;iz++) w1[ix][iz] = d_z[iz]/sqrtf((float) nzfft);
+      for (iw=0;iw<nw;iw++) d_w[iw] = W2[ix][iw];
+      f_op(d_w,d_z,nw,nz,0);
+      for (iz=0;iz<nz;iz++) w2[ix][iz] = d_z[iz]/sqrtf((float) nzfft);
+    }
+
+    for (ix=0;ix<50;ix++){ /* iterate the appliction of a triangle filter 50 times to smooth the filters laterally */
+      triangle_filter(w1,nz,nmx,1);
+      triangle_filter(w2,nz,nmx,1);
+    }
+    
+    /* bandpass filter */
+    for (ix=0;ix<nmx;ix++){
+      for (iz=0;iz<nz;iz++) d_z[iz] = w1[ix][iz];
+      bpfilter(d_z,0.004,nz,5,12,80,90);
+      for (iz=0;iz<nz;iz++) w1[ix][iz] = d_z[iz];
+    }
+    for (ix=0;ix<nmx;ix++){
+      for (iz=0;iz<nz;iz++) d_z[iz] = w2[ix][iz];
+      bpfilter(d_z,0.004,nz,5,12,80,90);
+      for (iz=0;iz<nz;iz++) w2[ix][iz] = d_z[iz];
+    }
+    
+    free2complex(M1);
+    free2complex(M2);
+    free2complex(W1);
+    free2complex(W2);
+    free1float(d_z);
+    free1complex(d_w);
+  }
+  else if (mode==3){ /* estimate convolutional filters in a least squares sense */
+    padz = 4;
     nzfft = padz*nz;
     nw=nzfft/2+1;
     M1 = sf_complexalloc2(nw,nmx);
@@ -1314,8 +1386,8 @@ void apply_weight(float **m1, float **w1, int nz, int nmx, int mode)
   if (mode==1){
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m1[ix][iz] = m1[ix][iz]*w1[ix][iz];
   }
-  else if (mode==2){
-    padz = 2;
+  else if (mode>1){
+    padz = 4;
     nzfft = padz*nz;
     nw=nzfft/2+1;
     M1 = sf_complexalloc2(nw,nmx);
@@ -1350,7 +1422,7 @@ void adapt(sf_complex **f, sf_complex **m, sf_complex **d, int nw, int nmx, int 
 /* find nmx 1-D filters that best match m to d */
 {
   int ix,iw,k;
-  float gamma,gamma_old,delta,alpha,beta,misfit;
+  float gamma,gamma_old,delta,alpha,beta;
   sf_complex **r,**ss,**g,**s,**v,czero;
 
   r = sf_complexalloc2(nw,nmx);
@@ -1378,8 +1450,6 @@ void adapt(sf_complex **f, sf_complex **m, sf_complex **d, int nw, int nmx, int 
     alpha = gamma/(delta + 0.00000001);
     for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) v[ix][iw] = v[ix][iw] +  s[ix][iw]*alpha;
     for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) r[ix][iw] = r[ix][iw] - ss[ix][iw]*alpha;
-    misfit = cgdotc(r,nw,nmx);
-    /*fprintf(stderr,"misfit=%f\n",misfit);*/
     conv_op(g,r,m,nw,nmx,true);   /* ADJOINT */
     gamma = cgdotc(g,nw,nmx);
     beta = gamma/(gamma_old + 0.00000001);
@@ -1432,4 +1502,39 @@ void window_match(float **w,float **d1,float **d2,int nt,int nx,int nLt,int nLx)
   return;
 }
 
+void my_taper(float **d,int nt,int nx1,int nx2,int nx3,int nx4,int lt,int lx1,int lx2,int lx3,int lx4)
+{
+  int it,ix,ix1,ix2,ix3,ix4;
+  float tt,tx1,tx2,tx3,tx4;
+
+  tx1=1;tx2=1;tx3=1;tx4=1;
+  for (ix1=0;ix1<nx1;ix1++){
+    if (ix1>=0   && ix1<lx1) tx1 = cosf((1-(float) ix1/lx1)*PI/2);
+    else if (ix1>nx1-lx1 && ix1<nx1) tx1 = cosf(((float) (ix1-nx1+lx1)/lx1)*PI/2);
+    else tx1 = 1;
+  for (ix2=0;ix2<nx2;ix2++){
+    if (ix2>=0   && ix2<lx2) tx2 = cosf((1-(float) ix2/lx2)*PI/2);
+    else if (ix2>nx2-lx2 && ix2<nx2) tx2 = cosf(((float) (ix2-nx2+lx2)/lx2)*PI/2);
+    else tx2 = 1;
+  for (ix3=0;ix3<nx3;ix3++){
+    if (ix3>=0   && ix3<lx3) tx3 = cosf((1-(float) ix3/lx3)*PI/2);
+    else if (ix3>nx3-lx3 && ix3<nx3) tx3 = cosf(((float) (ix3-nx3+lx3)/lx3)*PI/2);
+    else tx3 = 1;
+  for (ix4=0;ix4<nx4;ix4++){
+    if (ix4>=0   && ix4<lx4) tx4 = cosf((1-(float) ix4/lx4)*PI/2);
+    else if (ix4>nx4-lx4 && ix4<nx4) tx4 = cosf(((float) (ix4-nx4+lx4)/lx4)*PI/2);
+    else tx4 = 1;
+    ix = ix4*nx3*nx2*nx1 + ix3*nx2*nx1 + ix2*nx1 + ix1;
+    for(it=0;it<nt;it++){
+      if (it>=0   && it<lt) tt = cosf((1-(float) it/lt)*PI/2);
+      else if (it>nt-lt && it<nt) tt = cosf(((float) (it-nt+lt)/lt)*PI/2);
+      else tt = 1;
+      d[ix][it] = tt*tx1*tx2*tx3*tx4*d[ix][it];
+    }
+  }
+  }
+  }
+  }
+  return;
+}
 
