@@ -316,10 +316,10 @@ void process1c(float **d,
   /* copy data from input to FFT array and pad with zeros */
   ntfft = padfactor*nt;
   /* DANGER: YOU MIGHT WANT TO PAD THE SPATIAL DIRECTIONS TOO.*/
-  nx1fft = nx1;
-  nx2fft = nx2;
-  nx3fft = nx3;
-  nx4fft = nx4;
+  nx1fft = padfactor*nx1;
+  nx2fft = padfactor*nx2;
+  nx3fft = padfactor*nx3;
+  nx4fft = padfactor*nx4;
   if(nx1==1) nx1fft = 1;
   if(nx2==1) nx2fft = 1;
   if(nx3==1) nx3fft = 1;
@@ -708,7 +708,6 @@ void cg_irls(sf_complex *m,int nm,
       fftwf_execute(Ps_to_ss);
       for (i=0;i<nd;i++)  ss[i] = ss[i]*wd[i]/sqrt((float) nm);
 
-
       delta = cgdot(ss,nd);
       alpha = gamma/(delta + 0.00000001);
 
@@ -730,7 +729,6 @@ void cg_irls(sf_complex *m,int nm,
     }
     for (i=0;i<nm;i++) m[i] = v[i]*P[i];
     Max_m = max_abs(m,nm);
-
     for (i=0;i<nm;i++) P[i] = sf_cabs(m[i]*(1/Max_m));
   }
 

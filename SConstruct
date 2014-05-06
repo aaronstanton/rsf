@@ -18,6 +18,8 @@ wavsep
 shotewem
 fkfilter
 taper
+anglewem
+convert_to_angle
 '''
 
 pyprogs='''
