@@ -53,17 +53,18 @@ int main(int argc, char* argv[])
   int itmax_internal,itmax_external;
   float *misfit;
   char *misfitname;
+  int numthreads;
 
   sf_init (argc,argv);
   in = sf_input("in");
   out = sf_output("out");
-  velp = sf_input("vp");
   velp = sf_input("vp");
   if (!sf_getbool("ps",&ps)) ps = false; /* flag for PS data */
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (ps) vels = sf_input("vs");
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
   if (!sf_getbool("inv",&inv)) inv = false; /* flag for least squares migration */
+  if (!sf_getint("numthreads",&numthreads)) numthreads = 1; /* number of threads to be used for parallel processing over offset classes. */
   if (!sf_getfloat("gamma",&gamma)) gamma=2;
   if (!sf_getfloat("aperture",&aperture)) aperture=1000;
   if (!sf_getint("itmax_internal",&itmax_internal)) itmax_internal = 10;
@@ -171,7 +172,7 @@ int main(int argc, char* argv[])
 
   if (!inv){
     kt_2d_op(d,m,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
-             aperture,gamma,ps,adj,verbose);  
+             aperture,gamma,ps,numthreads,adj,verbose);  
   }
   else{
     cg_irls_kt2d(d,nmx*nhx,
@@ -182,6 +183,7 @@ int main(int argc, char* argv[])
                  nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
                  misfit,
                  aperture,gamma,ps,
+                 numthreads,
                  verbose);
   }
   if (adj){

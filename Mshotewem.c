@@ -88,7 +88,7 @@ void triangle_filter(float **m,int nz,int nmx,bool adj);
 void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d);
 void adapt(sf_complex **f, sf_complex **m, sf_complex **d, int nw, int nmx, int Niter);
 void conv_op(sf_complex **filter,sf_complex **d,sf_complex **m,int nw,int nmx,bool adj);
-void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb, float pc, float pd);
+void fkfilter(float **d, float dt, int nt, float dx, int nmx, int nhx, float pa, float pb, float pc, float pd);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void window_match(float **w,float **d1,float **d2,int nt,int nLt,int nLx,int nx);
 void my_taper(float **d,int nt,int nx1,int nx2,int nx3,int nx4,int lt,int lx1,int lx2,int lx3,int lx4);
@@ -590,8 +590,12 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
         dmigps2[ix][iz] = dmigps[ix][iz];
       }
     }
-    if (inv) for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp2,nz,nmx,nhx,0);
-    if (inv) for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps2,nz,nmx,nhx,0);
+    if (inv){ 
+      for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp2,nz,nmx,nhx,0);
+      for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps2,nz,nmx,nhx,0);
+      fkfilter(dmigpp2,dz,nz,dmx,nmx,nhx,-0.5,-0.25,0.25,0.5);
+      fkfilter(dmigps2,dz,nz,dmx,nmx,nhx,-0.5,-0.25,0.25,0.5);
+    }    
   }
 
 for (isx=0;isx<nsx;isx++){
@@ -668,8 +672,12 @@ for (isx=0;isx<nsx;isx++){
         dmigps[ix][iz] = dmigps2[ix][iz];
       }
     }
-    if (inv) for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp,nz,nmx,nhx,1);
-    if (inv) for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps,nz,nmx,nhx,1);
+    if (inv){ 
+      fkfilter(dmigpp,dz,nz,dmx,nmx,nhx,-0.5,-0.25,0.25,0.5);
+      fkfilter(dmigps,dz,nz,dmx,nmx,nhx,-0.5,-0.25,0.25,0.5);
+      for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp,nz,nmx,nhx,1);
+      for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps,nz,nmx,nhx,1);
+    }
   }
   else{
     my_taper(dp,nt,nmx,nsx,1,1,0,20,0,0,0);
@@ -997,6 +1005,8 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
     update_weights(wm1,wm2,dmigpp,dmigps,nz,nmx*nhx,1);
   }
   /* smooth along the offset axis with a triangle filter */
+  fkfilter(dmigpp,dz,nz,dmx,nmx,nhx,-0.5,-0.25,0.25,0.5);
+  fkfilter(dmigps,dz,nz,dmx,nmx,nhx,-0.5,-0.25,0.25,0.5);
   for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp,nz,nmx,nhx,1);
   for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps,nz,nmx,nhx,1);
 
@@ -1218,11 +1228,12 @@ void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d
 }
 
 
-void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb, float pc, float pd)
+void fkfilter(float **d, float dt, int nt, float dx, int nmx, int nhx, float pa, float pb, float pc, float pd)
 {
-  int iw,nw,ntfft,nk,ik,padt,padx;
+  int iw,nw,ntfft,nk,ik,padt,padx,ihx,ix,it;
   float k,w,dk,dw,p;
   sf_complex **m;
+  float **d_1;
   sf_complex czero;
   __real__ czero = 0;
   __imag__ czero = 0;
@@ -1230,12 +1241,15 @@ void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb,
   padx = 2;
   ntfft = padt*nt;
   nw=ntfft/2+1;
-  nk = padx*nx;
+  nk = padx*nhx;
   dk = (float) 1/nk/dx;
   dw = (float) 1/ntfft/dt;
+  d_1 = sf_floatalloc2(nt,nhx);
   m = sf_complexalloc2(nw,nk);
-  fk_op(m,d,nw,nk,nt,nx,1);
 
+for (ix=0;ix<nmx;ix++){
+  for (ihx=0;ihx<nhx;ihx++) for (it=0;it<nt;it++) d_1[ihx][it] = d[ihx*nmx + ix][it];
+  fk_op(m,d_1,nw,nk,nt,nhx,1);
   for (iw=1;iw<nw;iw++){
     w = dw*iw;
     for (ik=0;ik<nk;ik++){
@@ -1249,8 +1263,11 @@ void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb,
       else                     m[ik][iw] = czero;
     }
   }
-  fk_op(m,d,nw,nk,nt,nx,0);
+  fk_op(m,d_1,nw,nk,nt,nhx,0);
+  for (ihx=0;ihx<nhx;ihx++) for (it=0;it<nt;it++) d[ihx*nmx + ix][it] = d_1[ihx][it];
+}
   free2complex(m);
+  free2float(d_1);
   return;
 }
 

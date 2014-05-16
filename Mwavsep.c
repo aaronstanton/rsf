@@ -141,12 +141,7 @@ int main(int argc, char* argv[])
   for (ix=0; ix<nmx; ix++) {
     for (it=0; it<nt; it++) trace[it] = d_p[ix][it];	
     sf_floatwrite(trace,nt,out1);
-    if (ix<isx){
-      for (it=0; it<nt; it++) trace[it] = -d_sv[ix][it];
-    }
-    else{
-      for (it=0; it<nt; it++) trace[it] = d_sv[ix][it];
-    }
+    for (it=0; it<nt; it++) trace[it] = d_sv[ix][it];
     sf_floatwrite(trace,nt,out2);
   }
 

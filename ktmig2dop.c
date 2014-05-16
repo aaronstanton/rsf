@@ -21,6 +21,7 @@
 #include <omp.h>
 #endif
 #include "myfree.h"
+#include <fftw3.h>
 /*^*/
 
 
@@ -34,7 +35,7 @@ void kt_2d_op(float **d, float **m, float **vp, float **vs,
                int nt, int nmx, int nhx, 
                float ot, float omx, float ohx, 
                float dt, float dmx, float dhx,
-               float aperture, float gamma, bool ps, bool adj, bool verbose)
+               float aperture, float gamma, bool ps, int numthreads, bool adj, bool verbose)
 /*< Kirchhoff time migration operator >*/
 {
   int ihx,ix,it;
@@ -42,12 +43,24 @@ void kt_2d_op(float **d, float **m, float **vp, float **vs,
 
   trace = sf_floatalloc(nt);
   z = sf_floatalloc2(nt,nmx*nhx);
-  if (!adj){
+  
+  if (adj){ 
+    for (ix=0;ix<nmx*nhx;ix++){
+      for (it=0;it<nt;it++) z[ix][it] = d[ix][it]; /* save data in z and put back afterward */ 
+      for (it=0;it<nt;it++) trace[it] = d[ix][it]; 
+      bpfilter(trace,dt,nt,0,5,30,40);
+      for (it=0;it<nt;it++) d[ix][it] = trace[it]; 
+    }
+  }
+  else{
     for (ix=0;ix<nmx*nhx;ix++){
       for (it=0;it<nt;it++) z[ix][it] = m[ix][it];
     }
     triangle_filter(m,z,nt,nmx,nhx,adj);
+    fkfilter(m,dt,nt,dhx,nmx,nhx,-0.5,-0.25,0.25,0.5);
   }
+
+omp_set_num_threads(numthreads);
 
 #ifdef _OPENMP
 #pragma omp parallel for \
@@ -61,13 +74,22 @@ void kt_2d_op(float **d, float **m, float **vp, float **vs,
     
   if (adj){ 
     for (ix=0;ix<nmx*nhx;ix++){
+      for (it=0;it<nt;it++) d[ix][it] = z[ix][it]; /* put data back */ 
       for (it=0;it<nt;it++) trace[it] = m[ix][it]; 
       rho_filt(trace,nt,1);
       for (it=0;it<nt;it++) m[ix][it] = trace[it]; 
     }
+    fkfilter(m,dt,nt,dhx,nmx,nhx,-0.5,-0.25,0.25,0.5);
     triangle_filter(m,z,nt,nmx,nhx,adj);
     for (ix=0;ix<nmx*nhx;ix++){
       for (it=0;it<nt;it++) m[ix][it] = z[ix][it];
+    }
+  }
+  else{
+    for (ix=0;ix<nmx*nhx;ix++){
+      for (it=0;it<nt;it++) trace[it] = d[ix][it]; 
+      bpfilter(trace,dt,nt,0,5,30,40);
+      for (it=0;it<nt;it++) d[ix][it] = trace[it]; 
     }
   }
 
@@ -214,14 +236,17 @@ void kt_2d_fwd(float **d, float *m, float **vp, float **vs,
       }
       t  = ts + tg;
       cos1 = angle_taper(ts,tg,vp[icipx][it],hx);
-    /*  if (cos1 < 0.1) continue; */          
+      if (cos1 < 0.1) continue;
+    
+      if (fabs(t - 2*t0) > 0.1) continue; 
+         
       t_floor = trunc(t/dt) + 1;
       jt = (int) t_floor;
       if (jt >= 0 && jt+1 < nt){
 	res = (t-t_floor)/dt;
 	res0 = 1.0-res;
-	d[icmpx][jt]   += w*res0*(m[it]);
-	d[icmpx][jt+1] += w*res*(m[it]);
+	d[icmpx][jt]   += res0*(m[it]);
+	d[icmpx][jt+1] += res*(m[it]);
       }
     }
   } 
@@ -289,7 +314,7 @@ void kt_2d_adj(float *d, float **m, float **vp, float **vs,
         cos_g = z/dg;
         sin_s = dists/ds;
         sin_g = distg/dg;
-        cos1 = cos_s*cos_g - sin_s*sin_g;        
+        cos1 = cos_s*cos_g - sin_s*sin_g;
         gamma02 = gamma0*gamma0;
         w = z*(1+cos1)/(2*vp2*vp[icipx][it]*sqrt(1+2*gamma0*cos1+gamma02))*(tg/(gamma02*ts) + (gamma02*ts)/tg)*sqrt((gamma02*ts + tg)/(ts*tg));
         gamma_eff = (vp2/vs2)/gamma;
@@ -297,13 +322,16 @@ void kt_2d_adj(float *d, float **m, float **vp, float **vs,
       }
       t  = ts + tg;
       cos1 = angle_taper(ts,tg,vp[icipx][it],hx);
-    /*  if (cos1 < 0.1) continue;   */       
+      if (cos1 < 0.1) continue;       
+    
+      if (fabs(t - 2*t0) > 0.1) continue; 
+         
       t_floor = trunc(t/dt) + 1;
       jt = (int) t_floor;
       if (jt >= 0 && jt+1 < nt){
 	res = (t-t_floor)/dt;
 	res0 = 1.0-res;
-	m[icipx][it] += w*(res0*d[jt] + res*d[jt+1]);
+	m[icipx][it] += (res0*d[jt] + res*d[jt+1]);
       }
     }
   } 
@@ -424,11 +452,12 @@ void cg_irls_kt2d(float **d,int nd,
              float dt,float dmx,float dhx,
              float *misfit,
              float aperture,float psgamma,bool ps,
+             int numthreads,
              int verbose)
 /*< Non-quadratic regularization with CG-LS. The inner CG routine is taken from Algorithm 2 of Scales, 1987. Make sure linear operator passes the dot product. In this case (PSTM), the linear operator is a Kirchhoff demigration operator. >*/
 {
   float **v,**Pv,**Ps,**s,**ss,**g,**r;
-  float alpha,beta,delta,gamma,gamma_old,**P,Max_m; 
+  float alpha,beta,delta,gamma,gamma_old,**P,Max_m,progress; 
   int ix,it,j,k;
   v  = sf_floatalloc2(nt,nm);
   P  = sf_floatalloc2(nt,nm);
@@ -438,6 +467,8 @@ void cg_irls_kt2d(float **d,int nd,
   r  = sf_floatalloc2(nt,nd);
   s  = sf_floatalloc2(nt,nm);
   ss = sf_floatalloc2(nt,nd);
+
+  progress = 0.0;
 
   for (ix=0;ix<nm;ix++){
     for (it=0;it<nt;it++){
@@ -459,7 +490,7 @@ void cg_irls_kt2d(float **d,int nd,
     }
 
     kt_2d_op(r,Pv,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
-             aperture,psgamma,ps,false,verbose);
+             aperture,psgamma,ps,numthreads,false,false);
 
     for (ix=0;ix<nd;ix++){
       for (it=0;it<nt;it++){ 
@@ -481,7 +512,7 @@ void cg_irls_kt2d(float **d,int nd,
     }
 
     kt_2d_op(r,g,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
-             aperture,psgamma,ps,true,verbose);
+             aperture,psgamma,ps,numthreads,true,false);
 
     for (ix=0;ix<nm;ix++){
       for (it=0;it<nt;it++){
@@ -494,7 +525,8 @@ void cg_irls_kt2d(float **d,int nd,
     gamma_old = gamma;
 
     for (k=1;k<=itmax_internal;k++){
-
+      progress += 1.0/((float) itmax_internal*itmax_external);
+      if (verbose) progress_msg(progress);
       for (ix=0;ix<nm;ix++){
         for (it=0;it<nt;it++){
           Ps[ix][it] = s[ix][it]*P[ix][it];
@@ -502,7 +534,7 @@ void cg_irls_kt2d(float **d,int nd,
       }
 
       kt_2d_op(ss,Ps,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
-               aperture,psgamma,ps,false,verbose);
+               aperture,psgamma,ps,numthreads,false,false);
 
       for (ix=0;ix<nd;ix++){
         for (it=0;it<nt;it++){ 
@@ -536,7 +568,7 @@ void cg_irls_kt2d(float **d,int nd,
       misfit[(j-1)*itmax_internal + (k-1)] = cgdot(r,nt,nd);
 
       kt_2d_op(r,g,vp,vs,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,
-               aperture,psgamma,ps,true,verbose);
+               aperture,psgamma,ps,numthreads,true,false);
 
 
       for (ix=0;ix<nm;ix++){
@@ -606,4 +638,167 @@ float cgdot(float **x,int nt,int nm)
   return(cgdot);
 }
 
+void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d)
+/*< bandpass filter >*/
+{
+  int iw,nw,ntfft,ia,ib,ic,id,it;
+  float *in1, *out2;
+  sf_complex *in2,*out1;
+  sf_complex czero;
+  fftwf_plan p1;
+  fftwf_plan p2;
+
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  ntfft = 4*nt;
+  nw=ntfft/2+1;
+  if(a>0) ia = trunc(a*dt*ntfft);
+  else ia = 0;
+  if(b>0) ib = trunc(b*dt*ntfft);
+  else ib = 1;
+  if(c*dt*ntfft<nw) ic = trunc(c*dt*ntfft);
+  else ic = nw-1;
+  if(d*dt*ntfft<nw) id = trunc(d*dt*ntfft);
+  else id = nw;
+
+  out1 = sf_complexalloc(nw);
+  in1  = sf_floatalloc(ntfft);
+  p1   = fftwf_plan_dft_r2c_1d(ntfft, in1, (fftwf_complex*)out1, FFTW_ESTIMATE);
+  out2 = sf_floatalloc(ntfft);
+  in2  = sf_complexalloc(ntfft);
+  p2   = fftwf_plan_dft_c2r_1d(ntfft, (fftwf_complex*)in2, out2, FFTW_ESTIMATE);
+
+  for (it=0; it<nt; it++) in1[it]=trace[it];
+  for (it=nt; it< ntfft;it++) in1[it] = 0.0;
+  fftwf_execute(p1);
+  for(iw=0;iw<ia;iw++)  in2[iw] = czero; 
+  for(iw=ia;iw<ib;iw++) in2[iw] = out1[iw]*((float) (iw-ia)/(ib-ia))/sqrtf((float) ntfft); 
+  for(iw=ib;iw<ic;iw++) in2[iw] = out1[iw]/sqrtf((float) ntfft); 
+  for(iw=ic;iw<id;iw++) in2[iw] = out1[iw]*(1 - (float) (iw-ic)/(id-ic))/sqrtf((float) ntfft); 
+  for(iw=id;iw<nw;iw++) in2[iw] = czero; 
+  fftwf_execute(p2); /* take the FFT along the time dimension */
+  for(it=0;it<nt;it++) trace[it] = out2[it]/sqrtf((float) ntfft); 
+  
+  fftwf_destroy_plan(p1);
+  fftwf_destroy_plan(p2);
+  fftwf_free(in1); fftwf_free(out1);
+  fftwf_free(in2); fftwf_free(out2);
+  return;
+}
+
+void fkfilter(float **d, float dt, int nt, float dx, int nmx, int nhx, float pa, float pb, float pc, float pd)
+/*< fk filter >*/
+{
+  int iw,nw,ntfft,nk,ik,padt,padx,ihx,ix,it;
+  float k,w,dk,dw,p;
+  sf_complex **m;
+  float **d_1;
+  sf_complex czero;
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  padt = 2;
+  padx = 2;
+  ntfft = padt*nt;
+  nw=ntfft/2+1;
+  nk = padx*nhx;
+  dk = (float) 1/nk/dx;
+  dw = (float) 1/ntfft/dt;
+  d_1 = sf_floatalloc2(nt,nhx);
+  m = sf_complexalloc2(nw,nk);
+
+for (ix=0;ix<nmx;ix++){
+  for (ihx=0;ihx<nhx;ihx++) for (it=0;it<nt;it++) d_1[ihx][it] = d[ihx*nmx + ix][it];
+  fk_op(m,d_1,nw,nk,nt,nhx,1);
+  for (iw=1;iw<nw;iw++){
+    w = dw*iw;
+    for (ik=0;ik<nk;ik++){
+      if (ik<nk/2) k = dk*ik;
+      else         k = -(dk*nk - dk*ik);
+      p = k/w;
+      if (p<pa)                m[ik][iw] = czero; 
+      else if (p>=pa && p<pb)  m[ik][iw] = m[ik][iw]*((p-pa)/(pb-pa)); 
+      else if (p>=pb && p<=pc) m[ik][iw] = m[ik][iw]; 
+      else if (p>pc && p<=pd)  m[ik][iw] = m[ik][iw]*(1-(p-pc)/(pd-pc)); 
+      else                     m[ik][iw] = czero;
+    }
+  }
+  fk_op(m,d_1,nw,nk,nt,nhx,0);
+  for (ihx=0;ihx<nhx;ihx++) for (it=0;it<nt;it++) d[ihx*nmx + ix][it] = d_1[ihx][it];
+}
+  free2complex(m);
+  free2float(d_1);
+  return;
+}
+
+void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj)
+/*< fk operator >*/
+{
+  sf_complex **cpfft,*out1a,*in1b,*in2a,*in2b,czero;
+  float *in1a,*out1b;
+  int *n,ntfft,ix,it,iw,ik;
+  fftwf_plan p1a,p1b,p2a,p2b;
+
+  ntfft = (nw-1)*2;
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  cpfft = sf_complexalloc2(nw,nk);
+  out1a = sf_complexalloc(nw);
+  in1a = sf_floatalloc(ntfft);
+  p1a = fftwf_plan_dft_r2c_1d(ntfft, in1a, (fftwf_complex*)out1a, FFTW_ESTIMATE);
+  out1b = sf_floatalloc(ntfft);
+  in1b = sf_complexalloc(ntfft);
+  p1b = fftwf_plan_dft_c2r_1d(ntfft, (fftwf_complex*)in1b, out1b, FFTW_ESTIMATE);
+  n = sf_intalloc(1); n[0] = nk;
+  in2a = sf_complexalloc(nk);
+  in2b = sf_complexalloc(nk);
+  p2a = fftwf_plan_dft(1, n, (fftwf_complex*)in2a, (fftwf_complex*)in2a, FFTW_FORWARD, FFTW_ESTIMATE);
+  p2b = fftwf_plan_dft(1, n, (fftwf_complex*)in2b, (fftwf_complex*)in2b, FFTW_BACKWARD, FFTW_ESTIMATE);
+
+if (adj){ /* data --> model */
+  for (ix=0;ix<nx;ix++){
+    for(it=0;it<nt;it++) in1a[it] = d[ix][it];
+    for(it=nt;it<ntfft;it++) in1a[it] = 0;
+    fftwf_execute(p1a); 
+    for(iw=0;iw<nw;iw++) cpfft[ix][iw] = out1a[iw]; 
+  }
+  fftwf_destroy_plan(p1a);
+  fftwf_free(in1a); fftwf_free(out1a);
+  for (iw=0;iw<nw;iw++){  
+    for (ik=0;ik<nk;ik++) in2a[ik] = cpfft[ik][iw];
+    fftwf_execute(p2a); /* FFT x to k */
+    for (ik=0;ik<nk;ik++) m[ik][iw] = in2a[ik]/sqrtf((float) ntfft);
+  }
+  fftwf_destroy_plan(p2a);
+  fftwf_free(in2a); 
+}
+
+else{ /* model --> data */
+  for (iw=0;iw<nw;iw++){  
+    for (ik=0;ik<nk;ik++) in2b[ik] = m[ik][iw];
+    fftwf_execute(p2b); /* FFT k to x */
+    for (ik=0;ik<nx;ik++) cpfft[ik][iw] = in2b[ik]/nk;
+  }
+  fftwf_destroy_plan(p2b);
+  fftwf_free(in2b);
+  for (ix=0;ix<nx;ix++){
+    for(iw=0;iw<nw;iw++) in1b[iw] = cpfft[ix][iw];
+    for(iw=nw;iw<ntfft;iw++) in1b[iw] = czero;
+    fftwf_execute(p1b); 
+    for(it=0;it<nt;it++) d[ix][it] = out1b[it]/sqrtf((float) ntfft); 
+  }
+  fftwf_destroy_plan(p1b);
+  fftwf_free(in1b); fftwf_free(out1b);
+}
+  free2complex(cpfft);
+
+  return;
+
+}
+
+void progress_msg(float progress)
+/*< progress message >*/
+{ 
+  fprintf(stderr,"\r[%6.2f%% complete]",progress*100);
+  return;
+}
 
