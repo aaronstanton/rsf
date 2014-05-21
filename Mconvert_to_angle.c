@@ -1,4 +1,4 @@
-/* Convert a gather from depth/offset to depth/ray parameter
+/* Convert a gather from depth/offset to depth/angle
 */
 /*
   Copyright (C) 2014 University of Alberta
@@ -56,12 +56,9 @@ int main(int argc, char* argv[])
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
   if (adj){
-    if (!sf_getint("np",&np)) np=101; /* number of ray parameter samples */
-    if (!sf_getfloat("op",&op)) op = -1000; /* ray parameter origin in us/m */
-    if (!sf_getfloat("dp",&dp)) dp = 20; /* ray parameter increment in us/m */
-    /* convert from ms/s to s/m */
-    op = op/1000000;
-    dp = dp/1000000;
+    if (!sf_getint("np",&np)) np=181; /* number of angle samples */
+    if (!sf_getfloat("op",&op)) op = -90; /* angle origin in degrees */
+    if (!sf_getfloat("dp",&dp)) dp = 1; /* angle increment in degrees */
   }
   else{
     if (!sf_getint("nhx",&nhx)) sf_error("nhx must be specified");
@@ -86,9 +83,9 @@ int main(int argc, char* argv[])
     if (!sf_histint(  in,"n3",&np)) sf_error("No n3= in input");
     if (!sf_histfloat(in,"d3",&dp)) sf_error("No d3= in input");
     if (!sf_histfloat(in,"o3",&op)) op=0.;
-    /* convert from ms/s to s/m */
-    op = op/100000;
-    dp = dp/100000;
+    /* convert from s/km to s/m */
+    op = op*1000;
+    dp = dp*1000;
   }
   if (!sf_getfloat("fmin",&fmin)) fmin = 0; /* min frequency to process */
   if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/dz; /* max frequency to process */
@@ -109,8 +106,8 @@ int main(int argc, char* argv[])
     sf_putfloat(out,"o3",op);
     sf_putfloat(out,"d3",dp);
     sf_putfloat(out,"n3",np);
-    sf_putstring(out,"label3","Ray Parameter");
-    sf_putstring(out,"unit3","us/m");
+    sf_putstring(out,"label3","Angle");
+    sf_putstring(out,"unit3","Degrees");
   }
   else {
     sf_putfloat(out,"o3",ohx);
@@ -119,11 +116,11 @@ int main(int argc, char* argv[])
     sf_putstring(out,"label3","Offset");
     sf_putstring(out,"unit3","m");
   }
-MARK
- fprintf(stderr,"nz=%d nmx=%d nhx=%d np=%d \n",nz,nmx,nhx,np);
+
+  if (verbose) fprintf(stderr,"nz=%d nmx=%d nhx=%d np=%d \n",nz,nmx,nhx,np);
   d_zh = sf_floatalloc2(nz,nmx*nhx);
   d_za = sf_floatalloc2(nz,nmx*np);
-MARK
+
   if (adj){
     sf_floatread(d_zh[0],nz*nmx*nhx,in);
     for (ix=0;ix<nmx*np;ix++) for (iz=0;iz<nz;iz++) d_za[ix][iz] = 0.0;
@@ -132,14 +129,14 @@ MARK
     sf_floatread(d_za[0],nz*nmx*np,in);
     for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) d_zh[ix][iz] = 0.0;
   }
-MARK
+
   convert_to_angle(d_zh,d_za,
                    nz,oz,dz,
                    nmx,omx,dmx,
                    nhx,ohx,dhx, 
                    np,op,dp, 
                    adj,verbose);
-MARK
+
   if (adj){
     sf_floatwrite(d_za[0],nz*nmx*np,out);
   }
@@ -217,10 +214,10 @@ void convert_to_angle(float **d_zh, float **d_za,
         for (ik=0;ik<nk;ik++){
           if (ik<nk/2) k = dk*ik;
           else         k = -(dk*nk - dk*ik);
-          if (w>0) p = k/w;
-          else p = k/(w+dw*0.01);
+          if (w>0) p = (180/PI)*atanf(-k/w);
+          else p = (180/PI)*atanf(-k/(w+dw*0.01));
           ip = (int) truncf((p - op)/dp);
-          if (iw==50) fprintf(stderr,"p=%f ip=%d\n",p,ip);
+          if (verbose) if (iw==50) fprintf(stderr,"p=%f ip=%d\n",p,ip);
           if (ip < np && p >= op){
             d_wa[ip*nmx + ix][iw] += d_wk[ik*nmx + ix][iw];
           }

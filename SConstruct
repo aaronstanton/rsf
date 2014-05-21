@@ -18,7 +18,6 @@ wavsep
 shotewem
 fkfilter
 taper
-anglewem
 convert_to_angle
 velconvert
 gxsx_to_mxhx
