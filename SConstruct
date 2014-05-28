@@ -20,7 +20,7 @@ fkfilter
 taper
 convert_to_angle
 velconvert
-gxsx_to_mxhx
+gxsxtomxhx
 '''
 
 pyprogs='''
