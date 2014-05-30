@@ -75,6 +75,7 @@ int main(int argc, char* argv[])
         imx = (mx - omx)/dmx;
         ihx = (hx - ohx)/dhx;
         if (imx > 0 && imx < nmx && ihx > 0 && ihx < nhx){
+          if (verbose) fprintf(stderr,"imx=%d ihx=%d\n");
           for (it=0;it<nt;it++) d_mxhx[ihx*nmx + imx][it] = d_gxsx[isx*ngx + igx][it];
         }
       }

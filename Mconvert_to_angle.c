@@ -1,4 +1,4 @@
-/* Convert a gather from depth/offset to depth/angle
+/* Convert 1 gather from time/offset to time/ray parameter
 */
 /*
   Copyright (C) 2014 University of Alberta
@@ -30,27 +30,22 @@
 #include <fftw3.h>
 #include "myfree.h"
 
-void convert_to_angle(float **d_zh, float **d_za,
-                      int nz, float oz, float dz, 
-                      int nmx, float omx, float dmx, 
-                      int nhx, float ohx, float dhx, 
-                      int np, float op, float dp, 
-                      bool adj, bool verbose);
-void offset_to_angle(float **d_zh, float **d_za,
-                     int nz, float oz, float dz, 
+void offset_to_angle(float **d_h, float **d_a,
+                     int nt, float ot, float dt, 
                      int nhx, float ohx, float dhx, 
                      int np, float op, float dp, 
+                     float fmin, float fmax,
                      bool adj, bool verbose);
 void f_op(sf_complex *m,float *d,int nw,int nt,bool adj);
 
 int main(int argc, char* argv[])
 {
   sf_file in,out;
-  int   nz,nmx,nhx,np;
-  int   iz,ix;
-  float oz,omx,ohx,op;
-  float dz,dmx,dhx,dp;
-  float **d_zh,**d_za;
+  int   nt,nhx,np;
+  int   it,ix;
+  float ot,ohx,op;
+  float dt,dhx,dp;
+  float **d_h,**d_a;
   bool adj;
   bool verbose;
   float fmin,fmax;
@@ -61,9 +56,11 @@ int main(int argc, char* argv[])
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
   if (adj){
-    if (!sf_getint("np",&np)) np=91; /* number of angle samples */
-    if (!sf_getfloat("op",&op)) op = 0; /* angle origin in degrees */
-    if (!sf_getfloat("dp",&dp)) dp = 1; /* angle increment in degrees */
+    if (!sf_getint("np",&np)) np=101; /* number of slowness samples */
+    if (!sf_getfloat("op",&op)) op = -500; /* slowness origin in micro-s/m */
+    if (!sf_getfloat("dp",&dp)) dp = 10; /* slowness increment in micro-s/m */
+    op = op/1000000;
+    dp = dp/1000000;
   }
   else{
     if (!sf_getint("nhx",&nhx)) sf_error("nhx must be specified");
@@ -72,117 +69,87 @@ int main(int argc, char* argv[])
   }
 
   /* read input file parameters */
-  if (!sf_histint(  in,"n1",&nz)) sf_error("No n1= in input");
-  if (!sf_histfloat(in,"d1",&dz)) sf_error("No d1= in input");
-  if (!sf_histfloat(in,"o1",&oz)) oz=0.;
-  if (!sf_histint(  in,"n2",&nmx)) sf_error("No n2= in input");
-  if (!sf_histfloat(in,"d2",&dmx)) sf_error("No d2= in input");
-  if (!sf_histfloat(in,"o2",&omx)) omx=0.;
+  if (!sf_histint(  in,"n1",&nt)) sf_error("No n1= in input");
+  if (!sf_histfloat(in,"d1",&dt)) sf_error("No d1= in input");
+  if (!sf_histfloat(in,"o1",&ot)) ot=0.;
 
   if (adj){
-    if (!sf_histint(  in,"n3",&nhx)) sf_error("No n3= in input");
-    if (!sf_histfloat(in,"d3",&dhx)) sf_error("No d3= in input");
-    if (!sf_histfloat(in,"o3",&ohx)) ohx=0.;
+    if (!sf_histint(  in,"n2",&nhx)) sf_error("No n2= in input");
+    if (!sf_histfloat(in,"d2",&dhx)) sf_error("No d2= in input");
+    if (!sf_histfloat(in,"o2",&ohx)) ohx=0.;
   }
   else{
-    if (!sf_histint(  in,"n3",&np)) sf_error("No n3= in input");
-    if (!sf_histfloat(in,"d3",&dp)) sf_error("No d3= in input");
-    if (!sf_histfloat(in,"o3",&op)) op=0.;
+    if (!sf_histint(  in,"n2",&np)) sf_error("No n2= in input");
+    if (!sf_histfloat(in,"d2",&dp)) sf_error("No d2= in input");
+    if (!sf_histfloat(in,"o2",&op)) op=0.;
   }
   if (!sf_getfloat("fmin",&fmin)) fmin = 0; /* min frequency to process */
-  if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/dz; /* max frequency to process */
-  if (fmax > 0.5/dz) fmax = 0.5/dz;
+  if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/dt; /* max frequency to process */
+  if (fmax > 0.5/dt) fmax = 0.5/dt;
 
-  sf_putfloat(out,"o1",oz);
-  sf_putfloat(out,"d1",dz);
-  sf_putfloat(out,"n1",nz);
-  sf_putstring(out,"label1","Depth");
-  sf_putstring(out,"unit1","m");
-  sf_putfloat(out,"o2",omx);
-  sf_putfloat(out,"d2",dmx);
-  sf_putfloat(out,"n2",nmx);
-  sf_putstring(out,"label2","x");
-  sf_putstring(out,"unit2","m");
+  sf_putfloat(out,"o1",ot);
+  sf_putfloat(out,"d1",dt);
+  sf_putfloat(out,"n1",nt);
 
   if (adj){
-    sf_putfloat(out,"o3",op);
-    sf_putfloat(out,"d3",dp);
-    sf_putfloat(out,"n3",np);
-    sf_putstring(out,"label3","Angle");
-    sf_putstring(out,"unit3","Degrees");
+    sf_putfloat(out,"o2",op*1000000);
+    sf_putfloat(out,"d2",dp*1000000);
+    sf_putfloat(out,"n2",np);
+    sf_putstring(out,"label2","Ray Parameter");
+    sf_putstring(out,"unit2"," micro-s/m");
   }
   else {
-    sf_putfloat(out,"o3",ohx);
-    sf_putfloat(out,"d3",dhx);
-    sf_putfloat(out,"n3",nhx);
-    sf_putstring(out,"label3","Offset");
-    sf_putstring(out,"unit3","m");
+    sf_putfloat(out,"o2",ohx);
+    sf_putfloat(out,"d2",dhx);
+    sf_putfloat(out,"n2",nhx);
+    sf_putstring(out,"label2","Offset");
+    sf_putstring(out,"unit2","m");
   }
 
-  if (verbose) fprintf(stderr,"nz=%d nmx=%d nhx=%d np=%d \n",nz,nmx,nhx,np);
-  d_zh = sf_floatalloc2(nz,nmx*nhx);
-  d_za = sf_floatalloc2(nz,nmx*np);
-
-  if (adj){
-    sf_floatread(d_zh[0],nz*nmx*nhx,in);
-    for (ix=0;ix<nmx*np;ix++) for (iz=0;iz<nz;iz++) d_za[ix][iz] = 0.0;
-  }
-  else{
-    sf_floatread(d_za[0],nz*nmx*np,in);
-    for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) d_zh[ix][iz] = 0.0;
-  }
-
-  convert_to_angle(d_zh,d_za,
-                   nz,oz,dz,
-                   nmx,omx,dmx,
-                   nhx,ohx,dhx, 
-                   np,op,dp, 
-                   adj,verbose);
+  if (verbose) fprintf(stderr,"nt=%d nhx=%d np=%d \n",nt,nhx,np);
+  d_h = sf_floatalloc2(nt,nhx);
+  d_a = sf_floatalloc2(nt,np);
 
   if (adj){
-    sf_floatwrite(d_za[0],nz*nmx*np,out);
+    sf_floatread(d_h[0],nt*nhx,in);
+    for (ix=0;ix<np;ix++) for (it=0;it<nt;it++) d_a[ix][it] = 0.0;
   }
   else{
-    sf_floatwrite(d_zh[0],nz*nmx*nhx,out);
+    sf_floatread(d_a[0],nt*np,in);
+    for (ix=0;ix<nhx;ix++) for (it=0;it<nt;it++) d_h[ix][it] = 0.0;
+  }
+
+  offset_to_angle(d_h,d_a,
+                  nt,ot,dt, 
+                  nhx,ohx,dhx, 
+                  np,op,dp, 
+                  fmin,fmax,
+                  adj,verbose);
+
+  if (adj){
+    sf_floatwrite(d_a[0],nt*np,out);
+  }
+  else{
+    sf_floatwrite(d_h[0],nt*nhx,out);
   }
  
-  free2float(d_zh);
-  free2float(d_za);
+  free2float(d_h);
+  free2float(d_a);
   exit (0);
 }
 
-void convert_to_angle(float **d_zh, float **d_za,
-                      int nz, float oz, float dz, 
-                      int nmx, float omx, float dmx, 
-                      int nhx, float ohx, float dhx, 
-                      int np, float op, float dp, 
-                      bool adj, bool verbose)
-{
-  float **a,**b;
-  int imx,ihx,ip,iz;
-  a = sf_floatalloc2(nz,nhx); 
-  b = sf_floatalloc2(nz,np); 
-  for (imx=0;imx<nmx;imx++){
-    for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) a[ihx][iz] = d_zh[ihx*nmx + imx][iz];
-    offset_to_angle(a,b,nz,oz,dz,nhx,ohx,dhx,np,op,dp,adj,verbose);
-    for (ip=0;ip<np;ip++) for (iz=0;iz<nz;iz++) d_za[ip*nmx + imx][iz] = b[ip][iz];
-  }
-  free2float(a);
-  free2float(b);
-  return;
-}
-
-void offset_to_angle(float **d_zh, float **d_za,
-                     int nz, float oz, float dz, 
+void offset_to_angle(float **d_h, float **d_a,
+                     int nt, float ot, float dt, 
                      int nhx, float ohx, float dhx, 
                      int np, float op, float dp, 
+                     float fmin, float fmax,
                      bool adj, bool verbose)
 {
 
-  int iz,ihx,ip,ik,iw,nw,nk,padz,padx,nzfft;
+  int it,ihx,ip,ik,iw,nw,nk,padt,padx,ntfft,ifmin,ifmax;
   float dw,dk,p;
   sf_complex czero;
-  float *d_z;
+  float *d_t;
   sf_complex *d_w;
   sf_complex **d_wh;
   sf_complex **d_wa;
@@ -193,18 +160,24 @@ void offset_to_angle(float **d_zh, float **d_za,
 
   __real__ czero = 0;
   __imag__ czero = 0;
-  padz = 2;
+  padt = 2;
   padx = 2;
-  nzfft = padz*nz;
-  nw=nzfft/2+1;
+  ntfft = padt*nt;
+  nw=ntfft/2+1;
+
+  if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
+  else ifmax = nw;
+  if(fmin*dt*ntfft+1<ifmax) ifmin = trunc(fmin*dt*ntfft);
+  else ifmin = 0;
+
   nk = padx*nhx;
   dk = 2*PI/((float) nk)/dhx;
-  dw = 2*PI/((float) nzfft)/dz;
+  dw = 2*PI/((float) ntfft)/dt;
   d_wh = sf_complexalloc2(nw,nhx);
   d_wa = sf_complexalloc2(nw,np);
-  d_z = sf_floatalloc(nz);
+  d_t = sf_floatalloc(nt);
   d_w = sf_complexalloc(nw);
-  for (iz=0;iz<nz;iz++)  d_z[iz] = 0.0;  
+  for (it=0;it<nt;it++)  d_t[it] = 0.0;  
   for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
 
   a  = fftwf_malloc(sizeof(fftwf_complex) * nk);
@@ -216,15 +189,15 @@ void offset_to_angle(float **d_zh, float **d_za,
   } 
 
   for (iw=0;iw<nw;iw++) for (ip=0;ip<np;ip++) d_wa[ip][iw] = czero;
-  /* transform the depth axis to the frequency domain */
+  /* transform the time axis to the frequency domain */
   for (ihx=0;ihx<nhx;ihx++){
-    for (iz=0;iz<nz;iz++) d_z[iz] = d_zh[ihx][iz];
-    f_op(d_w,d_z,nw,nz,1); /* d_z to d_w */
+    for (it=0;it<nt;it++) d_t[it] = d_h[ihx][it];
+    f_op(d_w,d_t,nw,nt,1); /* d_t to d_w */
     for (iw=0;iw<nw;iw++) d_wh[ihx][iw] = d_w[iw];
   }
 
   /* transform the offset axis to the frequency domain */
-  for (iw=0;iw<nw;iw++){
+  for (iw=ifmin;iw<ifmax;iw++){
     w = iw*dw;
     for (ihx=0;ihx<nhx;ihx++) a[ihx] = d_wh[ihx][iw];
     for (ihx=nhx;ihx<nk;ihx++) a[ihx] = czero;
@@ -238,7 +211,7 @@ void offset_to_angle(float **d_zh, float **d_za,
         k = -(dk*nk - dk*ik);
       }
       if (w>0){ 
-        p = (180/PI)*atanf(fabs(k/w));
+        p = -k/w;
         ip = (int) truncf((p - op)/dp);
         if (verbose) if (iw==50) fprintf(stderr,"p=%f ip=%d\n",p,ip);
         if (ip < np && p >= op){
@@ -250,13 +223,13 @@ void offset_to_angle(float **d_zh, float **d_za,
   /* transform the frequency axis to the depth domain */
   for (ip=0;ip<np;ip++){
     for (iw=0;iw<nw;iw++) d_w[iw] = d_wa[ip][iw];
-    f_op(d_w,d_z,nw,nz,0); /* d_w to d_z */
-    for (iz=0;iz<nz;iz++) d_za[ip][iz] = d_z[iz];
+    f_op(d_w,d_t,nw,nt,0); /* d_w to d_t */
+    for (it=0;it<nt;it++) d_a[ip][it] = d_t[it];
   }
 
   free2complex(d_wh);
   free2complex(d_wa);
-  free1float(d_z);
+  free1float(d_t);
   free1complex(d_w);
   fftwf_destroy_plan(p1);
   fftwf_free(a);

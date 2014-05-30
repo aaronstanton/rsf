@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
     sf_putstring(out,"unit3","m");
     d_gxsx = sf_floatalloc2(nt,ngx*nsx);
     d_mxhx = sf_floatalloc2(nt,nmx*nhx);
-    sf_floatread(d_gxsx[0],nt*ngx*nsx,in);
+    for (ix=0;ix<nsx*ngx;ix++) sf_floatread(d_gxsx[ix],nt,in);
     for (ix=0;ix<nmx*nhx;ix++) for (it=0;it<nt;it++) d_mxhx[ix][it] = 0.0;
     //if (verbose) fprintf(stderr,"nt=%d nmx=%d nhx=%d nt*nmx*nhx=%d\n",nt,nmx,nhx,nt*nmx*nhx);
     for (igx=0;igx<ngx;igx++){
@@ -77,7 +77,7 @@ int main(int argc, char* argv[])
         hx = (gx - sx)/2;
         imx = (int) truncf((mx - omx)/dmx);
         ihx = (int) truncf((hx - ohx)/dhx);
-        //if (verbose) fprintf(stderr,"mx=%6.2f hx=%6.2f, imx=%d, ihx=%d \n",mx,hx,imx,ihx);
+        if (verbose) fprintf(stderr,"mx=%6.2f hx=%6.2f, imx=%d, ihx=%d \n",mx,hx,imx,ihx);
         if (imx > 0 && imx < nmx && ihx > 0 && ihx < nhx){
           for (it=0;it<nt;it++) d_mxhx[ihx*nmx + imx][it] = d_gxsx[isx*ngx + igx][it];
         }
