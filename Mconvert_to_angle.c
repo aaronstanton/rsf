@@ -153,7 +153,7 @@ void offset_to_angle(float **d_h, float **d_a,
   sf_complex *d_w;
   sf_complex **d_wh;
   sf_complex **d_wa;
-  fftwf_complex *a;
+  fftwf_complex *a,L;
   int *n;
   fftwf_plan p1;
   float w,k;
@@ -203,6 +203,8 @@ void offset_to_angle(float **d_h, float **d_a,
     for (ihx=nhx;ihx<nk;ihx++) a[ihx] = czero;
     fftwf_execute_dft(p1,a,a); 
     /* compute Ray Parameters */
+
+/*
     for (ik=0;ik<nk;ik++){
       if (ik<nk/2){ 
         k = dk*ik;
@@ -210,13 +212,32 @@ void offset_to_angle(float **d_h, float **d_a,
       else{ 
         k = -(dk*nk - dk*ik);
       }
-      if (w>0){ 
-        p = -k/w;
+      if (w>0){
+        __real__ L = cos(-k*ohx);
+        __imag__ L = sin(-k*ohx);
+       p = -k/w;
         ip = (int) truncf((p - op)/dp);
         if (verbose) if (iw==50) fprintf(stderr,"p=%f ip=%d\n",p,ip);
         if (ip < np && p >= op){
-          d_wa[ip][iw] += a[ik]/sqrtf((float) nk);
+          d_wa[ip][iw] += L*a[ik]/sqrtf((float) nk);
         }
+      }
+    }
+*/
+
+    for (ip=0;ip<np;ip++){
+      p = ip*dp + op;
+      k = -p*w;
+      if (k>0){ 
+        ik = truncf(k/dk);
+      }
+      else{ 
+        ik = truncf((dk*nk + k)/dk);
+      }
+      __real__ L = cos(-k*ohx);
+      __imag__ L = sin(-k*ohx);
+      if (ik < nk && ik >= 0){
+        d_wa[ip][iw] += L*a[ik]/sqrtf((float) nk);
       }
     }
   }      

@@ -54,10 +54,10 @@ void extrap1f(float **dmig,
               int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,
               int nmx,float omx, float dmx,
               int nhx,float ohx, float dhx,
-              int npx, float opx, float dpx,
+              int npx,float opx, float dpx,
               float *po,float **pd,
               sf_complex i,sf_complex czero,
-              fftwf_plan p1,fftwf_plan p2,fftwf_plan p3,fftwf_plan p4,
+              fftwf_plan p1,fftwf_plan p2,fftwf_plan p3,
               bool adj, bool verbose);
 void ssop(sf_complex *d_x,
           float w,float dk,int nk,int nmx,float dz,int iz,
@@ -336,11 +336,13 @@ void wem_sp2d_op(float **d, float **dmig,float *wav,
   sf_complex *d_w;
   sf_complex **d_g_wx;
   sf_complex **d_s_wx;
-  fftwf_complex *a,*b,*c1,*c2;
+  fftwf_complex *a,*b,*c;
   int *n,*n2;
-  fftwf_plan p1,p2,p3,p4;
+  fftwf_plan p1,p2,p3;
   float progress;
   float *po,**pd;
+  time_t start,finish;
+  double elapsed_time;
 
   if (adj){
     for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) dmig[ix][iz] = 0.0;
@@ -396,21 +398,18 @@ void wem_sp2d_op(float **d, float **dmig,float *wav,
   fftwf_execute_dft(p1,a,a);
   fftwf_execute_dft(p2,b,b);
   
-  nkhx = nhx;
-  c1  = fftwf_malloc(sizeof(fftwf_complex) * nkhx);
-  c2  = fftwf_malloc(sizeof(fftwf_complex) * nkhx);
+  nkhx = nhx*padx;
+  c  = fftwf_malloc(sizeof(fftwf_complex) * nkhx);
   n2 = sf_intalloc(1); 
   n2[0] = nkhx;
-  p3 = fftwf_plan_dft(1, n2, c1, c1, FFTW_FORWARD, FFTW_ESTIMATE);
-  for (ik=0;ik<nkhx;ik++) c1[ik] = czero;
-  fftwf_execute_dft(p3,c1,c1); 
-  p4 = fftwf_plan_dft(1, n2, c2, c2, FFTW_FORWARD, FFTW_ESTIMATE);
-  for (ik=0;ik<nkhx;ik++) c2[ik] = czero;
-  fftwf_execute_dft(p4,c2,c2); 
+  p3 = fftwf_plan_dft(1, n2, c, c, FFTW_FORWARD, FFTW_ESTIMATE);
+  for (ik=0;ik<nkhx;ik++) c[ik] = czero;
+  fftwf_execute_dft(p3,c,c); 
 /**********************************************************************/
 
 
 for (isx=0;isx<nsx;isx++){
+  start=time(0);
   igx = (int) truncf(((float) isx*dsx + osx) - omx)/dmx;  
   /* source wavefield*/
   for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) d_s_wx[ix][iw] = czero;
@@ -440,9 +439,9 @@ for (isx=0;isx<nsx;isx++){
   if (verbose && !(adj)) fprintf(stderr,"\r demigrating shot %d/%d:\n",isx+1,nsx);
   #pragma omp parallel for private(iw) shared(dmig,d_g_wx,d_s_wx,progress)
   for (iw=ifmin;iw<ifmax;iw++){ 
-    progress += 1.0/((float) ifmax);
+    progress += 1.0/((float) ifmax - ifmin);
     if (verbose) progress_msg(progress);
-    extrap1f(dmig,d_g_wx,d_s_wx,iw,nw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,omx,dmx,nhx,ohx,dhx,npx,opx,dpx,po,pd,i,czero,p1,p2,p3,p4,adj,verbose);
+    extrap1f(dmig,d_g_wx,d_s_wx,iw,nw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,omx,dmx,nhx,ohx,dhx,npx,opx,dpx,po,pd,i,czero,p1,p2,p3,adj,verbose);
   }
   if (!adj){
     for (ix=0;ix<nmx;ix++){
@@ -453,6 +452,9 @@ for (isx=0;isx<nsx;isx++){
       for (it=0;it<nt;it++) d[isx*nmx + ix][it] = d_t[it];
     }
   }
+  finish=time(0);
+  elapsed_time=difftime(finish,start);
+  if (verbose) fprintf(stderr," elapsed time = %6.2f seconds\n",elapsed_time);
 }
   if (verbose) fprintf(stderr,"\r                   \n");
 
@@ -468,9 +470,7 @@ for (isx=0;isx<nsx;isx++){
   free2float(pd);
   free1int(n2); 
   fftwf_destroy_plan(p3);
-  fftwf_free(c1);
-  fftwf_destroy_plan(p4);
-  fftwf_free(c2);
+  fftwf_free(c);
 
   return;
 } 
@@ -483,19 +483,20 @@ void extrap1f(float **dmig,
               int npx,float opx, float dpx,
               float *po,float **pd,
               sf_complex i,sf_complex czero,
-              fftwf_plan p1,fftwf_plan p2,fftwf_plan p3,fftwf_plan p4,
+              fftwf_plan p1,fftwf_plan p2,fftwf_plan p3,
               bool adj, bool verbose)
 /*< extrapolate 1 frequency >*/
 {
-  float w,factor,x,hx,sx,gx,k,px;
-  int iz,ix,ihx,isx,igx,ik,ipx,nkhx,nhx_half; 
-  sf_complex *d_xg,*d_xs,**smig;
-  fftwf_complex *c1,*c2;
+  float w,factor,x,hx,sx,gx,k,px,dkhx;
+  int iz,ix,ihx,isx,igx,ik,ipx,nkhx,padx; 
+  sf_complex *d_xg,*d_xs,**smig,L;
+  fftwf_complex *c;
   
-  nkhx = nhx;
-  nhx_half = (nhx -1)/2;
-  c1  = fftwf_malloc(sizeof(fftwf_complex) * nkhx);
-  c2  = fftwf_malloc(sizeof(fftwf_complex) * nkhx);
+  padx = 2;
+  nkhx = nhx*padx;
+  dkhx = 2*PI/((float) nkhx)/dhx;
+
+  c  = fftwf_malloc(sizeof(fftwf_complex) * nkhx);
  
   d_xg = sf_complexalloc(nmx);
   d_xs = sf_complexalloc(nmx);
@@ -513,7 +514,7 @@ void extrap1f(float **dmig,
       ssop(d_xs,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,true,verbose); 
       ssop(d_xg,w,dk,nk,nmx,dz,iz,po,pd,i,czero,p1,p2,true,verbose);
       for (ix=0;ix<nmx;ix++){
-        for (ik=0;ik<nkhx;ik++) c1[ik] = c2[ik] = czero;
+        for (ik=0;ik<nkhx;ik++) c[ik] = czero;
         for (ihx=0;ihx<nhx;ihx++){
           hx = ihx*dhx + ohx;
           sx = (ix*dmx + omx) - hx;
@@ -521,28 +522,24 @@ void extrap1f(float **dmig,
           isx = (int) truncf((sx - omx)/dmx);
           igx = (int) truncf((gx - omx)/dmx);
           if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
-            if (hx < 0) c1[nhx_half - ihx] = -factor*crealf(d_xs[isx]*conjf(d_xg[igx]));
-            else        c2[ihx - nhx_half] = factor*crealf(d_xs[isx]*conjf(d_xg[igx]));
+            c[ihx] = factor*crealf(d_xs[isx]*conjf(d_xg[igx]));
           } 
         }
-        fftwf_execute_dft(p3,c1,c1); 
-        fftwf_execute_dft(p4,c2,c2); 
-        for (ik=0;ik<nkhx;ik++){
-          if (ik<nkhx/2) k = dk*ik;
-          else k = -(dk*nkhx - dk*ik);
-          if (w>0){
-            px = -k/w;
-            ipx = (int) truncf((px - opx)/dpx);
-            if (ipx>=0 && ipx<npx){
-              if (px>0){
-                #pragma omp atomic 
-                dmig[ipx*nmx + ix][iz] += c2[ik]/sqrtf((float) nkhx);
-              }
-              else{
-                #pragma omp atomic 
-                dmig[ipx*nmx + ix][iz] += c1[ik]/sqrtf((float) nkhx);
-              }
-            }
+        fftwf_execute_dft(p3,c,c); 
+        for (ipx=0;ipx<npx;ipx++){
+          px = ipx*dpx + opx;
+          k = -px*w;
+          if (k>0){ 
+            ik = truncf(k/dkhx);
+          }
+          else{ 
+            ik = truncf((dkhx*nkhx + k)/dkhx);
+          }
+          __real__ L = cos(-k*ohx);
+          __imag__ L = sin(-k*ohx);
+          if (ik < nk && ik >= 0){
+            #pragma omp atomic
+            dmig[ipx*nmx + ix][iz] += L*c[ik]/sqrtf((float) nkhx);
           }
         }
       }
@@ -576,8 +573,7 @@ void extrap1f(float **dmig,
   free1complex(d_xg);
   free1complex(d_xs);
 
-  fftwf_free(c1);
-  fftwf_free(c2);
+  fftwf_free(c);
 
   return;
 }
