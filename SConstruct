@@ -13,8 +13,8 @@ pstm
 linearevents5d
 zowem
 spbpdn
-shotwem
 wavsep
+shotwem
 shotewem
 fkfilter
 taper
