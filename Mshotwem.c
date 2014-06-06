@@ -285,7 +285,7 @@ int main(int argc, char* argv[])
     tmp_sum1=0;
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) tmp_sum1 += d_1[ix][it]*d_2[ix][it];
     tmp_sum2=0;
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2 += dmig_1[ix][iz]*dmig_2[ix][iz];
+    for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) tmp_sum2 += dmig_1[ix][iz]*dmig_2[ix][iz];
     fprintf(stderr,"DOT PRODUCT: %6.5f and %6.5f\n",tmp_sum1,tmp_sum2);
     free2float(d_1);
     free2float(d_2);
@@ -544,11 +544,15 @@ void extrap1f(float **dmig_h,
     for (ix=0;ix<nmx;ix++) d_xg[ix] = czero;
     for (iz=nz-1;iz>=0;iz--){ /* extrapolate receiver wavefield */
       for (ix=0;ix<nmx;ix++){ 
-        x = omx + ix*dmx;
-        hx = x - sx; //FIX THIS PART OF THE CODE TO WHAT YOU HAVE IN THE ADJOINT!!
-        ihx = (int) truncf((hx - ohx)/dhx);
-        if (ihx >= 0 && ihx < nhx){
-          d_xg[ix] = d_xg[ix] + smig[ix][iz]*dmig_h[ihx*nmx + ix][iz];
+        for (ihx=0;ihx<nhx;ihx++){
+          hx = ihx*dhx + ohx;
+          sx = (ix*dmx + omx) - hx;
+          gx = (ix*dmx + omx) + hx;
+          isx = (int) truncf((sx - omx)/dmx);
+          igx = (int) truncf((gx - omx)/dmx);
+          if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
+            d_xg[igx] = d_xg[igx] + smig[isx][iz]*dmig_h[ihx*nmx + ix][iz];
+          }
         }
       }
       ssop(d_xg,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,false,verbose);
