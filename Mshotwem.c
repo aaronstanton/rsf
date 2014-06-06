@@ -1,4 +1,4 @@
-/* Shot Profile Wave Equation Migration.
+/* Shot Profile Wave Equation Migration with angle gather imaging condition.
 */
 /*
   Copyright (C) 2014 University of Alberta
@@ -169,7 +169,7 @@ int main(int argc, char* argv[])
     if (!sf_histint(  in,"n1",&nt)) sf_error("No n1= in input");
     if (!sf_histfloat(in,"d1",&dt)) sf_error("No d1= in input");
     if (!sf_histfloat(in,"o1",&ot)) ot=0.0;
-    if (!sf_histint(  in,"n2",&nmx)) sf_error("No n2= in input");
+    if (!sf_histint(  in,"n2",&nmx)) sf_error("No n2= in input"); /* this assumes that your image sampling is the same as your receiver sampling. */
     if (!sf_histfloat(in,"d2",&dmx)) sf_error("No d2= in input");
     if (!sf_histfloat(in,"o2",&omx)) omx=0.0;
     if (!sf_histint(  in,"n3",&nsx)) nsx=1;
