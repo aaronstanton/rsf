@@ -46,16 +46,15 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
                  int nhx, float ohx, float dhx,
                  int npx, float opx, float dpx,
                  int nz, float oz, float dz,
-                 float **vp,float **vs,float fmin, float fmax,
+                 float **vp,float **vs,float **dip,float fmin, float fmax,
                  int numthreads,
                  bool adj, bool inv, bool verbose);
-void eextrap1f(float **dmigpp,float **dmigps,
+void eextrap1f(float **dmigpp_h,float **dmigps_h,
               sf_complex **dp_g_wx, sf_complex **ds_g_wx, sf_complex **d_s_wx,
               int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,
               int nmx, float omx, float dmx, 
               int nsx, float osx, float dsx, 
               int nhx, float ohx, float dhx, 
-              int isx,
               float *po_p,float **pd_p,float *po_s,float **pd_s,
               sf_complex i,sf_complex czero,
               fftwf_plan p1,fftwf_plan p2,
@@ -76,7 +75,7 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
                  int nhx, float ohx, float dhx,
                  int npx, float opx, float dpx,
                  int nz, float oz, float dz,
-                 float **vp,float **vs,float fmin,float fmax,
+                 float **vp,float **vs,float **dip,float fmin,float fmax,
                  int numthreads,
                  float *misfit1, float *misfit2,
                  int Niter,int Nextern,
@@ -95,16 +94,30 @@ void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 void window_match(float **w,float **d1,float **d2,int nt,int nLt,int nLx,int nx);
 void my_taper(float **d,int nt,int nx1,int nx2,int nx3,int nx4,int lt,int lx1,int lx2,int lx3,int lx4);
 void triangle_filter2(float **z,int nt,int nmx,int nhx,bool adj);
+void offset_to_angle(float **d_h, float **d_a,
+                     int nt, float ot, float dt, 
+                     int nhx, float ohx, float dhx, 
+                     int npx, float opx, float dpx,
+                     int ix, 
+                     float **vp, float **vs, float **dip, 
+                     float fmin, float fmax,
+                     bool adj, bool ps, bool verbose);
+void ps_angle(float **d_theta0, float **d_theta,
+              int nz, float oz, float dz, 
+              int npx, float opx, float dpx,
+              int ix, 
+              float **vp, float **vs, float **dip, 
+              bool adj, bool verbose);
 
 int main(int argc, char* argv[])
 {
 
-  sf_file in1,in2,out1,out2,velp,vels,source_wavelet,misfitfile1,misfitfile2,weights1file,weights2file;
+  sf_file in1,in2,out1,out2,velp,vels,dipfile,source_wavelet,misfitfile1,misfitfile2;
   int nt,nmx,nz,nsx,nhx,npx;
   int it,ix,iz;
   float ot,omx,oz,osx,ohx,opx;
   float dt,dmx,dz,dsx,dhx,dpx;
-  float **dmigpp,**dmigps,**dp,**ds,**vp,**vs,*wd,*wav;
+  float **dmigpp,**dmigps,**dp,**ds,**vp,**vs,**dip,*wd,*wav;
   bool adj;
   bool verbose;
   float sum;
@@ -123,8 +136,6 @@ int main(int argc, char* argv[])
   float *misfit2;
   char *misfitname2;
   bool debug;
-  float **weights1,**weights2;
-  char *weights1name,*weights2name;
 
   sf_init (argc,argv);
   in1 = sf_input("in1");
@@ -133,6 +144,7 @@ int main(int argc, char* argv[])
   out2 = sf_output("out2");
   velp = sf_input("vp");
   vels = sf_input("vs");
+  dipfile = sf_input("dip");
   source_wavelet = sf_input("wav");
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
@@ -145,16 +157,17 @@ int main(int argc, char* argv[])
   if (!sf_getbool("debug",&debug)) debug = false; /* flag for debugging */
   if (debug) adj = true; 
 
+  if (!sf_getint("nhx",&nhx)) sf_error("nhx must be specified");
+  if (!sf_getfloat("ohx",&ohx)) sf_error("ohx must be specified");
+  if (!sf_getfloat("dhx",&dhx)) sf_error("dhx must be specified");
+
   if (adj || dottest || inv || debug){
     if (!sf_getint("nz",&nz)) sf_error("nz must be specified");
     if (!sf_getfloat("oz",&oz)) sf_error("oz must be specified");
     if (!sf_getfloat("dz",&dz)) sf_error("dz must be specified");
-    if (!sf_getint("nhx",&nhx)) sf_error("nhx must be specified");
-    if (!sf_getfloat("ohx",&ohx)) sf_error("ohx must be specified");
-    if (!sf_getfloat("dhx",&dhx)) sf_error("dhx must be specified");
-    if (!sf_getint("npx",&npx))   npx=181; /* length of angle axis */
-    if (!sf_getfloat("opx",&opx)) opx=-90.0; /* origin of angle axis in degrees */
-    if (!sf_getfloat("dpx",&dpx)) dpx=1.0;   /* increment of angle axis in degrees */
+    if (!sf_getint("npx",&npx))   npx=201; /* length of angle axis */
+    if (!sf_getfloat("opx",&opx)) opx=-2; /* origin of angle axis */
+    if (!sf_getfloat("dpx",&dpx)) dpx=0.02;   /* increment of angle axis */
   }
   else{
     if (!sf_getint("nt",&nt)) sf_error("nt must be specified");
@@ -245,8 +258,8 @@ int main(int argc, char* argv[])
     sf_putfloat(out1,"o3",opx);
     sf_putfloat(out1,"d3",dpx);
     sf_putfloat(out1,"n3",npx);
-    sf_putstring(out1,"label3","Angle");
-    sf_putstring(out1,"unit3","Degrees");
+    sf_putstring(out1,"label3","tan\\F10 q\\F3 ");
+    sf_putstring(out1,"unit3"," ");
     sf_putstring(out2,"title","PS Migration");
     sf_putfloat(out2,"o1",oz);
     sf_putfloat(out2,"d1",dz);
@@ -261,8 +274,8 @@ int main(int argc, char* argv[])
     sf_putfloat(out2,"o3",opx);
     sf_putfloat(out2,"d3",dpx);
     sf_putfloat(out2,"n3",npx);
-    sf_putstring(out2,"label3","Angle");
-    sf_putstring(out2,"unit3","Degrees");
+    sf_putstring(out2,"label3","tan\\F10 q\\F3 ");
+    sf_putstring(out2,"unit3"," ");
   }
   else{
     sf_putstring(out1,"title","PP data");
@@ -302,8 +315,10 @@ int main(int argc, char* argv[])
   sf_floatread(wav,nt,source_wavelet);
   vp = sf_floatalloc2(nz,nmx);
   vs = sf_floatalloc2(nz,nmx);
+  dip = sf_floatalloc2(nz,nmx);
   sf_floatread(vp[0],nz*nmx,velp);
   sf_floatread(vs[0],nz*nmx,vels);
+  sf_floatread(dip[0],nz*nmx,dipfile);
   dp = sf_floatalloc2(nt,nmx*nsx);
   ds = sf_floatalloc2(nt,nmx*nsx);
   dmigpp = sf_floatalloc2(nz,nmx*npx);
@@ -367,8 +382,8 @@ int main(int argc, char* argv[])
       }
     }
 
-    ewem_sp2d_op(dp_1,ds_1,dmigpp_1,dmigps_1,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,true,verbose);
-    ewem_sp2d_op(dp_2,ds_2,dmigpp_2,dmigps_2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,true,verbose);
+    ewem_sp2d_op(dp_1,ds_1,dmigpp_1,dmigps_1,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,dip,fmin,fmax,numthreads,false,true,verbose);
+    ewem_sp2d_op(dp_2,ds_2,dmigpp_2,dmigps_2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,dip,fmin,fmax,numthreads,true,true,verbose);
 
     tmp_sum1_p=0;
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) tmp_sum1_p += dp_1[ix][it]*dp_2[ix][it];
@@ -392,10 +407,10 @@ int main(int argc, char* argv[])
   }
 
   if (!inv){
-    ewem_sp2d_op(dp,ds,dmigpp,dmigps,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,adj,inv,verbose);
+    ewem_sp2d_op(dp,ds,dmigpp,dmigps,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,dip,fmin,fmax,numthreads,adj,inv,verbose);
   }
   else{
-    ls_shotewem(dp,ds,dmigpp,dmigps,wav,wd,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,misfit1,misfit2,Niter,Nextern,verbose);
+    ls_shotewem(dp,ds,dmigpp,dmigps,wav,wd,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,dip,fmin,fmax,numthreads,misfit1,misfit2,Niter,Nextern,verbose);
     sf_floatwrite(misfit1,Niter*Nextern,misfitfile1);
     sf_floatwrite(misfit2,Niter*Nextern,misfitfile2);
   }
@@ -415,6 +430,7 @@ int main(int argc, char* argv[])
   free2float(ds);
   free2float(vp);
   free2float(vs);
+  free2float(dip);
   free1float(wd);
   free1float(wav);
   
@@ -429,13 +445,15 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
                  int nhx, float ohx, float dhx,
                  int npx, float opx, float dpx,
                  int nz, float oz, float dz,
-                 float **vp,float **vs,float fmin, float fmax,
+                 float **vp,float **vs,float **dip,float fmin, float fmax,
                  int numthreads,
                  bool adj, bool inv, bool verbose)
 /*< 2d shot profile PP PS wave equation depth migration operator >*/
 {
-  int iz,ix,isx,igx,ik,iw,it,nw,nk,padt,padx,ntfft,ismooth;
+  int iz,ix,isx,igx,ihx,ipx,ik,iw,it,nw,nk,padt,padx,ntfft,ismooth;
   float dw,dk;
+  float **dmigpp_h,**dmigpp_h_gather,**dmigpp_a_gather,**dmigpp2,**dp2;
+  float **dmigps_h,**dmigps_h_gather,**dmigps_a_gather,**dmigps2,**ds2;
   sf_complex czero,i;
   int ifmin,ifmax;
   float *d_t;
@@ -447,17 +465,8 @@ void ewem_sp2d_op(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav
   fftwf_plan p1,p2;
   float progress;
   float *po_p,**pd_p,*po_s,**pd_s;
-  float **dp2,**ds2;
-  float **dmigpp2,**dmigps2;
-
-before going any further... can I avoid making these copies? This is going to be a problem for big datasets... 
-
-solution! take the filters out of the operator and put them right into the CG code. 
-
-  dmigpp2 = sf_floatalloc2(nz,nmx*npx); 
-  dmigps2 = sf_floatalloc2(nz,nmx*npx); 
-  dp2 = sf_floatalloc2(nt,nmx*nsx); 
-  ds2 = sf_floatalloc2(nt,nmx*nsx); 
+  time_t start,finish;
+  double elapsed_time;
 
   __real__ czero = 0;
   __imag__ czero = 0;
@@ -476,19 +485,75 @@ solution! take the filters out of the operator and put them right into the CG co
   dw = 2*PI/((float) ntfft)/dt;
   dp_g_wx = sf_complexalloc2(nw,nmx);
   ds_g_wx = sf_complexalloc2(nw,nmx);
+  dp2 = sf_floatalloc2(nt,nmx*nsx);
+  ds2 = sf_floatalloc2(nt,nmx*nsx);
+  dmigpp2 = sf_floatalloc2(nz,nmx*npx);
+  dmigps2 = sf_floatalloc2(nz,nmx*npx);
   d_s_wx = sf_complexalloc2(nw,nmx);
   d_t = sf_floatalloc(nt);
   d_w = sf_complexalloc(nw);
   for (it=0;it<nt;it++)  d_t[it] = 0.0;  
   for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
+  dmigpp_h = sf_floatalloc2(nz,nmx*nhx); 
+  dmigpp_h_gather = sf_floatalloc2(nz,nhx); 
+  dmigpp_a_gather = sf_floatalloc2(nz,npx); 
+  for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) dmigpp_h[ix][iz] = 0.0;
+  dmigps_h = sf_floatalloc2(nz,nmx*nhx); 
+  dmigps_h_gather = sf_floatalloc2(nz,nhx); 
+  dmigps_a_gather = sf_floatalloc2(nz,npx); 
+  for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) dmigps_h[ix][iz] = 0.0;
+
 
   if (adj){
     for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = 0.0;
     for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = 0.0;
+
+    for (ix=0;ix<nmx*nsx;ix++){ 
+      for (it=0;it<nt;it++){ 
+        dp2[ix][it] = dp[ix][it];
+        ds2[ix][it] = ds[ix][it];
+      }
+    }
+    my_taper(dp2,nt,nmx,nsx,1,1,0,20,0,0,0);
+    my_taper(ds2,nt,nmx,nsx,1,1,0,20,0,0,0);
   }
   else{
+    for (ix=0;ix<nmx*npx;ix++){ 
+      for (iz=0;iz<nz;iz++){ 
+        dmigpp2[ix][iz] = dmigpp[ix][iz];
+        dmigps2[ix][iz] = dmigps[ix][iz];
+      }
+    }
+    if (inv){ 
+      for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp2,nz,nmx,npx,0);
+      for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps2,nz,nmx,npx,0);
+      fkfilter(dmigpp2,dz,nz,dmx,nmx,npx,-0.5,-0.25,0.25,0.5);
+      fkfilter(dmigps2,dz,nz,dmx,nmx,npx,-0.5,-0.25,0.25,0.5);
+    }    
+
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) dp[ix][it] = 0.0;
     for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) ds[ix][it] = 0.0;
+    for (ix=0;ix<nmx;ix++){
+      for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) dmigpp_a_gather[ipx][iz] = dmigpp2[ipx*nmx + ix][iz];
+      offset_to_angle(dmigpp_h_gather,dmigpp_a_gather,
+                      nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,
+                      ix,
+                      vp,vs,dip,
+                      fmin,fmax,
+                      adj,false,verbose);
+      for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) dmigpp_h[ihx*nmx + ix][iz] = dmigpp_h_gather[ihx][iz]; 
+    }    
+    for (ix=0;ix<nmx;ix++){
+      for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) dmigps_a_gather[ipx][iz] = dmigps2[ipx*nmx + ix][iz];
+      offset_to_angle(dmigps_h_gather,dmigps_a_gather,
+                      nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,
+                      ix,
+                      vp,vs,dip,
+                      fmin,fmax,
+                      adj,true,verbose);
+      for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) dmigps_h[ihx*nmx + ix][iz] = dmigps_h_gather[ihx][iz]; 
+    }    
+
   }
 
   /* decompose slowness into layer average, and layer purturbation */
@@ -526,34 +591,8 @@ solution! take the filters out of the operator and put them right into the CG co
   fftwf_execute_dft(p1,a,a); 
   fftwf_execute_dft(p2,b,b); 
 
- 
-  if (adj){
-    for (ix=0;ix<nmx*nsx;ix++){ 
-      for (it=0;it<nt;it++){ 
-        dp2[ix][it] = dp[ix][it];
-        ds2[ix][it] = ds[ix][it];
-      }
-    }
-    my_taper(dp2,nt,nmx,nsx,1,1,0,20,0,0,0);
-    my_taper(ds2,nt,nmx,nsx,1,1,0,20,0,0,0);
-  }
-  else{
-    for (ix=0;ix<nmx*npx;ix++){ 
-      for (iz=0;iz<nz;iz++){ 
-        dmigpp2[ix][iz] = dmigpp[ix][iz];
-        dmigps2[ix][iz] = dmigps[ix][iz];
-      }
-    }
-    if (inv){ 
-      for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp2,nz,nmx,npx,0);
-      for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps2,nz,nmx,npx,0);
-      fkfilter(dmigpp2,dz,nz,dmx,nmx,npx,-0.5,-0.25,0.25,0.5);
-      fkfilter(dmigps2,dz,nz,dmx,nmx,npx,-0.5,-0.25,0.25,0.5);
-    }    
-  }
-
 for (isx=0;isx<nsx;isx++){
-
+  start=time(0);
   igx = (int) truncf(((float) isx*dsx + osx) - omx)/dmx;  
   /* source wavefield*/
   for (ix=0;ix<nmx;ix++) for (iw=0;iw<nw;iw++) d_s_wx[ix][iw] = czero;
@@ -589,15 +628,14 @@ for (isx=0;isx<nsx;isx++){
   omp_set_num_threads(numthreads);
   if (verbose && adj) fprintf(stderr,"\r migrating shot %d/%d:\n",isx+1,nsx);
   if (verbose && !(adj)) fprintf(stderr,"\r demigrating shot %d/%d:\n",isx+1,nsx);
-  #pragma omp parallel for private(iw) shared(dmigpp2,dmigps2,dp_g_wx,ds_g_wx,d_s_wx,progress)
+  #pragma omp parallel for private(iw) shared(dmigpp_h,dmigps_h,dp_g_wx,ds_g_wx,d_s_wx,progress)
   for (iw=ifmin;iw<ifmax;iw++){ 
     progress += 1.0/((float) ifmax);
     if (verbose) progress_msg(progress);
-    eextrap1f(dmigpp2_h,dmigps2_h,dp_g_wx,ds_g_wx,d_s_wx,iw,nw,ifmax,ntfft,dw,dk,nk,dz,nz, 
+    eextrap1f(dmigpp_h,dmigps_h,dp_g_wx,ds_g_wx,d_s_wx,iw,nw,ifmax,ntfft,dw,dk,nk,dz,nz, 
               nmx,omx,dmx, 
               nsx,osx,dsx, 
               nhx,ohx,dhx, 
-              isx,
               po_p,pd_p,po_s,pd_s,i,czero,p1,p2,adj,verbose);
   }
   if (!adj){
@@ -616,8 +654,33 @@ for (isx=0;isx<nsx;isx++){
       for (it=0;it<nt;it++) ds[isx*nmx + ix][it] = d_t[it];
     }
   }
-  if (verbose) fprintf(stderr,"\r                     ");
+  finish=time(0);
+  elapsed_time=difftime(finish,start);
+  if (verbose) fprintf(stderr," elapsed time = %6.2f seconds\n",elapsed_time);
 }
+
+  if (adj){
+    for (ix=0;ix<nmx;ix++){
+      for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) dmigpp_h_gather[ihx][iz] = dmigpp_h[ihx*nmx + ix][iz];
+      offset_to_angle(dmigpp_h_gather,dmigpp_a_gather,
+                      nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,
+                      ix,
+                      vp,vs,dip,
+                      fmin,fmax,
+                      adj,false,verbose);
+      for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) dmigpp2[ipx*nmx + ix][iz] = dmigpp_a_gather[ipx][iz]; 
+    }
+    for (ix=0;ix<nmx;ix++){
+      for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) dmigps_h_gather[ihx][iz] = dmigps_h[ihx*nmx + ix][iz];
+      offset_to_angle(dmigps_h_gather,dmigps_a_gather,
+                      nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,
+                      ix,
+                      vp,vs,dip,
+                      fmin,fmax,
+                      adj,true,verbose);
+      for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) dmigps2[ipx*nmx + ix][iz] = dmigps_a_gather[ipx][iz]; 
+    }
+  }
 
   if (adj){
     for (ix=0;ix<nmx*npx;ix++){ 
@@ -653,30 +716,34 @@ for (isx=0;isx<nsx;isx++){
   free2float(pd_p);
   free1float(po_s);
   free2float(pd_s);
-
-  free2float(dp2);
-  free2float(ds2);
+  free2float(dmigpp_h);
+  free2float(dmigpp_h_gather);
+  free2float(dmigpp_a_gather);
+  free2float(dmigps_h);
+  free2float(dmigps_h_gather);
+  free2float(dmigps_a_gather);
   free2float(dmigpp2);
   free2float(dmigps2);
+  free2float(dp2);
+  free2float(ds2);
 
   return;
 } 
 
-void eextrap1f(float **dmigpp,float **dmigps,
+void eextrap1f(float **dmigpp_h,float **dmigps_h,
               sf_complex **dp_g_wx, sf_complex **ds_g_wx, sf_complex **d_s_wx,
               int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,
               int nmx, float omx, float dmx, 
               int nsx, float osx, float dsx, 
               int nhx, float ohx, float dhx, 
-              int isx,
               float *po_p,float **pd_p,float *po_s,float **pd_s,
               sf_complex i,sf_complex czero,
               fftwf_plan p1,fftwf_plan p2,
               bool adj, bool verbose)
 /*< extrapolate 1 frequency >*/
 {
-  float w,factor,hx;
-  int iz,ix,ihx; 
+  float w,factor,hx,sx,gx;
+  int iz,ix,ihx,isx,igx; 
   sf_complex *dp_xg,*ds_xg,*d_xs,**smig;
   dp_xg = sf_complexalloc(nmx);
   ds_xg = sf_complexalloc(nmx);
@@ -696,19 +763,18 @@ void eextrap1f(float **dmigpp,float **dmigps,
       ssop(dp_xg,w,dk,nk,nmx,dz,iz,po_p,pd_p,i,czero,p1,p2,true,verbose);
       ssop(ds_xg,w,dk,nk,nmx,dz,iz,po_s,pd_s,i,czero,p1,p2,true,verbose);
       for (ix=0;ix<nmx;ix++){
-        hx = (ix*dmx + omx) - (isx*dsx + osx);
-        ihx = (int) truncf(((float)(hx - ohx))/dhx);
-        if (ihx<nhx && hx>=ohx){
-          #pragma omp atomic 
-          dmigpp[ihx*nmx + ix][iz] += factor*crealf(conjf(d_xs[ix])*dp_xg[ix]);
-        }
-      }
-      for (ix=0;ix<nmx;ix++){
-        hx = (ix*dmx + omx) - (isx*dsx + osx);
-        ihx = (int) truncf(((float)(hx - ohx))/dhx);
-        if (ihx<nhx && hx>=ohx){
-          #pragma omp atomic 
-          dmigps[ihx*nmx + ix][iz] += factor*crealf(conjf(d_xs[ix])*ds_xg[ix]);
+        for (ihx=0;ihx<nhx;ihx++){
+          hx = ihx*dhx + ohx;
+          sx = (ix*dmx + omx) - hx;
+          gx = (ix*dmx + omx) + hx;
+          isx = (int) truncf((sx - omx)/dmx);
+          igx = (int) truncf((gx - omx)/dmx);
+          if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
+            #pragma omp atomic
+            dmigpp_h[ihx*nmx + ix][iz] += factor*crealf(conjf(d_xs[isx])*dp_xg[igx]);
+            #pragma omp atomic 
+            dmigps_h[ihx*nmx + ix][iz] += factor*crealf(conjf(d_xs[isx])*ds_xg[igx]);
+          } 
         }
       }
     }
@@ -723,12 +789,17 @@ void eextrap1f(float **dmigpp,float **dmigps,
     for (ix=0;ix<nmx;ix++) dp_xg[ix] = czero;
     for (ix=0;ix<nmx;ix++) ds_xg[ix] = czero;
     for (iz=nz-1;iz>=0;iz--){ /* extrapolate receiver wavefield */
-      for (ix=0;ix<nmx;ix++){ 
-        hx = (ix*dmx + omx) - (isx*dsx + osx);
-        ihx = (int) truncf(((float)(hx - ohx))/dhx);
-        if (ihx<nhx && hx>=ohx){
-          dp_xg[ix] = dp_xg[ix] + smig[ix][iz]*dmigpp[ihx*nmx + ix][iz];
-          ds_xg[ix] = ds_xg[ix] + smig[ix][iz]*dmigps[ihx*nmx + ix][iz];
+      for (ix=0;ix<nmx;ix++){
+        for (ihx=0;ihx<nhx;ihx++){
+          hx = ihx*dhx + ohx;
+          sx = (ix*dmx + omx) - hx;
+          gx = (ix*dmx + omx) + hx;
+          isx = (int) truncf((sx - omx)/dmx);
+          igx = (int) truncf((gx - omx)/dmx);
+          if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
+            dp_xg[igx] = dp_xg[igx] + smig[isx][iz]*dmigpp_h[ihx*nmx + ix][iz];
+            ds_xg[igx] = ds_xg[igx] + smig[isx][iz]*dmigps_h[ihx*nmx + ix][iz];
+          }
         }
       }
       ssop(dp_xg,w,dk,nk,nmx,-dz,iz,po_p,pd_p,i,czero,p1,p2,false,verbose);
@@ -861,14 +932,14 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
                  int nhx, float ohx, float dhx,
                  int npx, float opx, float dpx,
                  int nz, float oz, float dz,
-                 float **vp,float **vs,float fmin,float fmax,
+                 float **vp,float **vs,float **dip,float fmin,float fmax,
                  int numthreads,
                  float *misfit1, float *misfit2,
                  int Niter,int Nextern,
                  bool verbose)
 /*< Least squares migration. >*/
 {
-  int k,k2,ix,it,iz,ihx,ismooth;
+  int k,k2,ix,it,iz,ismooth;
   float progress;
   float gamma1,gamma1_old,delta1,alpha1,beta1,**r1,**ss1,**g1,**s1,**v1,**v1wm;
   float gamma2,gamma2_old,delta2,alpha2,beta2,**r2,**ss2,**g2,**s2,**v2,**v2wm;
@@ -877,24 +948,24 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
 
   r1 = sf_floatalloc2(nt,nmx*nsx);
   ss1 = sf_floatalloc2(nt,nmx*nsx);
-  g1 = sf_floatalloc2(nz,nmx*nhx);
-  s1 = sf_floatalloc2(nz,nmx*nhx);
-  v1 = sf_floatalloc2(nz,nmx*nhx);
-  v1wm = sf_floatalloc2(nz,nmx*nhx);
+  g1 = sf_floatalloc2(nz,nmx*npx);
+  s1 = sf_floatalloc2(nz,nmx*npx);
+  v1 = sf_floatalloc2(nz,nmx*npx);
+  v1wm = sf_floatalloc2(nz,nmx*npx);
 
   r2 = sf_floatalloc2(nt,nmx*nsx);
   ss2 = sf_floatalloc2(nt,nmx*nsx);
-  g2 = sf_floatalloc2(nz,nmx*nhx);
-  s2 = sf_floatalloc2(nz,nmx*nhx);
-  v2 = sf_floatalloc2(nz,nmx*nhx);
-  v2wm = sf_floatalloc2(nz,nmx*nhx);
+  g2 = sf_floatalloc2(nz,nmx*npx);
+  s2 = sf_floatalloc2(nz,nmx*npx);
+  v2 = sf_floatalloc2(nz,nmx*npx);
+  v2wm = sf_floatalloc2(nz,nmx*npx);
 
-  wm1 = sf_floatalloc2(nz,nmx*nhx);
-  wm2 = sf_floatalloc2(nz,nmx*nhx);
+  wm1 = sf_floatalloc2(nz,nmx*npx);
+  wm2 = sf_floatalloc2(nz,nmx*npx);
 
-  tmp = sf_floatalloc2(nz,nhx);
+  tmp = sf_floatalloc2(nz,npx);
 
-  for (ix=0;ix<nmx*nhx;ix++){
+  for (ix=0;ix<nmx*npx;ix++){
     for (iz=0;iz<nz;iz++){
       dmigpp[ix][iz] = 0.0;				
       dmigps[ix][iz] = 0.0;				
@@ -906,64 +977,50 @@ void ls_shotewem(float **dp,float **ds,float **dmigpp,float **dmigps,float *wav,
   }
   progress = 0.0;
 
-  for (k2=0;k2<Nextern;k2++){
-    for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = 0.0;
-    for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = 0.0;
-    if (Nextern>0){ 
-      apply_weight(dmigpp,wm2,nz,nmx*nhx,1);
-      /* notice below that dmigpp and dmigps are flipped as we are propagating the "matched" wavefields to update our residual */
-      ewem_sp2d_op(r1,r2,dmigps,dmigpp,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,true,false);
-      for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = dp[ix][it]*wd[ix];
-      for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (ds[ix][it] - r2[ix][it])*wd[ix];
-      ewem_sp2d_op(r1,r2,g1,g2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,true,false);
-    }
-    else{
-      for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = dp[ix][it]*wd[ix];
-      for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = ds[ix][it]*wd[ix];
-    }
-    for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz];
-    for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz];
-    gamma1 = cgdot(g1,nz,nmx*nhx);
+  for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = 0.0;
+  for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = 0.0;
+  for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = dp[ix][it]*wd[ix];
+  for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = ds[ix][it]*wd[ix];
+  for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz];
+  for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz];
+  gamma1 = cgdot(g1,nz,nmx*npx);
+  gamma1_old = gamma1;
+  gamma2 = cgdot(g2,nz,nmx*npx);
+  gamma2_old = gamma2;
+  for (k=0;k<Niter;k++){
+    progress += 1.0/((float) Niter*Nextern);
+    if (verbose) progress_msg(progress);
+    ewem_sp2d_op(ss1,ss2,s1,s2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,dip,fmin,fmax,numthreads,false,true,false);
+    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) ss1[ix][it] = ss1[ix][it]*wd[ix];
+    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) ss2[ix][it] = ss2[ix][it]*wd[ix];
+    delta1 = cgdot(ss1,nt,nmx*nsx);
+    alpha1 = gamma1/(delta1 + 0.00000001);
+    delta2 = cgdot(ss2,nt,nmx*nsx);
+    alpha2 = gamma2/(delta2 + 0.00000001);
+    for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = v1[ix][iz] +  s1[ix][iz]*alpha1;
+    for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = v2[ix][iz] +  s2[ix][iz]*alpha2;
+    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = (r1[ix][it] -  ss1[ix][it]*alpha1)*wd[ix];
+    for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (r2[ix][it] -  ss2[ix][it]*alpha2)*wd[ix];
+    misfit1[k] = cgdot(r1,nt,nmx*nsx);
+    misfit2[k] = cgdot(r2,nt,nmx*nsx);
+    ewem_sp2d_op(r1,r2,g1,g2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,dip,fmin,fmax,numthreads,true,true,false);
+    gamma1 = cgdot(g1,nz,nmx*npx);
+    gamma2 = cgdot(g2,nz,nmx*npx);
+    beta1 = gamma1/(gamma1_old + 0.00000001);
+    beta2 = gamma2/(gamma2_old + 0.00000001);
     gamma1_old = gamma1;
-    gamma2 = cgdot(g2,nz,nmx*nhx);
     gamma2_old = gamma2;
-    for (k=0;k<Niter;k++){
-      progress += 1.0/((float) Niter*Nextern);
-      if (verbose) progress_msg(progress);
-      ewem_sp2d_op(ss1,ss2,s1,s2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,false,true,false);
-      for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) ss1[ix][it] = ss1[ix][it]*wd[ix];
-      for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) ss2[ix][it] = ss2[ix][it]*wd[ix];
-      delta1 = cgdot(ss1,nt,nmx*nsx);
-      alpha1 = gamma1/(delta1 + 0.00000001);
-      delta2 = cgdot(ss2,nt,nmx*nsx);
-      alpha2 = gamma2/(delta2 + 0.00000001);
-      for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) v1[ix][iz] = v1[ix][iz] +  s1[ix][iz]*alpha1;
-      for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) v2[ix][iz] = v2[ix][iz] +  s2[ix][iz]*alpha2;
-      for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r1[ix][it] = (r1[ix][it] -  ss1[ix][it]*alpha1)*wd[ix];
-      for (ix=0;ix<nmx*nsx;ix++) for (it=0;it<nt;it++) r2[ix][it] = (r2[ix][it] -  ss2[ix][it]*alpha2)*wd[ix];
-      misfit1[k2*Niter + k] = cgdot(r1,nt,nmx*nsx);
-      misfit2[k2*Niter + k] = cgdot(r2,nt,nmx*nsx);
-      ewem_sp2d_op(r1,r2,g1,g2,wav,nt,ot,dt,nmx,omx,dmx,nsx,osx,dsx,nhx,ohx,dhx,npx,opx,dpx,nz,oz,dz,vp,vs,fmin,fmax,numthreads,true,true,false);
-      gamma1 = cgdot(g1,nz,nmx*nhx);
-      gamma2 = cgdot(g2,nz,nmx*nhx);
-      beta1 = gamma1/(gamma1_old + 0.00000001);
-      beta2 = gamma2/(gamma2_old + 0.00000001);
-      gamma1_old = gamma1;
-      gamma2_old = gamma2;
-      for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz] + s1[ix][iz]*beta1;
-      for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz] + s2[ix][iz]*beta2;
-    }
-    for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = v1[ix][iz];
-    for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) v1wm[ix][iz] = v1[ix][iz];
-    apply_weight(v1wm,wm2,nz,nmx*nhx,1);
-    for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = v2[ix][iz] + v1wm[ix][iz];
-    update_weights(wm1,wm2,dmigpp,dmigps,nz,nmx*nhx,1);
+    for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) s1[ix][iz] = g1[ix][iz] + s1[ix][iz]*beta1;
+    for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) s2[ix][iz] = g2[ix][iz] + s2[ix][iz]*beta2;
   }
+  for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) dmigpp[ix][iz] = v1[ix][iz];
+  for (ix=0;ix<nmx*npx;ix++) for (iz=0;iz<nz;iz++) dmigps[ix][iz] = v2[ix][iz];
+
   /* smooth along the offset axis with a triangle filter */
-  fkfilter(dmigpp,dz,nz,dmx,nmx,nhx,-0.5,-0.25,0.25,0.5);
-  fkfilter(dmigps,dz,nz,dmx,nmx,nhx,-0.5,-0.25,0.25,0.5);
-  for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp,nz,nmx,nhx,1);
-  for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps,nz,nmx,nhx,1);
+  fkfilter(dmigpp,dz,nz,dmx,nmx,npx,-0.5,-0.25,0.25,0.5);
+  fkfilter(dmigps,dz,nz,dmx,nmx,npx,-0.5,-0.25,0.25,0.5);
+  for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigpp,nz,nmx,npx,1);
+  for (ismooth=0;ismooth<5;ismooth++) triangle_filter2(dmigps,nz,nmx,npx,1);
 
   if (verbose) fprintf(stderr,"\r                   \n");
 
@@ -1579,6 +1636,212 @@ void my_taper(float **d,int nt,int nx1,int nx2,int nx3,int nx4,int lt,int lx1,in
   }
   }
   }
+  return;
+}
+
+void offset_to_angle(float **d_h, float **d_a,
+                     int nz, float oz, float dz, 
+                     int nhx, float ohx, float dhx, 
+                     int npx, float opx, float dpx,
+                     int ix, 
+                     float **vp, float **vs, float **dip, 
+                     float fmin, float fmax,
+                     bool adj, bool ps, bool verbose)
+/*< Convert from offset to angle (adj=true) or from angle to offset (adj=false) angle is expressed as angle = tan(theta) >*/
+{
+
+  int iz,ihx,ipx,ik,iw,nw,nk,padz,padx,nzfft,ifmin,ifmax;
+  float dw,dk,px;
+  sf_complex czero;
+  float *d_t;
+  sf_complex *d_w;
+  sf_complex **d_wh;
+  sf_complex **d_wa;
+  fftwf_complex *a,*b;
+  sf_complex L;
+  int *n;
+  fftwf_plan p1,p2;
+  float w,k;
+  float **d_a0;
+
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  padz = 4;
+  padx = 8;
+  nzfft = padz*nz;
+  nw=nzfft/2+1;
+
+  if(fmax*dz*nzfft+1<nw) ifmax = trunc(fmax*dz*nzfft)+1;
+  else ifmax = nw;
+  if(fmin*dz*nzfft+1<ifmax) ifmin = trunc(fmin*dz*nzfft);
+  else ifmin = 0;
+
+  nk = padx*nhx;
+  dk = 2*PI/((float) nk)/dhx;
+  dw = 2*PI/((float) nzfft)/dz;
+  d_wh = sf_complexalloc2(nw,nhx);
+  d_wa = sf_complexalloc2(nw,npx);
+  d_t = sf_floatalloc(nz);
+  d_w = sf_complexalloc(nw);
+  for (iz=0;iz<nz;iz++)  d_t[iz] = 0.0;  
+  for (iw=0;iw<nw;iw++)  d_w[iw] = czero;  
+
+  n = sf_intalloc(1); 
+  n[0] = nk;
+
+if (adj){
+  a  = fftwf_malloc(sizeof(fftwf_complex) * nk);
+  p1 = fftwf_plan_dft(1, n, a, a, FFTW_FORWARD, FFTW_ESTIMATE);
+  for (iw=0;iw<nw;iw++) for (ipx=0;ipx<npx;ipx++) d_wa[ipx][iw] = czero;
+  /* transform the time axis to the frequency domain */
+  for (ihx=0;ihx<nhx;ihx++){
+    for (iz=0;iz<nz;iz++) d_t[iz] = d_h[ihx][iz];
+    f_op(d_w,d_t,nw,nz,1); /* d_t to d_w */
+    for (iw=0;iw<nw;iw++) d_wh[ihx][iw] = d_w[iw]/sqrtf((float) nzfft);
+  }
+
+  /* transform the offset axis to the frequency domain */
+  for (iw=ifmin;iw<ifmax;iw++){
+    w = iw*dw;
+    for (ihx=0;ihx<nhx;ihx++) a[ihx] = d_wh[ihx][iw];
+    for (ihx=nhx;ihx<nk;ihx++) a[ihx] = czero;
+    fftwf_execute_dft(p1,a,a); 
+    /* compute Ray Parameters */
+    for (ipx=0;ipx<npx;ipx++){
+      px = ipx*dpx + opx;
+      k = -px*w;
+      if (k>0){ 
+        ik = truncf(k/dk);
+      }
+      else{ 
+        ik = truncf((dk*nk + k)/dk);
+      }
+      __real__ L = cos(-k*ohx);
+      __imag__ L = sin(-k*ohx);
+      if (ik < nk && ik >= 0){
+        d_wa[ipx][iw] += L*a[ik]/sqrtf((float) nk);
+      }
+    }
+  }
+      
+  /* transform the frequency axis to the depth domain */
+  for (ipx=0;ipx<npx;ipx++){
+    for (iw=0;iw<nw;iw++) d_w[iw] = d_wa[ipx][iw];
+    f_op(d_w,d_t,nw,nz,0); /* d_w to d_z */
+    for (iz=0;iz<nz;iz++) d_a[ipx][iz] = d_t[iz]/sqrtf((float) nzfft);
+  }
+  fftwf_destroy_plan(p1);
+  fftwf_free(a);
+
+/*
+  if (ps){
+    d_a0 = sf_floatalloc2(nz,npx);
+    for (ipx=0;ipx<npx;ipx++){
+      for (iz=0;iz<nz;iz++){ 
+        d_a0[ipx][iz] = d_a[ipx][iz];
+        d_a[ipx][iz] = 0.0;
+      }
+    }
+    ps_angle(d_a0,d_a,nz,oz,dz,npx,opx,dpx,ix,vp,vs,dip,adj,verbose);
+    free2float(d_a0);
+  }
+*/
+
+}
+else{
+  b  = fftwf_malloc(sizeof(fftwf_complex) * nk);
+  p2 = fftwf_plan_dft(1, n, b, b, FFTW_BACKWARD, FFTW_ESTIMATE);
+  for (iw=0;iw<nw;iw++) for (ihx=0;ihx<nhx;ihx++) d_wh[ihx][iw] = czero;
+
+/*
+  if (ps){
+    d_a0 = sf_floatalloc2(nz,npx);
+    for (ipx=0;ipx<npx;ipx++){
+      for (iz=0;iz<nz;iz++){ 
+        d_a0[ipx][iz] = 0.0;
+      }
+    }
+    ps_angle(d_a0,d_a,nz,oz,dz,npx,opx,dpx,ix,vp,vs,dip,adj,verbose);
+    for (ipx=0;ipx<npx;ipx++){
+      for (iz=0;iz<nz;iz++){ 
+        d_a[ipx][iz] = d_a0[ipx][iz];
+      }
+    }
+    free2float(d_a0);
+  }
+*/
+
+  /* transform the time axis to the frequency domain */
+  for (ipx=0;ipx<npx;ipx++){
+    for (iz=0;iz<nz;iz++) d_t[iz] = d_a[ipx][iz];
+    f_op(d_w,d_t,nw,nz,1); /* d_t to d_w */
+    for (iw=0;iw<nw;iw++) d_wa[ipx][iw] = d_w[iw]/sqrtf((float) nzfft);
+  }
+
+  /* transform the offset axis to the frequency domain */
+  for (iw=ifmin;iw<ifmax;iw++){
+    w = iw*dw;
+    for (ihx=0;ihx<nk;ihx++) b[ihx] = czero;
+    /* compute wavenumbers from ray parameters */
+    for (ipx=0;ipx<npx;ipx++){
+      px = ipx*dpx + opx;
+      k = -px*w;
+      if (k>0){ 
+        ik = truncf(k/dk);
+      }
+      else{ 
+        ik = truncf((dk*nk + k)/dk);
+      }
+      __real__ L = cos(k*ohx);
+      __imag__ L = sin(k*ohx);
+      if (ik < nk && ik >= 0){
+        b[ik] += L*d_wa[ipx][iw];
+      }
+    }
+    fftwf_execute_dft(p2,b,b); 
+    for (ihx=0;ihx<nhx;ihx++) d_wh[ihx][iw] = b[ihx]/sqrtf((float) nk);
+  }
+      
+  /* transform the frequency axis to the depth domain */
+  for (ihx=0;ihx<nhx;ihx++){
+    for (iw=0;iw<nw;iw++) d_w[iw] = d_wh[ihx][iw];
+    f_op(d_w,d_t,nw,nz,0); /* d_w to d_z */
+    for (iz=0;iz<nz;iz++) d_h[ihx][iz] = d_t[iz]/sqrtf((float) nzfft);
+  }
+  fftwf_destroy_plan(p2);
+  fftwf_free(b);
+}
+
+  free2complex(d_wh);
+  free2complex(d_wa);
+  free1float(d_t);
+  free1complex(d_w);
+  return;
+}
+
+void ps_angle(float **d_theta0, float **d_theta,
+              int nz, float oz, float dz, 
+              int npx, float opx, float dpx,
+              int ix, 
+              float **vp, float **vs, float **dip, 
+              bool adj, bool verbose)
+{
+  int iz,ip0,ip;
+  float gamma,p,p0;
+
+  for (iz=0;iz<nz;iz++){
+    gamma = vp[ix][iz]/vs[ix][iz];
+    for (ip0=0;ip0<npx;ip0++){
+      p0 = dpx*ip0 + opx; 
+      p = (4*gamma*p0 + dip[ix][iz]*(gamma*gamma - 1)*(p0*p0 + 1))/( p0*p0*(gamma-1)*(gamma-1) + (gamma+1)*(gamma+1) ); 
+      ip = (int) truncf((p - opx)/dpx);
+      if (ip>=0 && ip<npx){
+        if (adj) d_theta[ip][iz] += d_theta0[ip0][iz];
+        else d_theta0[ip0][iz] += d_theta[ip][iz];
+      }
+    }
+  }
+
   return;
 }
 
