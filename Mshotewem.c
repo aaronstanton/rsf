@@ -1667,7 +1667,7 @@ void offset_to_angle(float **d_h, float **d_a,
   __real__ czero = 0;
   __imag__ czero = 0;
   padz = 4;
-  padx = 8;
+  padx = 4;
   nzfft = padz*nz;
   nw=nzfft/2+1;
 

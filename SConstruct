@@ -2,7 +2,7 @@ import os, sys, re, string
 sys.path.append('../../framework')
 import bldutil
 
-progs = ''' 
+progs = '''
 syn5d
 geom5d
 pad5d
@@ -23,15 +23,20 @@ velconvert
 gxsxtomxhx
 '''
 
+mpi_progs = '''
+mpishotwem
+'''
+
 pyprogs='''
 imagesc
 svd_complex
 svd_complexblk
 '''
+
 pymods='''
 '''
 
-try:  # distributed version
+try: # distributed version
     Import('env root pkgdir bindir')
     env = env.Clone()
 except: # local version
@@ -46,19 +51,45 @@ env.Prepend(CPPPATH=['../../include'],
             LIBS=[env.get('DYNLIB','')+'rsf',
                   env.get('DYNLIB','')+'rsfsegy'])
 
+mpicc = env.get('MPICC')
 for source in src:
     inc = env.RSF_Include(source,prefix='')
     obj = env.StaticObject(source)
     env.Depends(obj,inc)
 
+fftw = env.get('FFTW')
+if fftw:
+    progs += ''
+elif root:
+    place += ''
+    for prog in Split('zomiso'):
+        prog = env.RSF_Place('sf'+prog,None,var='FFTW',package='fftw')
+        env.Install(bindir,prog)
+
 mains = Split(progs)
 for prog in mains:
     sources = ['M' + prog]
     bldutil.depends(env,sources,'M'+prog)
-    prog = env.Program(prog,map(lambda x: x + '.c',sources))
+    env.StaticObject('M'+prog+'.c')
+    prog = env.Program(prog,map(lambda x: x + '.o',sources))
     if root:
         env.Install(bindir,prog)
 
+mpi_mains = Split(mpi_progs)
+if mpicc and fftw:
+    for prog in mpi_mains:
+        sources = ['M' + prog]
+        bldutil.depends(env,sources,'M'+prog)
+        env.StaticObject('M'+prog+'.c',CC=mpicc)
+    	prog = env.Program(prog,map(lambda x: x + '.o',sources),CC=mpicc)
+        if root:
+            env.Install(bindir,prog)
+else:
+    place += mpi_progs
+    for prog in mpi_mains:
+	prog = env.RSF_Place('sf'+prog,None,var='MPICC',package='mpi')
+        if root:
+            env.Install(bindir,prog)
 
 ######################################################################
 # PYTHON METAPROGRAMS (python API not needed)
@@ -79,10 +110,9 @@ if root:
     user = os.path.basename(os.getcwd())
     main = 'sf%s.py' % user
     
-    docs = map(lambda prog: env.Doc(prog,'M' + prog),mains) +  \
+    docs = map(lambda prog: env.Doc(prog,'M' + prog),mains+mpi_mains) + \
            map(lambda prog: env.Doc(prog,'M'+prog+'.py',lang='python'),pymains)
     env.Depends(docs,'#/framework/rsf/doc.py')	
 
     doc = env.RSF_Docmerge(main,docs)
     env.Install(pkgdir,doc)
-
