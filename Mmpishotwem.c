@@ -89,21 +89,21 @@ int main(int argc, char* argv[])
   bool verbose;
   float fmin,fmax;
   off_t iseek;
-  int icpu,ncpu;
+  int rank,num_procs;
   char tmpname[256];
 
   MPI_Status mpi_stat;
   MPI_Init(&argc, &argv);
-  MPI_Comm_size(MPI_COMM_WORLD, &ncpu);
-  MPI_Comm_rank(MPI_COMM_WORLD, &icpu);
+  MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   sf_init(argc,argv);
   in = sf_input("infile");
   out = sf_output("outfile");
   velp = sf_input("vp");
   source_wavelet = sf_input("wav");
-  fprintf(stderr,"icpu=%d\n",icpu);
-  fprintf(stderr,"ncpu=%d\n",ncpu);
+  if (verbose) fprintf(stderr,"rank=%d\n",rank);
+  if (verbose) fprintf(stderr,"num_procs=%d\n",num_procs);
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
   if (adj){
@@ -124,6 +124,9 @@ int main(int argc, char* argv[])
     if (!sf_getint("nsx",&nsx)) sf_error("nsx must be specified");
     if (!sf_getfloat("osx",&osx)) sf_error("osx must be specified");
     if (!sf_getfloat("dsx",&dsx)) sf_error("dsx must be specified");
+    if (!sf_getint("nhx",&nhx)) sf_error("nhx must be specified");
+    if (!sf_getfloat("ohx",&ohx)) sf_error("ohx must be specified");
+    if (!sf_getfloat("dhx",&dhx)) sf_error("dhx must be specified");
   }
   /* read input file parameters */
   if (adj){
@@ -158,18 +161,17 @@ int main(int argc, char* argv[])
   d1shot = sf_floatalloc2(nt,nmx);
   m1shot = sf_floatalloc2(nz,nmx*nhx);
   if (adj){
-    for (isx=icpu;isx<nsx;isx+=ncpu){
-      fprintf(stderr,"reading and migrating shot %d...\n",isx);
+    for (isx=rank;isx<nsx;isx+=num_procs){
+      if (verbose) fprintf(stderr,"reading and migrating shot %d...\n",isx);
       iseek = (off_t)(isx*nmx*nt)*sizeof(float);
       sf_seek(in,iseek,SEEK_SET);    
       sf_floatread(d1shot[0],nt*nmx,in);
-      for (ix=0;ix<nmx*nhx;ix++) for (iz=0;iz<nz;iz++) m1shot[ix][iz] = 0.0;
       wem1shot(d1shot,m1shot,wav,
                nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nhx,ohx,dhx,nz,oz,dz,
                vp,fmin,fmax,adj,verbose);
       sprintf(tmpname, "tmpdmig_%d.rsf",isx);
       outtmp = sf_output(tmpname);
-      fprintf(stderr,"writing %s to disk.\n",tmpname);
+      if (verbose) fprintf(stderr,"writing %s to disk.\n",tmpname);
       sf_putfloat(outtmp,"o1",oz);
       sf_putfloat(outtmp,"d1",dz);
       sf_putfloat(outtmp,"n1",nz);
@@ -196,13 +198,50 @@ int main(int argc, char* argv[])
     }
   }
   else{
-  fprintf(stderr,"Forward not written yet.\n");
-  exit (0);
+    m          = sf_floatalloc2(nz,nmx*npx);
+    m_h_gather = sf_floatalloc2(nz,nhx);
+    m_a_gather = sf_floatalloc2(nz,npx);
+    for (isx=rank;isx<nsx;isx+=num_procs){
+      if (verbose) fprintf(stderr,"reading and de-migrating shot %d...\n",isx);
+      if (isx== rank) sf_floatread(m[0],nz*nmx*npx,in);
+      for (ix=0;ix<nmx;ix++){
+        for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) m_a_gather[ipx][iz] = m[ipx*nmx + ix][iz];
+        offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+        for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) m1shot[ihx*nmx + ix][iz] = m_h_gather[ihx][iz]; 
+      }
+      wem1shot(d1shot,m1shot,wav,
+               nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nhx,ohx,dhx,nz,oz,dz,
+               vp,fmin,fmax,adj,verbose);
+      sprintf(tmpname, "tmpd_%d.rsf",isx);
+      outtmp = sf_output(tmpname);
+      if (verbose) fprintf(stderr,"writing %s to disk.\n",tmpname);
+      sf_putfloat(outtmp,"o1",ot);
+      sf_putfloat(outtmp,"d1",dt);
+      sf_putfloat(outtmp,"n1",nt);
+      sf_putstring(outtmp,"label1","Time");
+      sf_putstring(outtmp,"unit1","s");
+      sf_putfloat(outtmp,"o2",omx);
+      sf_putfloat(outtmp,"d2",dmx);
+      sf_putfloat(outtmp,"n2",nmx);
+      sf_putstring(outtmp,"label2","Receiver-X");
+      sf_putstring(outtmp,"unit2","m");
+      sf_putfloat(outtmp,"o3",isx*dsx + osx);
+      sf_putfloat(outtmp,"d3",dsx);
+      sf_putfloat(outtmp,"n3",1);
+      sf_putstring(outtmp,"label3","Source-X");
+      sf_putstring(outtmp,"unit3","m");
+      sf_putstring(outtmp,"title","Data");
+      sf_floatwrite(d1shot[0],nt*nmx,outtmp);
+      sf_fileclose(outtmp);
+    }
+    free2float(m_h_gather);
+    free2float(m_a_gather);
+    free2float(m);
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
 
-  if (adj && icpu==0){
+  if (adj && rank==0){
     m          = sf_floatalloc2(nz,nmx*npx);
     m_h        = sf_floatalloc2(nz,nmx*nhx);
     m_h_gather = sf_floatalloc2(nz,nhx);
@@ -211,7 +250,7 @@ int main(int argc, char* argv[])
     for (isx=0;isx<nsx;isx++){
       sprintf(tmpname, "tmpdmig_%d.rsf",isx);
       intmp = sf_input(tmpname);
-      fprintf(stderr,"reading %s from disk.\n",tmpname); 
+      if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname); 
       sf_floatread(m1shot[0],nz*nmx*nhx,intmp);
       for (iz=0;iz<nz;iz++) for (ix=0;ix<nmx*nhx;ix++) m_h[ix][iz] += m1shot[ix][iz];
     }
@@ -242,16 +281,39 @@ int main(int argc, char* argv[])
     free2float(m_a_gather);
     free2float(m);
   }  
+  else if (!adj && rank==0){
+    sf_putfloat(out,"o1",ot);
+    sf_putfloat(out,"d1",dt);
+    sf_putfloat(out,"n1",nt);
+    sf_putstring(out,"label1","Time");
+    sf_putstring(out,"unit1","s");
+    sf_putfloat(out,"o2",omx);
+    sf_putfloat(out,"d2",dmx);
+    sf_putfloat(out,"n2",nmx);
+    sf_putstring(out,"label2","Receiver-X");
+    sf_putstring(out,"unit2","m");
+    sf_putfloat(out,"o3",osx);
+    sf_putfloat(out,"d3",dsx);
+    sf_putfloat(out,"n3",nsx);
+    sf_putstring(out,"label3","Source-X");
+    sf_putstring(out,"unit3","m");
+    sf_putstring(out,"title","Data");
+    for (isx=0;isx<nsx;isx++){
+      sprintf(tmpname, "tmpd_%d.rsf",isx);
+      intmp = sf_input(tmpname);
+      if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname); 
+      sf_floatread(d1shot[0],nt*nmx,intmp);
+      sf_floatwrite(d1shot[0],nt*nmx,out);
+    }
+  }  
 
   free2float(m1shot);
   free2float(d1shot);
   free2float(vp);
   free1float(wav);
-
   MPI_Finalize ();
 
   exit (0);
-
 }
 
 void wem1shot(float **d, float **m,float *wav,

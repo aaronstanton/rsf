@@ -21,6 +21,7 @@ taper
 convert_to_angle
 velconvert
 gxsxtomxhx
+innerprod
 '''
 
 mpi_progs = '''
@@ -31,6 +32,10 @@ pyprogs='''
 imagesc
 svd_complex
 svd_complexblk
+wrapper
+dotshotwem
+lsshotwem
+mytest
 '''
 
 pymods='''
