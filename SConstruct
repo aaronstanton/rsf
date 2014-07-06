@@ -14,8 +14,6 @@ linearevents5d
 zowem
 spbpdn
 wavsep
-shotwem
-shotewem
 fkfilter
 taper
 convert_to_angle
@@ -25,17 +23,15 @@ innerprod
 '''
 
 mpi_progs = '''
-mpishotwem
+shotwem
 '''
 
 pyprogs='''
 imagesc
 svd_complex
 svd_complexblk
-wrapper
 dotshotwem
 lsshotwem
-mytest
 '''
 
 pymods='''

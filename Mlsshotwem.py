@@ -148,7 +148,7 @@ ss = "tmp_cg_ss.rsf"
 wd = "tmp_cg_wd.rsf"                                              
 
 forward = "/usr/lib64/openmpi/bin/mpiexec -np %d --npersocket %d \
-/home/kstanton/rsf/bin/sfmpishotwem \
+/home/kstanton/rsf/bin/sfshotwem \
 adj=n infile=%s outfile=%s vp=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
 nhx=%d dhx=%f ohx=%f \
@@ -157,7 +157,7 @@ nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f" % (np,npersocket,s,ss,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax)
 
 adjoint = "/usr/lib64/openmpi/bin/mpiexec -np %d --npersocket %d \
-/home/kstanton/rsf/bin/sfmpishotwem \
+/home/kstanton/rsf/bin/sfshotwem \
 adj=y infile=%s outfile=%s vp=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
 nhx=%d dhx=%f ohx=%f \

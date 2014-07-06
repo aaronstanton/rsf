@@ -102,8 +102,8 @@ int main(int argc, char* argv[])
   out = sf_output("outfile");
   velp = sf_input("vp");
   source_wavelet = sf_input("wav");
-  if (verbose) fprintf(stderr,"rank=%d\n",rank);
-  if (verbose) fprintf(stderr,"num_procs=%d\n",num_procs);
+  //if (verbose) fprintf(stderr,"rank=%d\n",rank);
+  //if (verbose) fprintf(stderr,"num_procs=%d\n",num_procs);
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
   if (adj){
@@ -206,7 +206,12 @@ int main(int argc, char* argv[])
       if (isx== rank) sf_floatread(m[0],nz*nmx*npx,in);
       for (ix=0;ix<nmx;ix++){
         for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) m_a_gather[ipx][iz] = m[ipx*nmx + ix][iz];
-        offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+        if (nhx>1){ 
+          offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+        }
+        else{ 
+          for (iz=0;iz<nz;iz++) m_h_gather[0][iz] = m_a_gather[0][iz];
+        } 
         for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) m1shot[ihx*nmx + ix][iz] = m_h_gather[ihx][iz]; 
       }
       wem1shot(d1shot,m1shot,wav,
@@ -256,7 +261,12 @@ int main(int argc, char* argv[])
     }
     for (ix=0;ix<nmx;ix++){
       for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) m_h_gather[ihx][iz] = m_h[ihx*nmx + ix][iz];
-      offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+      if (nhx>1){ 
+        offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+      }
+      else{ 
+        for (iz=0;iz<nz;iz++) m_a_gather[0][iz] = m_h_gather[0][iz];
+      } 
       for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) m[ipx*nmx + ix][iz] = m_a_gather[ipx][iz]; 
     }
     sf_putfloat(out,"o1",oz);
@@ -415,11 +425,11 @@ void wem1shot(float **d, float **m,float *wav,
   }
   progress = 0.0;
   numthreads = omp_get_num_threads();
-  if (verbose) fprintf(stderr,"using %d threads.",numthreads);
+  //if (verbose) fprintf(stderr,"using %d threads.",numthreads);
   #pragma omp parallel for private(iw) shared(m,d_g_wx,d_s_wx)
   for (iw=ifmin;iw<ifmax;iw++){ 
     progress += 1.0/((float) ifmax - ifmin);
-    if (verbose) progress_msg(progress);
+   // if (verbose) progress_msg(progress);
     extrap1f(m,d_g_wx,d_s_wx,iw,nw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,omx,dmx,nhx,ohx,dhx,po,pd,i,czero,p1,p2,adj,verbose);
   }
   if (!adj){
@@ -485,7 +495,7 @@ void extrap1f(float **dmig_h,
           igx = (int) truncf((gx - omx)/dmx);
           if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
             #pragma omp atomic
-            dmig_h[ihx*nmx + ix][iz] += factor*crealf(conjf(d_xs[isx])*d_xg[igx]);
+            dmig_h[ihx*nmx + ix][iz] += factor*crealf(d_xs[isx]*conjf(d_xg[igx]));
           } 
         }
       }
