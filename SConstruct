@@ -24,6 +24,7 @@ innerprod
 
 mpi_progs = '''
 shotwem
+shotewem
 '''
 
 pyprogs='''
