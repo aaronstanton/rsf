@@ -4,18 +4,19 @@ import bldutil
 
 progs = '''
 syn5d
+linearevents5d
 geom5d
 pad5d
+reg5d
+taper5d
+merge5d
 decimate
 static
-reg5d
 pstm
-linearevents5d
 zowem
 spbpdn
 wavsep
 fkfilter
-taper
 convert_to_angle
 velconvert
 gxsxtomxhx
