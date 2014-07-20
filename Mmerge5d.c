@@ -38,7 +38,7 @@ void my_taper(float **d,int nt,int nx1,int nx2,int nx3,int nx4,int lti,int ltf,i
 
 int main(int argc, char* argv[])
 {
-  int i,i1,i2,i3,i4,i5,nin,iseek;
+  int i,i1,i2,i3,i4,i5,nin;
   int   N1,N2,N3,N4,N5;
   float O1,O2,O3,O4,O5;
   float D1,D2,D3,D4,D5;
@@ -53,6 +53,7 @@ int main(int argc, char* argv[])
   char *label1,*label2,*label3,*label4,*label5;
   char *unit1,*unit2,*unit3,*unit4,*unit5;
   bool verbose;
+  size_t iseek;
   sf_file infile,outfile;
   sf_init(argc,argv);
 
@@ -182,11 +183,11 @@ int main(int argc, char* argv[])
     if (o5+d5*n5 < O5+D5*N5) t5f = T5;
     else                     t5f = 0;
     my_taper(d,n1,n2,n3,n4,n5,t1i,t1f,t2i,t2f,t3i,t3f,t4i,t4f,t5i,t5f);
-    o1 = o1/d1;
-    o2 = o2/d2;
-    o3 = o3/d3;
-    o4 = o4/d4;
-    o5 = o5/d5;
+    o1 = (o1-O1)/d1;
+    o2 = (o2-O2)/d2;
+    o3 = (o3-O3)/d3;
+    o4 = (o4-O4)/d4;
+    o5 = (o5-O5)/d5;
     for (i5=0;i5<n5;i5++){
       for (i4=0;i4<n4;i4++){
         for (i3=0;i3<n3;i3++){
@@ -204,8 +205,8 @@ int main(int argc, char* argv[])
           }
         }
       }
-      free2float(d);
     }
+    free2float(d);
     sf_fileclose(infile);
   }  
 
