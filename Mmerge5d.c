@@ -20,12 +20,18 @@
 #ifndef MARK
 #define MARK fprintf(stderr,"%s @ %u\n",__FILE__,__LINE__);fflush(stderr);
 #endif 
+
+#ifndef _LARGEFILE_SOURCE
+#define _LARGEFILE_SOURCE
+#endif
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <stdio.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-
-#include <unistd.h>
 
 #include <rsf.h>
 #include "myfree.h"
@@ -38,7 +44,7 @@ void my_taper(float **d,int nt,int nx1,int nx2,int nx3,int nx4,int lti,int ltf,i
 
 int main(int argc, char* argv[])
 {
-  int i,i1,i2,i3,i4,i5,nin;
+  int i,i1,i2,i3,i4,i5,nin,ix,it;
   int   N1,N2,N3,N4,N5;
   float O1,O2,O3,O4,O5;
   float D1,D2,D3,D4,D5;
@@ -48,12 +54,14 @@ int main(int argc, char* argv[])
   float d1,d2,d3,d4,d5;
   int   t1i,t2i,t3i,t4i,t5i;
   int   t1f,t2f,t3f,t4f,t5f;
-  float *a,**d;
+  int   io1,io2,io3,io4,io5;
+  float **d,*trace;
   const char **filename;
   char *label1,*label2,*label3,*label4,*label5;
   char *unit1,*unit2,*unit3,*unit4,*unit5;
   bool verbose;
-  size_t iseek;
+  off_t iseek;
+  long int k;
   sf_file infile,outfile;
   sf_init(argc,argv);
 
@@ -69,10 +77,7 @@ int main(int argc, char* argv[])
     filename[nin] = argv[i];
     nin++;
   }
-  if (0==nin) sf_error ("no input");
-
-  a = sf_floatalloc(1);  
-  a[0] = 0.0;
+  if (nin==0) sf_error ("no input");
 
   if (!sf_getbool("verbose",&verbose)) verbose=false;
   sf_getint("n1",&N1);
@@ -106,7 +111,6 @@ int main(int argc, char* argv[])
   unit4 = sf_getstring("unit4");
   unit5 = sf_getstring("unit5");
 
-  /* calling sf_input before sf_output to meet criteria of sf_output */
   infile = sf_input(filename[0]);
   outfile = sf_output("outfile");
 
@@ -136,10 +140,10 @@ int main(int argc, char* argv[])
   sf_putstring(outfile,"unit4",unit4);
   sf_putstring(outfile,"unit5",unit5); 
 
+  trace = sf_floatalloc(N1);
+  for (it=0;it<N1;it++) trace[it] = 0.0;
   /* initialize output file with zeros */  
-  for (i=0;i<N1*N2*N3*N4*N5;i++){
-    sf_floatwrite(a,1,outfile); 
-  }
+  for (ix=0;ix<N2*N3*N4*N5;ix++) sf_floatwrite(trace,N1,outfile); 
 
   /* read and add each input patch to the final output */
   for (i=0;i<nin;i++){
@@ -161,47 +165,57 @@ int main(int argc, char* argv[])
     sf_histfloat(infile,"d4",&d4);
     sf_histfloat(infile,"d5",&d5);
     d = sf_floatalloc2(n1,n2*n3*n4*n5);
-    sf_floatread(d[0],n1*n2*n3*n4*n5,infile);
-    if (o1 > O1) t1i = T1;
-    else         t1i = 0;
+    for (ix=0;ix<n2*n3*n4*n5;ix++){ 
+      sf_floatread(trace,n1,infile);
+      for (it=0;it<n1;it++) d[ix][it] = trace[it];
+    }
+    if (o1 > O1)             t1i = T1;
+    else                     t1i = 0;
     if (o1+d1*n1 < O1+D1*N1) t1f = T1;
     else                     t1f = 0;
-    if (o2 > O2) t2i = T2;
-    else         t2i = 0;
+    if (o2 > O2)             t2i = T2;
+    else                     t2i = 0;
     if (o2+d2*n2 < O2+D2*N2) t2f = T2;
     else                     t2f = 0;
-    if (o3 > O3) t3i = T3;
-    else         t3i = 0;
+    if (o3 > O3)             t3i = T3;
+    else                     t3i = 0;
     if (o3+d3*n3 < O3+D3*N3) t3f = T3;
     else                     t3f = 0;
-    if (o4 > O4) t4i = T4;
-    else         t4i = 0;
+    if (o4 > O4)             t4i = T4;
+    else                     t4i = 0;
     if (o4+d4*n4 < O4+D4*N4) t4f = T4;
     else                     t4f = 0;
-    if (o5 > O5) t5i = T5;
-    else         t5i = 0;
+    if (o5 > O5)             t5i = T5;
+    else                     t5i = 0;
     if (o5+d5*n5 < O5+D5*N5) t5f = T5;
     else                     t5f = 0;
     my_taper(d,n1,n2,n3,n4,n5,t1i,t1f,t2i,t2f,t3i,t3f,t4i,t4f,t5i,t5f);
-    o1 = (o1-O1)/d1;
-    o2 = (o2-O2)/d2;
-    o3 = (o3-O3)/d3;
-    o4 = (o4-O4)/d4;
-    o5 = (o5-O5)/d5;
+    fprintf(stderr,"o1=%f o2=%f o3=%f o4=%f o5=%f\n",o1,o2,o3,o4,o5);
+    fprintf(stderr,"O1=%f O2=%f O3=%f O4=%f O5=%f\n",O1,O2,O3,O4,O5);
+    io1 = (int) roundf((o1-O1)/d1);
+    io2 = (int) roundf((o2-O2)/d2);
+    io3 = (int) roundf((o3-O3)/d3);
+    io4 = (int) roundf((o4-O4)/d4);
+    io5 = (int) roundf((o5-O5)/d5);
+    fprintf(stderr,"io1=%d io2=%d io3=%d io4=%d io5=%d\n",io1,io2,io3,io4,io5);
     for (i5=0;i5<n5;i5++){
       for (i4=0;i4<n4;i4++){
         for (i3=0;i3<n3;i3++){
           for (i2=0;i2<n2;i2++){
-            for (i1=0;i1<n1;i1++){
-              iseek = (off_t)((float) (o5+i5)*N4*N3*N2*N1 + (o4+i4)*N3*N2*N1 + (o3+i3)*N2*N1 + (o2+i2)*N1 + (o1+i1))*sizeof(float);
-              if (verbose) fprintf(stderr,"N1=%d o1=%f o2=%f i2=%d\n",N1,o1,o2,i2);
-              if (verbose) fprintf(stderr,"%f\n",(float) ((o5+i5)*N4*N3*N2*N1 + (o4+i4)*N3*N2*N1 + (o3+i3)*N2*N1 + (o2+i2)*N1 + (o1+i1)));
-              sf_seek(outfile,iseek,SEEK_SET);             
-              sf_floatread(a,1,outfile);            
-              sf_seek(outfile,iseek,SEEK_SET);
-              a[0] += d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1];
-              sf_floatwrite(a,1,outfile);
-            }
+           // MARK
+            k = (long int) (io5+i5)*N4*N3*N2*N1 + (io4+i4)*N3*N2*N1 + (io3+i3)*
+N2*N1 + (io2+i2)*N1 + io1;
+            iseek = (off_t)((long int) (io5+i5)*N4*N3*N2*N1 + (io4+i4)*N3*N2*N1 + (io3+i3)*N2*N1 + (io2+i2)*N1 + io1)*((long int) sizeof(float));
+           // MARK
+            sf_seek(outfile,iseek,SEEK_SET);
+           // MARK
+            sf_floatread(trace,n1,outfile);
+            for (i1=0;i1<n1;i1++) trace[i1] += d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1];
+           // MARK
+            sf_seek(outfile,iseek,SEEK_SET);
+           // MARK
+            sf_floatwrite(trace,n1,outfile);
+           // MARK
           }
         }
       }
@@ -209,7 +223,7 @@ int main(int argc, char* argv[])
     free2float(d);
     sf_fileclose(infile);
   }  
-
+  free1float(trace);
   exit(0);
 }
 
