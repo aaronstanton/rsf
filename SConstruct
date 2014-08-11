@@ -36,6 +36,7 @@ svd_complexblk
 dotshotwem
 dotshotewem
 lsshotwem
+lsshotewem
 dotwavsep
 '''
 
