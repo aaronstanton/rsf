@@ -195,7 +195,6 @@ for iter in range(1,niter+1):
     gamma_old = gamma
     gamma = innerprod(g)
     beta = gamma/gamma_old
-    gamma_old = gamma
     cgupdate(s,g,beta,1)      # s = beta*s + g
     call(forward,shell=True)
     sampling_apply(ss,wd)
