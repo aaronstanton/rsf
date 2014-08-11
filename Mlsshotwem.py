@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-''' least squares shot profile wave equation migration  
-
+''' least squares shot profile wave equation migration. Inversion follows algorithm 2 of Scales, 1987.
+References:   
+Scales, John A. "Tomographic inversion via the conjugate gradient method." Geophysics 52.2 (1987): 179-185.
 REQUIRES the PYTHON API and NUMPY and SCIPY
 '''
 
@@ -120,6 +121,7 @@ d   = par.string("d", "d.rsf")
 m   = par.string("m", "m.rsf")
 vp   = par.string("vp", "vp.rsf")
 wav = par.string("wav", "wav.rsf")
+misfit_name = par.string("misfit", "misfit.rsf")
 np  = par.int("np",1)
 niter  = par.int("niter",1) 
 npersocket = par.int("npersocket",1)
@@ -141,29 +143,32 @@ osx  = par.float("osx",1)
 fmin  = par.float("fmin",1)
 fmax  = par.float("fmax",1)
 
+misfit_file = rsf.Output(misfit_name)
+misfit = numpy.zeros(niter)
+
 r = "tmp_cg_r.rsf"
 g = "tmp_cg_g.rsf"
 s = "tmp_cg_s.rsf"
 ss = "tmp_cg_ss.rsf"
 wd = "tmp_cg_wd.rsf"                                              
 
-forward = "/usr/lib64/openmpi/bin/mpiexec -np %d --npersocket %d \
+forward = "/usr/lib64/openmpi/bin/mpiexec -np %d \
 /home/kstanton/rsf/bin/sfshotwem \
 adj=n infile=%s outfile=%s vp=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
 nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
-fmin=%f fmax=%f" % (np,npersocket,s,ss,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax)
+fmin=%f fmax=%f" % (np,s,ss,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax)
 
-adjoint = "/usr/lib64/openmpi/bin/mpiexec -np %d --npersocket %d \
+adjoint = "/usr/lib64/openmpi/bin/mpiexec -np %d \
 /home/kstanton/rsf/bin/sfshotwem \
 adj=y infile=%s outfile=%s vp=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
 nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
-fmin=%f fmax=%f" % (np,npersocket,r,g,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax)
+fmin=%f fmax=%f" % (np,r,g,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax)
 
 # set up arrays for CG
 sampling_calculate(d,wd)
@@ -176,29 +181,33 @@ call(cmd,shell=True)
 cmd = "/home/kstanton/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g,m)
 call(cmd,shell=True)
 gamma = innerprod(g)
-gamma_old = gamma
-
-print >> sys.stderr, "gamma=", gamma
+call(forward,shell=True)
+sampling_apply(ss,wd)
 
 for iter in range(1,niter+1):
-    call(forward,shell=True)
-    sampling_apply(ss,wd)
     delta = innerprod(ss)
-    print >> sys.stderr, "delta=", delta
-    alpha = gamma/(delta + 0.0000001)
-    print >> sys.stderr, "alpha=", alpha
-    cgupdate(m,s,1,alpha)   # m = m + alpha*s
-    cgupdate(r,ss,1,-alpha) # r = r - alpha*ss     
-    sampling_apply(r,wd)
-    misfit = innerprod(r)
+    alpha = gamma/delta
+    cgupdate(m,s,1,alpha)    # m = m + alpha*s
+    cgupdate(r,ss,1,-alpha)  # r = r - alpha*ss     
+    misfit[iter-1] = innerprod(r)
     print >> sys.stderr, "misfit=", misfit 
     call(adjoint,shell=True)
+    gamma_old = gamma
     gamma = innerprod(g)
-    print >> sys.stderr, "gamma=", gamma
-    beta = gamma/(gamma_old + 0.0000001)
-    print >> sys.stderr, "beta=", beta
+    beta = gamma/gamma_old
     gamma_old = gamma
     cgupdate(s,g,beta,1)      # s = beta*s + g
+    call(forward,shell=True)
+    sampling_apply(ss,wd)
+
+misfit_file.put('n1',niter)
+misfit_file.put('o1',1)
+misfit_file.put('d1',1)
+misfit_file.put('label1','Iteration')
+misfit_file.put('unit1','')
+misfit_file.put('title','Misfit')
+misfit_file.write(misfit)
+misfit_file.close()
 
 # Clean up temporary files
 cleanup = "/home/kstanton/rsf/bin/sfrm tmp_cg_*.rsf"

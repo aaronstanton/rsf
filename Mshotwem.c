@@ -1,4 +1,4 @@
-/* Shot Profile Wave Equation Migration with angle gather imaging condition. Using MPI.*/
+/* Shot Profile Wave Equation Migration with angle gather imaging condition. Uses MPI over shots and OMP over frequencies.*/
 /*
   Copyright (C) 2014 University of Alberta
   
@@ -43,13 +43,14 @@ void wem1shot(float **d, float **m,float *wav,
               int nmx, float omx, float dmx,
               int isx, int nsx, float osx, float dsx,
               int nhx, float ohx, float dhx,
-              int nz, float oz, float dz,
+              int nz, float oz, float dz, float gz, float sz,
               float **vel, float fmin, float fmax,
               bool adj, bool verbose);
 
 void extrap1f(float **dmig_h,
               sf_complex **d_g_wx, sf_complex **d_s_wx,
-              int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,
+              int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
+              int nz, float oz, float dz, float gz, float sz,
               int nmx,float omx, float dmx,
               int nhx,float ohx, float dhx,
               float *po,float **pd,
@@ -84,6 +85,7 @@ int main(int argc, char* argv[])
   int it,iz,ix,isx,ihx,ipx;
   float ot,omx,oz,osx,ohx,opx;
   float dt,dmx,dz,dsx,dhx,dpx;
+  float gz,sz;
   float **m1shot,**d1shot,**vp,*wav,**m_h,**m,**m_h_gather,**m_a_gather;
   bool adj;
   bool verbose;
@@ -153,6 +155,10 @@ int main(int argc, char* argv[])
   }
   if (!sf_getfloat("fmin",&fmin)) fmin = 0; /* min frequency to process */
   if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/dt; /* max frequency to process */
+
+  if (!sf_getfloat("gz",&gz)) gz = 0; /* depth of the receivers */
+  if (!sf_getfloat("sz",&sz)) sz = 0; /* depth of the sources */
+
   if (fmax > 0.5/dt) fmax = 0.5/dt;
   wav = sf_floatalloc(nt);
   sf_floatread(wav,nt,source_wavelet);
@@ -167,7 +173,7 @@ int main(int argc, char* argv[])
       sf_seek(in,iseek,SEEK_SET);    
       sf_floatread(d1shot[0],nt*nmx,in);
       wem1shot(d1shot,m1shot,wav,
-               nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nhx,ohx,dhx,nz,oz,dz,
+               nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nhx,ohx,dhx,nz,oz,dz,gz,sz,
                vp,fmin,fmax,adj,verbose);
       sprintf(tmpname, "tmpdmig_%d.rsf",isx);
       outtmp = sf_output(tmpname);
@@ -215,7 +221,7 @@ int main(int argc, char* argv[])
         for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) m1shot[ihx*nmx + ix][iz] = m_h_gather[ihx][iz]; 
       }
       wem1shot(d1shot,m1shot,wav,
-               nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nhx,ohx,dhx,nz,oz,dz,
+               nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nhx,ohx,dhx,nz,oz,dz,gz,sz,
                vp,fmin,fmax,adj,verbose);
       sprintf(tmpname, "tmpd_%d.rsf",isx);
       outtmp = sf_output(tmpname);
@@ -331,7 +337,7 @@ void wem1shot(float **d, float **m,float *wav,
               int nmx, float omx, float dmx,
               int isx, int nsx, float osx, float dsx,
               int nhx, float ohx, float dhx,
-              int nz, float oz, float dz,
+              int nz, float oz, float dz, float gz, float sz,
               float **vel, float fmin, float fmax,
               bool adj, bool verbose)
 /*< wave equation depth migration operator >*/
@@ -430,7 +436,7 @@ void wem1shot(float **d, float **m,float *wav,
   for (iw=ifmin;iw<ifmax;iw++){ 
     progress += 1.0/((float) ifmax - ifmin);
    // if (verbose) progress_msg(progress);
-    extrap1f(m,d_g_wx,d_s_wx,iw,nw,ifmax,ntfft,dw,dk,nk,dz,nz,nmx,omx,dmx,nhx,ohx,dhx,po,pd,i,czero,p1,p2,adj,verbose);
+    extrap1f(m,d_g_wx,d_s_wx,iw,nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,nhx,ohx,dhx,po,pd,i,czero,p1,p2,adj,verbose);
   }
   if (!adj){
     for (ix=0;ix<nmx;ix++){
@@ -458,7 +464,8 @@ void wem1shot(float **d, float **m,float *wav,
 
 void extrap1f(float **dmig_h,
               sf_complex **d_g_wx, sf_complex **d_s_wx,
-              int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,float dz,int nz,
+              int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
+              int nz, float oz, float dz, float gz, float sz,
               int nmx,float omx, float dmx,
               int nhx,float ohx, float dhx,
               float *po,float **pd,
@@ -467,7 +474,7 @@ void extrap1f(float **dmig_h,
               bool adj, bool verbose)
 /*< extrapolate 1 frequency >*/
 {
-  float w,factor,hx,sx,gx;
+  float w,factor,hx,sx,gx,z;
   int iz,ix,ihx,isx,igx; 
   sf_complex *d_xg,*d_xs,**smig;
   
@@ -484,19 +491,24 @@ void extrap1f(float **dmig_h,
       d_xg[ix] = d_g_wx[ix][iw]/sqrtf((float) ntfft);
     }
     for (iz=0;iz<nz;iz++){ /* extrapolate source and receiver wavefields */
-      ssop(d_xs,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,true,verbose); 
-      ssop(d_xg,w,dk,nk,nmx,dz,iz,po,pd,i,czero,p1,p2,true,verbose);
-      for (ix=0;ix<nmx;ix++){
-        for (ihx=0;ihx<nhx;ihx++){
-          hx = ihx*dhx + ohx;
-          sx = (ix*dmx + omx) - hx;
-          gx = (ix*dmx + omx) + hx;
-          isx = (int) truncf((sx - omx)/dmx);
-          igx = (int) truncf((gx - omx)/dmx);
-          if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
-            #pragma omp atomic
-            dmig_h[ihx*nmx + ix][iz] += factor*crealf(d_xs[isx]*conjf(d_xg[igx]));
-          } 
+      z = oz + dz*iz;
+      if (z >= sz){
+        ssop(d_xs,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,true,verbose);
+      } 
+      if (z >= gz){
+        ssop(d_xg,w,dk,nk,nmx,dz,iz,po,pd,i,czero,p1,p2,true,verbose);
+        for (ix=0;ix<nmx;ix++){
+          for (ihx=0;ihx<nhx;ihx++){
+            hx = ihx*dhx + ohx;
+            sx = (ix*dmx + omx) - hx;
+            gx = (ix*dmx + omx) + hx;
+            isx = (int) truncf((sx - omx)/dmx);
+            igx = (int) truncf((gx - omx)/dmx);
+            if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
+              #pragma omp atomic
+              dmig_h[ihx*nmx + ix][iz] += factor*crealf(d_xs[isx]*conjf(d_xg[igx]));
+            } 
+          }
         }
       }
     }
@@ -506,24 +518,33 @@ void extrap1f(float **dmig_h,
     smig = sf_complexalloc2(nz,nmx);
     for (ix=0;ix<nmx;ix++) d_xs[ix] = d_s_wx[ix][iw]/sqrtf((float) ntfft);
     for (iz=0;iz<nz;iz++){ /* extrapolate source wavefield */
-      ssop(d_xs,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,true,verbose); 
-      for (ix=0;ix<nmx;ix++) smig[ix][iz] = d_xs[ix];
+      z = oz + dz*iz;
+      if (z >= sz){
+        ssop(d_xs,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,true,verbose); 
+        for (ix=0;ix<nmx;ix++) smig[ix][iz] = d_xs[ix];;
+      }
+      else{
+        for (ix=0;ix<nmx;ix++) smig[ix][iz] = czero;
+      }
     }
     for (ix=0;ix<nmx;ix++) d_xg[ix] = czero;
     for (iz=nz-1;iz>=0;iz--){ /* extrapolate receiver wavefield */
-      for (ix=0;ix<nmx;ix++){ 
-        for (ihx=0;ihx<nhx;ihx++){
-          hx = ihx*dhx + ohx;
-          sx = (ix*dmx + omx) - hx;
-          gx = (ix*dmx + omx) + hx;
-          isx = (int) truncf((sx - omx)/dmx);
-          igx = (int) truncf((gx - omx)/dmx);
-          if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
-            d_xg[igx] = d_xg[igx] + smig[isx][iz]*dmig_h[ihx*nmx + ix][iz];
+      z = oz + dz*iz;
+      if (z >= gz){
+        for (ix=0;ix<nmx;ix++){ 
+          for (ihx=0;ihx<nhx;ihx++){
+            hx = ihx*dhx + ohx;
+            sx = (ix*dmx + omx) - hx;
+            gx = (ix*dmx + omx) + hx;
+            isx = (int) truncf((sx - omx)/dmx);
+            igx = (int) truncf((gx - omx)/dmx);
+            if (isx >=0 && isx < nmx && igx >=0 && igx < nmx){
+              d_xg[igx] = d_xg[igx] + smig[isx][iz]*dmig_h[ihx*nmx + ix][iz];
+            }
           }
         }
+        ssop(d_xg,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,false,verbose);
       }
-      ssop(d_xg,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,false,verbose);
     }
     for (ix=0;ix<nmx;ix++){
       d_g_wx[ix][iw] = d_xg[ix]/sqrtf((float) ntfft);

@@ -21,6 +21,7 @@ convert_to_angle
 velconvert
 gxsxtomxhx
 innerprod
+innerprod2
 '''
 
 mpi_progs = '''
@@ -33,7 +34,9 @@ imagesc
 svd_complex
 svd_complexblk
 dotshotwem
+dotshotewem
 lsshotwem
+dotwavsep
 '''
 
 pymods='''
