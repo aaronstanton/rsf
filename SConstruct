@@ -25,18 +25,18 @@ innerprod2
 '''
 
 mpi_progs = '''
-shotwem
-shotewem
+mpiwem
+mpiewem
 '''
 
 pyprogs='''
 imagesc
 svd_complex
 svd_complexblk
-dotshotwem
-dotshotewem
-lsshotwem
-lsshotewem
+dotwem
+dotewem
+lswem
+lsewem
 dotwavsep
 '''
 
