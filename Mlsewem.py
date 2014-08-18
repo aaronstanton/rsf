@@ -98,21 +98,23 @@ def sampling_apply(filenamein_d,filenamein_wd):
     inp1.close()
     inp2.close()
     output.close()
-    cmd = "/home/kstanton/rsf/bin/sfcp %s %s" % (filenametmp,filenamein_d)
+    cmd = "~/rsf/bin/sfcp %s %s" % (filenametmp,filenamein_d)
     call(cmd,shell=True)
-    cmd = "/home/kstanton/rsf/bin/sfrm %s" % (filenametmp)
+    cmd = "~/rsf/bin/sfrm %s" % (filenametmp)
     call(cmd,shell=True)
 
 def cgupdate(filenamein1,filenamein2,a,b):
     inp1 = rsf.Input(filenamein1)
     inp2 = rsf.Input(filenamein2)
     filenametmp = "tmp_cg_update.rsf"
-    cmd = "/home/kstanton/rsf/bin/sfmath x=%s y=%s output=\'%f*x + %f*y\' > %s" % (filenamein1,filenamein2,a,b,filenametmp)
+    cmd = "~/rsf/bin/sfmath x=%s y=%s output=\'%f*x + %f*y\' > %s" % (filenamein1,filenamein2,a,b,filenametmp)
     call(cmd,shell=True)
-    cmd = "/home/kstanton/rsf/bin/sfcp %s %s" % (filenametmp,filenamein1)
+    cmd = "~/rsf/bin/sfcp %s %s" % (filenametmp,filenamein1)
     call(cmd,shell=True)
-    cmd = "/home/kstanton/rsf/bin/sfrm %s" % (filenametmp)
+    cmd = "~/rsf/bin/sfrm %s" % (filenametmp)
     call(cmd,shell=True)
+    inp1.close()
+    inp2.close()
    
 # Initialize RSF command line parser    
 par = rsf.Par()
@@ -145,6 +147,13 @@ dsx  = par.float("dsx",1)
 osx  = par.float("osx",1)
 fmin  = par.float("fmin",1)
 fmax  = par.float("fmax",1)
+sz  = par.float("sz",0)
+gz  = par.float("gz",0)
+reg  = par.bool("reg",False)
+pa  = par.float("pa",-100)
+pb  = par.float("pb",-50)
+pc  = par.float("pc",50)
+pd  = par.float("pd",100)
 
 misfit_file = rsf.Output(misfit_name)
 misfit = numpy.zeros(niter)
@@ -153,48 +162,72 @@ r1 = "tmp_cg_r1.rsf"
 r2 = "tmp_cg_r2.rsf"
 g1 = "tmp_cg_g1.rsf"
 g2 = "tmp_cg_g2.rsf"
+if (reg):
+    tmp_g1 = "tmp_cg_tmp_g1.rsf"
+    tmp_g2 = "tmp_cg_tmp_g2.rsf"
+else:
+    tmp_g1 = g1
+    tmp_g2 = g2
 s1 = "tmp_cg_s1.rsf"
 s2 = "tmp_cg_s2.rsf"
+if (reg):
+    tmp_s1 = "tmp_cg_tmp_s1.rsf"
+    tmp_s2 = "tmp_cg_tmp_s2.rsf"
+else:
+    tmp_s1 = s1
+    tmp_s2 = s2
 ss1 = "tmp_cg_ss1.rsf"
 ss2 = "tmp_cg_ss2.rsf"
 wd = "tmp_cg_wd.rsf"                                              
 
-forward = "/usr/lib64/openmpi/bin/mpiexec -np %d \
-/home/kstanton/rsf/bin/sfmpiewem \
+forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s1,tmp_s1,pa,pb,pc,pd) 
+forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s2,tmp_s2,pa,pb,pc,pd) 
+forward2 = "mpiexec -np %d \
+~/rsf/bin/sfmpiewem \
 adj=n ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
 nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
-fmin=%f fmax=%f" % (np,ss1,ss2,s1,s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax)
+fmin=%f fmax=%f \
+sz=%f gz=%f" % (np,ss1,ss2,tmp_s1,tmp_s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
-adjoint = "/usr/lib64/openmpi/bin/mpiexec -np %d \
-/home/kstanton/rsf/bin/sfmpiewem \
+adjoint1 = "mpiexec -np %d \
+~/rsf/bin/sfmpiewem \
 adj=y ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
 nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
-fmin=%f fmax=%f" % (np,r1,r2,g1,g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax)
+fmin=%f fmax=%f \
+sz=%f gz=%f" % (np,r1,r2,tmp_g1,tmp_g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+adjoint2a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g1,g1,pa,pb,pc,pd) 
+adjoint2b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g2,g2,pa,pb,pc,pd) 
 
 # set up arrays for CG
 sampling_calculate(ux,wd)
-cmd1 = "/home/kstanton/rsf/bin/sfcp %s %s" % (ux,r1)
-cmd2 = "/home/kstanton/rsf/bin/sfcp %s %s" % (uz,r2)
+cmd1 = "~/rsf/bin/sfcp %s %s" % (ux,r1)
+cmd2 = "~/rsf/bin/sfcp %s %s" % (uz,r2)
 call(cmd1,shell=True)
 call(cmd2,shell=True)
 
-call(adjoint,shell=True)
-cmd1 = "/home/kstanton/rsf/bin/sfcp %s %s" % (g1,s1)
-cmd2 = "/home/kstanton/rsf/bin/sfcp %s %s" % (g2,s2)
+call(adjoint1,shell=True)
+if (reg):
+    call(adjoint2a,shell=True)
+    call(adjoint2b,shell=True)
+cmd1 = "~/rsf/bin/sfcp %s %s" % (g1,s1)
+cmd2 = "~/rsf/bin/sfcp %s %s" % (g2,s2)
 call(cmd1,shell=True)
 call(cmd2,shell=True)
-cmd1 = "/home/kstanton/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g1,mpp)
-cmd2 = "/home/kstanton/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g2,mps)
+cmd1 = "~/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g1,mpp)
+cmd2 = "~/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g2,mps)
 call(cmd1,shell=True)
 call(cmd2,shell=True)
 gamma = innerprod(g1) + innerprod(g2)
-call(forward,shell=True)
+if (reg):
+    call(forward1a,shell=True)
+    call(forward1b,shell=True)
+call(forward2,shell=True)
 sampling_apply(ss1,wd)
 sampling_apply(ss2,wd)
 
@@ -206,16 +239,33 @@ for iter in range(1,niter+1):
     cgupdate(r1,ss1,1,-alpha)   # r1 = r1 - alpha*ss1     
     cgupdate(r2,ss2,1,-alpha)   # r2 = r2 - alpha*ss2     
     misfit[iter-1] = innerprod(r1) + innerprod(r2)
-    print >> sys.stderr, "misfit=", misfit 
-    call(adjoint,shell=True)
+    print >> sys.stderr, "misfit=", misfit[iter-1] 
+    call(adjoint1,shell=True)
+    if (reg):
+        call(adjoint2a,shell=True)
+        call(adjoint2b,shell=True)
     gamma_old = gamma
     gamma = innerprod(g1) + innerprod(g2)
     beta = gamma/gamma_old
     cgupdate(s1,g1,beta,1)      # s1 = beta*s1 + g1
     cgupdate(s2,g2,beta,1)      # s2 = beta*s2 + g2
-    call(forward,shell=True)
+    if (reg):
+        call(forward1a,shell=True)
+        call(forward1b,shell=True)
+    call(forward2,shell=True)
     sampling_apply(ss1,wd)
     sampling_apply(ss2,wd)
+
+if (reg):
+    # Apply regularization to mpp and mps 
+    cmd = "~/rsf/bin/sfcp %s %s" % (mpp,g1)
+    call(cmd,shell=True)
+    cmd = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (g1,mpp,pa,pb,pc,pd) 
+    call(cmd,shell=True)
+    cmd = "~/rsf/bin/sfcp %s %s" % (mps,g2)
+    call(cmd,shell=True)
+    cmd = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (g2,mps,pa,pb,pc,pd)
+    call(cmd,shell=True)
 
 misfit_file.put('n1',niter)
 misfit_file.put('o1',1)
@@ -227,7 +277,7 @@ misfit_file.write(misfit)
 misfit_file.close()
 
 # Clean up temporary files
-cleanup = "/home/kstanton/rsf/bin/sfrm tmp_cg_*.rsf"
+cleanup = "~/rsf/bin/sfrm tmp_cg_*.rsf"
 call(cleanup,shell=True)
 
 print >> sys.stderr, "Done."

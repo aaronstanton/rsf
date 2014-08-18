@@ -288,6 +288,8 @@ int main(int argc, char* argv[])
     free2float(m_a_gather);
     free2float(mpp);
     free2float(mps);
+    sf_fileclose(fp_mpp);
+    sf_fileclose(fp_mps);
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
@@ -351,6 +353,8 @@ int main(int argc, char* argv[])
     free2float(m_h);
     free2float(m_h_gather);
     free2float(m_a_gather);
+    sf_fileclose(fp_tmp_mpp);
+    sf_fileclose(fp_tmp_mps);
   }  
   else if (!adj && rank==0){
     sf_putfloat(fp_dx,"o1",ot);
@@ -397,6 +401,8 @@ int main(int argc, char* argv[])
       sf_floatread(dz_1shot[0],nt*nmx,fp_tmp_dz);
       sf_floatwrite(dz_1shot[0],nt*nmx,fp_dz);
     }
+    sf_fileclose(fp_tmp_dx);
+    sf_fileclose(fp_tmp_dz);
   }  
 
   free2float(mpp_1shot);
@@ -406,8 +412,12 @@ int main(int argc, char* argv[])
   free2float(vp);
   free2float(vs);
   free1float(wav);
+  sf_fileclose(fp_dx);
+  sf_fileclose(fp_dz);
+  sf_fileclose(velp);
+  sf_fileclose(vels);
+  sf_fileclose(source_wavelet);
   MPI_Finalize ();
-
   exit (0);
 }
 
@@ -425,7 +435,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
 /*< Depth migration operator for isotropic 2C data >*/
 {
   int iz,ix,igx,ik,iw,it,nw,nk,padt,padx,ntfft,numthreads;
-  float dw,dk,w,kx,s1,s2,kzp,kzs;
+  float dw,dk,w,kx,s1,s2,kzp,kzs,denom;
   sf_complex czero,i;
   int ifmin,ifmax;
   float *d_t;
@@ -551,8 +561,15 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         else kzp = 0;
         if (s2>0) kzs = sqrtf(s2);
         else kzs = 0;
-        d_p[ik] =             kx*d_x[ik] +          kzs*d_z[ik]; 
-        d_s[ik] = -signf(kx)*kzp*d_x[ik] + signf(kx)*kx*d_z[ik];
+        denom = kx*kx + kzp*kzs;
+        if (denom>0){
+          d_p[ik] = (i*kx*d_x[ik] + i*kzp*d_z[ik])/denom; 
+          d_s[ik] = (-i*signf(kx)*kzs*d_x[ik] + i*signf(kx)*kx*d_z[ik])/denom;
+        }
+        else{
+          d_p[ik] = czero; 
+          d_s[ik] = czero;
+        }
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_p[ik];
       fftwf_execute_dft(p2,b,b);
@@ -599,8 +616,15 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         else kzp = 0;
         if (s2>0) kzs = sqrtf(s2);
         else kzs = 0;
-        d_x[ik] =  kx*d_p[ik] - signf(kx)*kzp*d_s[ik]; 
-        d_z[ik] = kzs*d_p[ik] + signf(kx)*kx*d_s[ik]; 
+        denom = kx*kx + kzp*kzs;
+        if (denom>0){
+          d_x[ik] = (-i*kx*d_p[ik]  + i*signf(kx)*kzs*d_s[ik])/denom; 
+          d_z[ik] = (-i*kzp*d_p[ik] - i*signf(kx)*kx*d_s[ik])/denom; 
+        }
+        else{
+          d_x[ik] = czero; 
+          d_z[ik] = czero; 
+        }
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_x[ik];
       fftwf_execute_dft(p2,b,b);

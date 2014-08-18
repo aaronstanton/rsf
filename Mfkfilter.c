@@ -1,4 +1,4 @@
-/* FK fan filtering.
+/* FK fan filtering of axis 1 and chosen spatial axis. Default spatial axis is 2.
 */
 /*
   Copyright (C) 2014 University of Alberta
@@ -25,16 +25,21 @@ void fkfilter(float **d, float dt, int nt, float dx, int nx, float pa, float pb,
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 int main(int argc, char* argv[])
 {
-    int n1,n2;
-    float **d,d1,o1,d2,o2,pa,pb,pc,pd;
+    int n1,n2,n3,n4,n5,i1,i2,i3,i4,i5,ix,axis;
+    float **d;
+    float **d_gather;
+    float *trace;
+    float d1,o1,d2,o2,d3,o3,d4,o4,d5,o5;
+    float pa,pb,pc,pd;
     sf_file in,out;
     sf_init (argc,argv);
     in = sf_input("in");
     out = sf_output("out");
-    if (!sf_getfloat("pa",&pa)) pa = -2; /* minimum slowness (value=0) */
-    if (!sf_getfloat("pb",&pb)) pb = -1; /* minimum slowness taper (value=1) */
-    if (!sf_getfloat("pc",&pc)) pc =  1; /* maximum slowness taper (value=1) */
-    if (!sf_getfloat("pd",&pd)) pd =  2; /* maximum slowness (value=0) */
+    if (!sf_getfloat("pa",&pa)) pa = -100; /* minimum slowness (amplitude set to 0) */
+    if (!sf_getfloat("pb",&pb)) pb = -50; /* minimum slowness taper (amplitude set to 1) */
+    if (!sf_getfloat("pc",&pc)) pc =  50; /* maximum slowness taper (amplitude set to 1) */
+    if (!sf_getfloat("pd",&pd)) pd =  100; /* maximum slowness (amplitude set to zero */
+    if (!sf_getint("axis",&axis)) axis = 2; /* spatial axis to perform fk filtering (2,3,4, or 5) */
     /* read input file parameters */
     if (!sf_histint(in,"n1",&n1)) sf_error("No n1= in input");
     if (!sf_histfloat(in,"d1",&d1)) sf_error("No d1= in input");
@@ -42,11 +47,60 @@ int main(int argc, char* argv[])
     if (!sf_histint(in,"n2",&n2)) sf_error("No n2= in input");
     if (!sf_histfloat(in,"d2",&d2)) d2=1;
     if (!sf_histfloat(in,"o2",&o2)) o2=0.;
-    d = sf_floatalloc2(n1,n2);
-    sf_floatread(d[0],n1*n2,in);
-    fkfilter(d,d1,n1,d2,n2,pa,pb,pc,pd);
-    sf_floatwrite(d[0],n1*n2,out);
+    if (!sf_histint(in,"n3",&n3))   n3=1;
+    if (!sf_histfloat(in,"d3",&d3)) d3=1;
+    if (!sf_histfloat(in,"o3",&o3)) o3=0.;
+    if (!sf_histint(in,"n4",&n4))   n4=1;
+    if (!sf_histfloat(in,"d4",&d4)) d4=1;
+    if (!sf_histfloat(in,"o4",&o4)) o4=0.;
+    if (!sf_histint(in,"n5",&n5))   n5=1;
+    if (!sf_histfloat(in,"d5",&d5)) d5=1;
+    if (!sf_histfloat(in,"o5",&o5)) o5=0.;
+    d = sf_floatalloc2(n1,n2*n3*n4*n5);
+    trace = sf_floatalloc(n1);
+    for (ix=0;ix<n2*n3*n4*n5;ix++) {
+      sf_floatread(trace,n1,in);
+      for (i1=0;i1<n1;i1++) d[ix][i1] = trace[i1];
+    }
+    // process gathers
+    if (axis==2){
+      d_gather = sf_floatalloc2(n1,n2);
+      for (i3=0;i3<n3;i3++){ for (i4=0;i4<n4;i4++){ for (i5=0;i5<n5;i5++){
+        for (i2=0;i2<n2;i2++) for (i1=0;i1<n1;i1++) d_gather[i2][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
+        fkfilter(d_gather,d1,n1,d2,n2,pa,pb,pc,pd);
+        for (i2=0;i2<n2;i2++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i2][i1]; 
+      }}}
+    }
+    else if (axis==3){
+      d_gather = sf_floatalloc2(n1,n3);
+      for (i2=0;i2<n2;i2++){ for (i4=0;i4<n4;i4++){ for (i5=0;i5<n5;i5++){
+        for (i3=0;i3<n3;i3++) for (i1=0;i1<n1;i1++) d_gather[i3][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
+        fkfilter(d_gather,d1,n1,d3,n3,pa,pb,pc,pd);
+        for (i3=0;i3<n3;i3++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i3][i1]; 
+      }}}
+    }
+    else if (axis==4){
+      d_gather = sf_floatalloc2(n1,n4);
+      for (i2=0;i2<n2;i2++){ for (i3=0;i3<n3;i3++){ for (i5=0;i5<n5;i5++){
+        for (i4=0;i4<n4;i4++) for (i1=0;i1<n1;i1++) d_gather[i4][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
+        fkfilter(d_gather,d1,n1,d4,n4,pa,pb,pc,pd);
+        for (i4=0;i4<n4;i4++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i4][i1]; 
+      }}}
+    }
+    else if (axis==5){
+      d_gather = sf_floatalloc2(n1,n5);
+      for (i2=0;i2<n2;i2++){ for (i3=0;i3<n3;i3++){ for (i4=0;i4<n4;i4++){
+        for (i5=0;i5<n5;i5++) for (i1=0;i1<n1;i1++) d_gather[i5][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
+        fkfilter(d_gather,d1,n1,d5,n5,pa,pb,pc,pd);
+        for (i5=0;i5<n5;i5++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i5][i1]; 
+      }}}
+    }
+    for (ix=0;ix<n2*n3*n4*n5;ix++) {
+      for (i1=0;i1<n1;i1++) trace[i1] = d[ix][i1];
+      sf_floatwrite(trace,n1,out);
+    }
     free2float(d);
+    free2float(d_gather);
     exit (0);
 }
 

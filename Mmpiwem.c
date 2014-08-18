@@ -162,8 +162,10 @@ int main(int argc, char* argv[])
   if (fmax > 0.5/dt) fmax = 0.5/dt;
   wav = sf_floatalloc(nt);
   sf_floatread(wav,nt,source_wavelet);
+  sf_fileclose(source_wavelet);
   vp = sf_floatalloc2(nz,nmx);
   sf_floatread(vp[0],nz*nmx,velp);
+  sf_fileclose(velp);
   d1shot = sf_floatalloc2(nt,nmx);
   m1shot = sf_floatalloc2(nz,nmx*nhx);
   if (adj){
@@ -323,6 +325,9 @@ int main(int argc, char* argv[])
     }
   }  
 
+  sf_fileclose(intmp);
+  sf_fileclose(in);
+  sf_fileclose(out);
   free2float(m1shot);
   free2float(d1shot);
   free2float(vp);
