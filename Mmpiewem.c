@@ -294,6 +294,10 @@ int main(int argc, char* argv[])
 
   MPI_Barrier(MPI_COMM_WORLD);
 
+  sf_fileclose(velp);
+  sf_fileclose(vels);
+  sf_fileclose(source_wavelet);
+
   if (adj && rank==0){
     m          = sf_floatalloc2(nz,nmx*npx);
     m_h        = sf_floatalloc2(nz,nmx*nhx);
@@ -331,6 +335,8 @@ int main(int argc, char* argv[])
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname2); 
       sf_floatread(mps_1shot[0],nz*nmx*nhx,fp_tmp_mps);
       for (iz=0;iz<nz;iz++) for (ix=0;ix<nmx*nhx;ix++) m_h[ix][iz] += mps_1shot[ix][iz];
+      sf_fileclose(fp_tmp_mpp);
+      sf_fileclose(fp_tmp_mps);
     }
     for (ix=0;ix<nmx;ix++){
       for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) m_h_gather[ihx][iz] = m_h[ihx*nmx + ix][iz];
@@ -353,8 +359,6 @@ int main(int argc, char* argv[])
     free2float(m_h);
     free2float(m_h_gather);
     free2float(m_a_gather);
-    sf_fileclose(fp_tmp_mpp);
-    sf_fileclose(fp_tmp_mps);
   }  
   else if (!adj && rank==0){
     sf_putfloat(fp_dx,"o1",ot);
@@ -400,9 +404,9 @@ int main(int argc, char* argv[])
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname2); 
       sf_floatread(dz_1shot[0],nt*nmx,fp_tmp_dz);
       sf_floatwrite(dz_1shot[0],nt*nmx,fp_dz);
+      sf_fileclose(fp_tmp_dx);
+      sf_fileclose(fp_tmp_dz);
     }
-    sf_fileclose(fp_tmp_dx);
-    sf_fileclose(fp_tmp_dz);
   }  
 
   free2float(mpp_1shot);
@@ -414,9 +418,6 @@ int main(int argc, char* argv[])
   free1float(wav);
   sf_fileclose(fp_dx);
   sf_fileclose(fp_dz);
-  sf_fileclose(velp);
-  sf_fileclose(vels);
-  sf_fileclose(source_wavelet);
   MPI_Finalize ();
   exit (0);
 }

@@ -298,6 +298,7 @@ int main(int argc, char* argv[])
     free2float(m_h_gather);
     free2float(m_a_gather);
     free2float(m);
+    sf_fileclose(intmp);
   }  
   else if (!adj && rank==0){
     sf_putfloat(out,"o1",ot);
@@ -323,9 +324,9 @@ int main(int argc, char* argv[])
       sf_floatread(d1shot[0],nt*nmx,intmp);
       sf_floatwrite(d1shot[0],nt*nmx,out);
     }
+    sf_fileclose(intmp);
   }  
 
-  sf_fileclose(intmp);
   sf_fileclose(in);
   sf_fileclose(out);
   free2float(m1shot);
