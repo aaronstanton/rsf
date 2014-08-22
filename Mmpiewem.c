@@ -436,6 +436,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
 /*< Depth migration operator for isotropic 2C data >*/
 {
   int iz,ix,igx,ik,iw,it,nw,nk,padt,padx,ntfft,numthreads;
+  int igz;
   float dw,dk,w,kx,s1,s2,kzp,kzs,denom;
   sf_complex czero,i;
   int ifmin,ifmax;
@@ -456,6 +457,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
     for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) dx_1shot[ix][it] = 0.0;
     for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) dz_1shot[ix][it] = 0.0;
   }
+  igz = (int) truncf(gz/dz) + 1;
   __real__ czero = 0;
   __imag__ czero = 0;
   __real__ i = 0;
@@ -556,8 +558,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
       for (ik=0;ik<nk;ik++){
         if (ik<nk/2) kx = dk*ik;
         else         kx = -(dk*nk - dk*ik);
-        s1 = w*w*po_p[0]*po_p[0] - kx*kx;
-        s2 = w*w*po_s[0]*po_s[0] - kx*kx;
+        s1 = w*w*po_p[igz]*po_p[igz] - kx*kx;
+        s2 = w*w*po_s[igz]*po_s[igz] - kx*kx;
         if (s1>0) kzp = sqrtf(s1);
         else kzp = 0;
         if (s2>0) kzs = sqrtf(s2);
@@ -611,8 +613,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
       for (ik=0;ik<nk;ik++){
         if (ik<nk/2) kx = dk*ik;
         else         kx = -(dk*nk - dk*ik);
-        s1 = w*w*po_p[0]*po_p[0] - kx*kx;
-        s2 = w*w*po_s[0]*po_s[0] - kx*kx;
+        s1 = w*w*po_p[igz]*po_p[igz] - kx*kx;
+        s2 = w*w*po_s[igz]*po_s[igz] - kx*kx;
         if (s1>0) kzp = sqrtf(s1);
         else kzp = 0;
         if (s2>0) kzs = sqrtf(s2);
