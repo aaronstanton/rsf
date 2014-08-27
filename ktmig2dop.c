@@ -60,7 +60,7 @@ void kt_2d_op(float **d, float **m, float **vp, float **vs,
     fkfilter(m,dt,nt,dhx,nmx,nhx,-0.5,-0.25,0.25,0.5);
   }
 
-omp_set_num_threads(numthreads);
+//omp_set_num_threads(numthreads);
 
 #ifdef _OPENMP
 #pragma omp parallel for \
