@@ -436,7 +436,7 @@ void wem1shot(float **d, float **m,float *wav,
     }
   }
   progress = 0.0;
-  numthreads = omp_get_num_threads();
+  //numthreads = omp_get_num_threads();
   //if (verbose) fprintf(stderr,"using %d threads.",numthreads);
   #pragma omp parallel for private(iw) shared(m,d_g_wx,d_s_wx)
   for (iw=ifmin;iw<ifmax;iw++){ 

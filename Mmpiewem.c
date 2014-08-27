@@ -48,7 +48,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
                int nz, float oz, float dz, float gz, float sz,
                float **vp, float **vs,
                float fmin, float fmax,
-               bool adj, bool verbose);
+               bool adj, bool H, bool verbose);
 void eextrap1f(float **mpp, float **mps,
                sf_complex **dp_g_wx, sf_complex **ds_g_wx, sf_complex **d_s_wx,
                int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
@@ -106,6 +106,7 @@ int main(int argc, char* argv[])
   float **mpp,**mps;
   bool adj;
   bool verbose;
+  bool H;
   float fmin,fmax;
   off_t iseek;
   int rank,num_procs;
@@ -118,6 +119,7 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   sf_init(argc,argv);
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
+  if (!sf_getbool("H",&H)) H = false; /* flag to use Helmholtz operator for migration only (for least squares migration this should be H=n) */
   velp = sf_input("vp");
   vels = sf_input("vs");
   source_wavelet = sf_input("wav"); // assumed to be a P-wave source
@@ -211,7 +213,7 @@ int main(int argc, char* argv[])
                 wav,
                 nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nhx,ohx,dhx,nz,oz,dz,gz,sz,
                 vp,vs,
-                fmin,fmax,adj,verbose);
+                fmin,fmax,adj,H,verbose);
       sprintf(tmpname1, "tmp_mpp_%d.rsf",isx);
       fp_tmp_mpp = sf_output(tmpname1);
       if (verbose) fprintf(stderr,"writing %s to disk.\n",tmpname1);
@@ -262,7 +264,7 @@ int main(int argc, char* argv[])
                 wav,
                 nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nhx,ohx,dhx,nz,oz,dz,gz,sz,
                 vp,vs,
-                fmin,fmax,adj,verbose);
+                fmin,fmax,adj,H,verbose);
       sprintf(tmpname1, "tmp_dx_%d.rsf",isx);
       fp_tmp_dx = sf_output(tmpname1);
       if (verbose) fprintf(stderr,"writing %s to disk.\n",tmpname1);
@@ -432,7 +434,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
                int nz, float oz, float dz, float gz, float sz,
                float **vp, float **vs,
                float fmin, float fmax,
-               bool adj, bool verbose)
+               bool adj, bool H, bool verbose)
 /*< Depth migration operator for isotropic 2C data >*/
 {
   int iz,ix,igx,ik,iw,it,nw,nk,padt,padx,ntfft,numthreads;
@@ -565,13 +567,19 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         if (s2>0) kzs = sqrtf(s2);
         else kzs = 0;
         denom = kx*kx + kzp*kzs;
-        if (denom>0){
-          d_p[ik] = (i*kx*d_x[ik] + i*kzp*d_z[ik])/denom; 
-          d_s[ik] = (-i*signf(kx)*kzs*d_x[ik] + i*signf(kx)*kx*d_z[ik])/denom;
+        if (!H){
+          if (denom>0){
+            d_p[ik] = (i*kx*d_x[ik] + i*kzp*d_z[ik])/denom; 
+            d_s[ik] = (-i*signf(kx)*kzs*d_x[ik] + i*signf(kx)*kx*d_z[ik])/denom;
+          }
+          else{
+            d_p[ik] = czero; 
+            d_s[ik] = czero;
+          }
         }
         else{
-          d_p[ik] = czero; 
-          d_s[ik] = czero;
+          d_p[ik] = i*kx*d_x[ik] + i*kzs*d_z[ik]; 
+          d_s[ik] = -i*signf(kx)*kzp*d_x[ik] + i*signf(kx)*kx*d_z[ik];
         }
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_p[ik];
@@ -591,7 +599,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
     }
   }
   progress = 0.0;
-  numthreads = omp_get_num_threads();
+  //numthreads = omp_get_num_threads();
   //if (verbose) fprintf(stderr,"using %d threads.",numthreads);
   #pragma omp parallel for private(iw) shared(mpp,mps,dp_g_wx,ds_g_wx,progress)
   for (iw=ifmin;iw<ifmax;iw++){ 

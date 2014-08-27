@@ -8,13 +8,16 @@ REQUIRES the PYTHON API and NUMPY and SCIPY
 # Import RSF API
 try:
     import rsf.api as rsf
-    import sys, numpy, scipy
+    import os, sys, numpy, scipy
     from subprocess import call
     from textwrap import dedent
 except Exception, e:
     print \
 '''ERROR: NEED PYTHON API, NUMPY, SCIPY '''
     sys.exit(1)
+
+# get environmental variables (such as MPIRUN) from config.py
+execfile(os.environ['HOME'] +"/rsf/src/config.py")
 
 def innerprod(filename):
     inp  = rsf.Input(filename)
@@ -182,7 +185,7 @@ wd = "tmp_cg_wd.rsf"
 
 forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s1,tmp_s1,pa,pb,pc,pd) 
 forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s2,tmp_s2,pa,pb,pc,pd) 
-forward2 = "mpiexec -np %d \
+forward2 = "%s -np %d \
 ~/rsf/bin/sfmpiewem \
 adj=n ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -190,9 +193,9 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (np,ss1,ss2,tmp_s1,tmp_s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,ss1,ss2,tmp_s1,tmp_s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
-adjoint1 = "mpiexec -np %d \
+adjoint1 = "%s -np %d \
 ~/rsf/bin/sfmpiewem \
 adj=y ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -200,7 +203,7 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (np,r1,r2,tmp_g1,tmp_g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,r1,r2,tmp_g1,tmp_g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 adjoint2a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g1,g1,pa,pb,pc,pd) 
 adjoint2b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g2,g2,pa,pb,pc,pd) 
 

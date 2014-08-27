@@ -7,12 +7,15 @@ REQUIRES the PYTHON API
 # Import RSF API
 try:
     import rsf.api as rsf
-    import os.path, sys
+    import os, sys
     from subprocess import call
 except Exception, e:
     print \
 '''ERROR: NEED PYTHON API, NUMPY, SCIPY '''
     sys.exit(1)
+
+# get environmental variables (such as MPIRUN) from config.py
+execfile(os.environ['HOME'] +"/rsf/src/config.py")
 
 # Initialize RSF command line parser    
 par = rsf.Par()
@@ -66,7 +69,7 @@ else:
 
 forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (m1,tmp_m1,pa,pb,pc,pd) 
 forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (m2,tmp_m2,pa,pb,pc,pd) 
-forward2 = "mpiexec -np 1 \
+forward2 = "%s -np 1 \
 ~/rsf/bin/sfmpiewem adj=n \
 ux=%s uz=%s \
 mpp=%s mps=%s \
@@ -78,9 +81,9 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (d1_fwd,d2_fwd,tmp_m1,tmp_m2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,d1_fwd,d2_fwd,tmp_m1,tmp_m2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
-adjoint1 = "mpiexec -np 1 \
+adjoint1 = "%s -np 1 \
 ~/rsf/bin/sfmpiewem adj=y \
 ux=%s uz=%s \
 mpp=%s mps=%s \
@@ -92,7 +95,7 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (d1,d2,tmp_m1_adj,tmp_m2_adj,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,d1,d2,tmp_m1_adj,tmp_m2_adj,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 adjoint2a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_m1_adj,m1_adj,pa,pb,pc,pd)
 adjoint2b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_m2_adj,m2_adj,pa,pb,pc,pd)
 
@@ -101,22 +104,22 @@ dot2 = "~/rsf/bin/sfinnerprod2 in1a=%s in1b=%s in2a=%s in2b=%s" %(m1,m2,m1_adj,m
 
 print >> sys.stderr, "Forward..."
 if (reg):
-    os.system(forward1a)
-    os.system(forward1b)
-os.system(forward2)
+    call(forward1a,shell=True)
+    call(forward1b,shell=True)
+call(forward2,shell=True)
 print >> sys.stderr, "Adjoint..."
-os.system(adjoint1)
+call(adjoint1,shell=True)
 if (reg):
-    os.system(adjoint2a)
-    os.system(adjoint2b)
+    call(adjoint2a,shell=True)
+    call(adjoint2b,shell=True)
 print >> sys.stderr, "Inner product 1:"
-os.system(dot1)
+call(dot1,shell=True)
 print >> sys.stderr, "Inner product 2:"
-os.system(dot2)
+call(dot2,shell=True)
 
 # Clean up temporary files
 cleanup = "~/rsf/bin/sfrm tmp_dot_*.rsf"
-os.system(cleanup)
+call(cleanup,shell=True)
 
 print >> sys.stderr, "Done."
 

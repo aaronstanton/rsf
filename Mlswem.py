@@ -16,6 +16,9 @@ except Exception, e:
 '''ERROR: NEED PYTHON API, NUMPY, SCIPY '''
     sys.exit(1)
 
+# get environmental variables (such as MPIRUN) from config.py
+execfile(os.environ['HOME'] +"/rsf/src/config.py")
+
 def innerprod(filename):
     inp  = rsf.Input(filename)
     assert 'float' == inp.type
@@ -167,7 +170,7 @@ ss = "tmp_cg_ss.rsf"
 wd = "tmp_cg_wd.rsf"                                              
 
 forward1 = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s,tmp_s,pa,pb,pc,pd) 
-forward2 = "/usr/bin/mpiexec -np %d \
+forward2 = "%s -np %d \
 ~/rsf/bin/sfmpiwem \
 adj=n infile=%s outfile=%s vp=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -175,9 +178,9 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (np,tmp_s,ss,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,tmp_s,ss,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
-adjoint1 = "/usr/bin/mpiexec -np %d \
+adjoint1 = "%s -np %d \
 ~/rsf/bin/sfmpiwem \
 adj=y infile=%s outfile=%s vp=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -185,7 +188,7 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (np,r,tmp_g,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,r,tmp_g,vp,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 adjoint2 = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g,g,pa,pb,pc,pd) 
 
 # set up arrays for CG

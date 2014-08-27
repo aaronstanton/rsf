@@ -14,6 +14,9 @@ except Exception, e:
 '''ERROR: NEED PYTHON API, NUMPY, SCIPY '''
     sys.exit(1)
 
+# get environmental variables (such as MPIRUN) from config.py
+execfile(os.environ['HOME'] +"/rsf/src/config.py")
+
 # Initialize RSF command line parser    
 par = rsf.Par()
 # Read command line variables
@@ -58,7 +61,7 @@ else:
     tmp_m_adj = m_adj
 
 forward1 = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (m,tmp_m,pa,pb,pc,pd) 
-forward2 = "/usr/bin/mpirun -np %d \
+forward2 = "%s -np 1 \
 ~/rsf/bin/sfmpiwem \
 adj=n infile=%s outfile=%s vp=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -66,9 +69,9 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (np,tmp_m,d_fwd,v,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,tmp_m,d_fwd,v,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
-adjoint1 = "/usr/bin/mpirun -np %d \
+adjoint1 = "%s -np 1 \
 ~/rsf/bin/sfmpiwem \
 adj=y infile=%s outfile=%s vp=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -76,7 +79,7 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (np,d,tmp_m_adj,v,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,d,tmp_m_adj,v,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 adjoint2 = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_m_adj,m_adj,pa,pb,pc,pd) 
 
 dot1 = "~/rsf/bin/sfinnerprod in1=%s in2=%s" %(d,d_fwd)

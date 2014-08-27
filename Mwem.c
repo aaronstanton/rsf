@@ -257,7 +257,7 @@ void wem_op(float **d,
   fftwf_execute_dft(p2,b,b); 
 
   progress = 0.0;
-  omp_set_num_threads(numthreads);
+  //omp_set_num_threads(numthreads);
   #pragma omp parallel for private(iw) shared(m,d_s_wx,d_g_wx,progress)
   for (iw=ifmin;iw<ifmax;iw++){ 
     progress += 1.0/((float) (ifmax - ifmin)); 

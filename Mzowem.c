@@ -685,7 +685,7 @@ void pspi_2d_op(float **d, float **dmig,
 
   progress = 0.0;
 
-omp_set_num_threads(numthreads);
+//omp_set_num_threads(numthreads);
 #ifdef _OPENMP
 #pragma omp parallel for \
         private(iw) \
@@ -793,7 +793,7 @@ void ss_2d_op(float **d, float **dmig,
 
   progress = 0.0;
 
-omp_set_num_threads(numthreads);
+//omp_set_num_threads(numthreads);
 #ifdef _OPENMP
 #pragma omp parallel for \
         private(iw) \
