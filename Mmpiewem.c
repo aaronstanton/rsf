@@ -875,7 +875,7 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
     fftwf_execute(p1a); 
     for(iw=0;iw<nw;iw++) m[iw] = out1a[iw];
     fftwf_destroy_plan(p1a);
-    fftwf_free(in1a); fftwf_free(out1a);
+    free1float(in1a); fftwf_free(out1a);
   }
 
   else{ /* model --> data */
@@ -887,7 +887,7 @@ void f_op(sf_complex *m,float *d,int nw,int nt,bool adj)
     fftwf_execute(p1b); 
     for(it=0;it<nt;it++) d[it] = out1b[it];
     fftwf_destroy_plan(p1b);
-    fftwf_free(in1b); fftwf_free(out1b);
+    fftwf_free(in1b); free1float(out1b);
   }
 
   return;
