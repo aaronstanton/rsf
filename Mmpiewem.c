@@ -202,7 +202,7 @@ int main(int argc, char* argv[])
   mps_1shot = sf_floatalloc2(nz,nmx*nhx);
   if (adj){
     for (isx=rank;isx<nsx;isx+=num_procs){
-      if (verbose) fprintf(stderr,"reading and migrating shot %d...\n",isx);
+      if (verbose) fprintf(stderr,"reading and migrating shot %d... \n",isx);
       iseek = (off_t)(isx*nmx*nt)*sizeof(float);
       sf_seek(fp_dx,iseek,SEEK_SET);    
       sf_floatread(dx_1shot[0],nt*nmx,fp_dx);
@@ -249,12 +249,12 @@ int main(int argc, char* argv[])
         for (ix=0;ix<nmx;ix++){
           // mpp
           for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) m_a_gather[ipx][iz] = mpp[ipx*nmx + ix][iz];
-          if (nhx>1) offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+          if (nhx>1) offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,4*fmax*(dt/dz),adj,verbose);
           else for (iz=0;iz<nz;iz++) m_h_gather[0][iz] = m_a_gather[0][iz]; 
           for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) mpp_1shot[ihx*nmx + ix][iz] = m_h_gather[ihx][iz]; 
           // mps
           for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) m_a_gather[ipx][iz] = mps[ipx*nmx + ix][iz];
-          if (nhx>1) offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+          if (nhx>1) offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,4*fmax*(dt/dz),adj,verbose);
           else for (iz=0;iz<nz;iz++) m_h_gather[0][iz] = m_a_gather[0][iz];
           for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) mps_1shot[ihx*nmx + ix][iz] = m_h_gather[ihx][iz]; 
         }
@@ -316,7 +316,7 @@ int main(int argc, char* argv[])
     for (ix=0;ix<nmx;ix++){
       for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) m_h_gather[ihx][iz] = m_h[ihx*nmx + ix][iz];
       if (nhx>1){ 
-        offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+        offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,4*fmax*(dt/dz),adj,verbose);
       }
       else{ 
         for (iz=0;iz<nz;iz++) m_a_gather[0][iz] = m_h_gather[0][iz];
@@ -343,7 +343,7 @@ int main(int argc, char* argv[])
     for (ix=0;ix<nmx;ix++){
       for (ihx=0;ihx<nhx;ihx++) for (iz=0;iz<nz;iz++) m_h_gather[ihx][iz] = m_h[ihx*nmx + ix][iz];
       if (nhx>1){ 
-        offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,2*fmax*(dt/dz),adj,verbose);
+        offset_to_angle(m_h_gather,m_a_gather,nz,oz,dz,nhx,ohx,dhx,npx,opx,dpx,0,4*fmax*(dt/dz),adj,verbose);
       }
       else{ 
         for (iz=0;iz<nz;iz++) m_a_gather[0][iz] = m_h_gather[0][iz];
@@ -459,7 +459,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
     for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) dx_1shot[ix][it] = 0.0;
     for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) dz_1shot[ix][it] = 0.0;
   }
-  igz = (int) truncf(gz/dz) + 1;
+  igz = (int) truncf(gz/dz);
   __real__ czero = 0;
   __imag__ czero = 0;
   __real__ i = 0;

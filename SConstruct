@@ -13,7 +13,9 @@ merge5d
 decimate
 static
 pstm
+velpstm
 zowem
+velwem
 spbpdn
 wavsep
 fkfilter
