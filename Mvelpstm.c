@@ -61,15 +61,15 @@ void rho_filt(float *m,int nt,int adj);
 int main(int argc, char* argv[])
 {
 
-  sf_file in,out,vel;
-  int n1,n2,n3;
-  int nt,nmx,nhx;
-  int it,ix;
-  float o1,o2,o3;
-  float d1,d2,d3;
-  float ot,omx,ohx;
-  float dt,dmx,dhx;
-  float **d,**m,**vp,*trace;
+  sf_file in,out,vel,weight;
+  int n1,n2,n3,n4;
+  int nt,nmx,nhx,nv;
+  int it,ix,iv,ihx;
+  float o1,o2,o3,o4;
+  float d1,d2,d3,d4;
+  float ot,omx,ohx,ov;
+  float dt,dmx,dhx,dv;
+  float **d,**m,**m1,**vp,*trace,**w;
   bool adj;
   bool verbose;
   float aperture;
@@ -79,6 +79,7 @@ int main(int argc, char* argv[])
   in = sf_input("in");
   out = sf_output("out");
   vel = sf_input("vel");
+  weight = sf_input("w");
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
   if (!sf_getfloat("aperture",&aperture)) aperture=1000;
@@ -93,9 +94,14 @@ int main(int argc, char* argv[])
   if (!sf_histfloat(in,"d3",&d3)) sf_error("No d3= in input");
   if (!sf_histfloat(in,"o3",&o3)) o3=0.;
   
-  nt=n1; nmx=n2; nhx=n3;  
-  dt=d1; dmx=d2; dhx=d3;  
-  ot=o1; omx=o2; ohx=o3;
+  /* get number of velocities from weight file*/
+  if (!sf_histint(  weight,"n4",&n4)) sf_error("No n4= in w");
+  if (!sf_histfloat(weight,"d4",&d4)) sf_error("No d4= in w");
+  if (!sf_histfloat(weight,"o4",&o4)) o4=1.;
+
+  nt=n1; nmx=n2; nhx=n3; nv=n4; 
+  dt=d1; dmx=d2; dhx=d3; dv=d4; 
+  ot=o1; omx=o2; ohx=o3; ov=o4;
 
   sf_putfloat(out,"o1",ot);
   sf_putfloat(out,"o2",omx);
@@ -114,10 +120,15 @@ int main(int argc, char* argv[])
   sf_putstring(out,"unit3","m");
 
   if (adj){
-    sf_putstring(out,"title","Reflectivity");
+    sf_putstring(out,"title","m");
+    sf_putfloat(out,"o4",ov);
+    sf_putfloat(out,"d4",dv);
+    sf_putfloat(out,"n4",nv);
+    sf_putstring(out,"label4","Velocity Perturbation");
+    sf_putstring(out,"unit4","");
   }
   else{
-    sf_putstring(out,"title","Synthesized data");
+    sf_putstring(out,"title","d");
   }
 
   vp = sf_floatalloc2(nt,nmx);
@@ -127,28 +138,48 @@ int main(int argc, char* argv[])
     for (it=0;it<nt;it++) vp[ix][it] = trace[it];
   }
 
-  m = sf_floatalloc2(nt,nmx*nhx);
+  m = sf_floatalloc2(nt,nmx*nhx*nv);
   d = sf_floatalloc2(nt,nmx*nhx);
+  w = sf_floatalloc2(nt,nmx*nv);
 
-  for (ix=0;ix<nhx*nmx;ix++){
-    sf_floatread(trace,n1,in);
-    if (adj){
-      for (it=0;it<nt;it++){
-        d[ix][it] = trace[it];
-        m[ix][it] = 0.0;
-      }
-    }
-    else {
-      for (it=0;it<nt;it++){ 
-        d[ix][it] = 0.0;
-        m[ix][it] = trace[it];
-      }
-    }
-  }
-    
-  ktop(d,m,vp,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,aperture,adj,verbose);  
   if (adj){
-    for (ix=0; ix<nmx*nhx; ix++) {
+    for (ix=0;ix<nmx;ix++) for (ihx=0;ihx<nhx;ihx++){
+      sf_floatread(trace,n1,in);
+      for (it=0;it<nt;it++) d[ihx*nmx + ix][it] = trace[it];
+    }
+    for (ix=0;ix<nmx*nhx*nv;ix++) for (it=0;it<nt;it++) m[ix][it] = 0.0;
+  }
+  else{
+    for (ix=0;ix<nmx;ix++) for (ihx=0;ihx<nhx;ihx++) for (iv=0;iv<nv;iv++){
+      sf_floatread(trace,n1,in);
+      for (it=0;it<nt;it++) m[iv*nhx*nmx + ihx*nmx + ix][it] = trace[it];
+    }
+    for (ix=0;ix<nhx*nmx;ix++) for (it=0;it<nt;it++) d[ix][it] = 0.0;
+  }
+
+  for (ix=0;ix<nmx;ix++) for (iv=0;iv<nv;iv++){
+    sf_floatread(trace,n1,weight);
+    for (it=0;it<nt;it++) w[iv*nmx + ix][it] = trace[it];
+  }
+ 
+  m1 = sf_floatalloc2(nt,nmx*nhx);
+  for (ix=0;ix<nmx*nhx;ix++) for (it=0;it<nt;it++) m1[ix][it] = 0.0;
+
+  for (iv=0;iv<nv;iv++){
+    if (!adj){
+      for (ix=0;ix<nmx;ix++) for (ihx=0;ihx<nhx;ihx++) for (it=0;it<nt;it++){
+        m1[ihx*nmx + ix][it] = m[iv*nhx*nmx + ihx*nmx + ix][it]*w[iv*nmx + ix][it];
+      }
+    } 
+    ktop(d,m1,vp,nt,nmx,nhx,ot,omx,ohx,dt,dmx,dhx,aperture,adj,verbose);
+    if (adj){
+      for (ix=0;ix<nmx;ix++) for (ihx=0;ihx<nhx;ihx++) for (it=0;it<nt;it++){
+        m[iv*nhx*nmx + ihx*nmx + ix][it] = m1[ihx*nmx + ix][it]*w[iv*nmx + ix][it];
+      }
+    } 
+  }
+  if (adj){
+    for (ix=0; ix<nmx*nhx*nv; ix++) {
       for (it=0; it<nt; it++) trace[it] = m[ix][it];	
       sf_floatwrite(trace,nt,out);
     }
@@ -241,12 +272,12 @@ void kt1ofc(float **d, float **m, float **vp,
   }
   if (adj){
     for (ix=0;ix<nmx;ix++){
-      for (it=0;it<nt;it++) m[ihx*nmx + ix][it] = moc[ix][it];
+      for (it=0;it<nt;it++) m[ihx*nmx + ix][it] += moc[ix][it];
     }
   }
   else{
     for (ix=0;ix<nmx;ix++){
-      for (it=0;it<nt;it++) d[ihx*nmx + ix][it] = doc[ix][it];
+      for (it=0;it<nt;it++) d[ihx*nmx + ix][it] += doc[ix][it];
     }
   } 
 
@@ -292,8 +323,8 @@ void ktfwd(float **d, float *m, float **vp,
       w = spherical_divergence(ts,tg,vp[icipx][it]);
       t  = ts + tg;
       cos1 = angle_taper(ts,tg,vp[icipx][it],hx);
-      if (cos1 < 0.1) continue;
-      if (fabs(t - 2*t0) > 0.1) continue;  
+      // if (cos1 < 0.1) continue;
+      // if (fabs(t - 2*t0) > 0.1) continue;  
       t_floor = trunc(t/dt) + 1;
       jt = (int) t_floor;
       if (jt >= 0 && jt+1 < nt){
@@ -342,8 +373,8 @@ void ktadj(float *d, float **m, float **vp,
       w = spherical_divergence(ts,tg,vp[icipx][it]);
       t  = ts + tg;
       cos1 = angle_taper(ts,tg,vp[icipx][it],hx);
-      if (cos1 < 0.1) continue;       
-      if (fabs(t - 2*t0) > 0.1) continue;  
+     // if (cos1 < 0.1) continue;       
+     // if (fabs(t - 2*t0) > 0.1) continue;  
       t_floor = trunc(t/dt) + 1;
       jt = (int) t_floor;
       if (jt >= 0 && jt+1 < nt){
