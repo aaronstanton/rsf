@@ -464,8 +464,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
   __imag__ czero = 0;
   __real__ i = 0;
   __imag__ i = 1;
-  padt = 2;
-  padx = 2;
+  padt = 1;
+  padx = 1;
   ntfft = padt*nt;
   nw=ntfft/2+1;
   if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
