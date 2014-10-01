@@ -439,8 +439,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
 {
   int iz,ix,igx,ik,iw,it,nw,nk,padt,padx,ntfft,numthreads;
   int igz;
-  float dw,dk,w,kx,s1,s2,kzp,kzs,denom;
-  sf_complex czero,i;
+  float dw,dk,w,kx,s1,s2;
+  sf_complex czero,i,kzp,kzs,denom;
   int ifmin,ifmax;
   float *d_t;
   sf_complex *d_w,*d_x,*d_z,*d_p,*d_s;
@@ -464,8 +464,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
   __imag__ czero = 0;
   __real__ i = 0;
   __imag__ i = 1;
-  padt = 1;
-  padx = 1;
+  padt = 2;
+  padx = 2;
   ntfft = padt*nt;
   nw=ntfft/2+1;
   if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
@@ -562,13 +562,25 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         else         kx = -(dk*nk - dk*ik);
         s1 = w*w*po_p[igz]*po_p[igz] - kx*kx;
         s2 = w*w*po_s[igz]*po_s[igz] - kx*kx;
-        if (s1>0) kzp = sqrtf(s1);
-        else kzp = 0;
-        if (s2>0) kzs = sqrtf(s2);
-        else kzs = 0;
+        if (s1>0){ 
+          __real__ kzp = sqrtf(s1);
+          __imag__ kzp = 0;
+        }
+        else{
+          __real__ kzp = 0;
+          __imag__ kzp = sqrtf(-s1);
+        }
+        if (s2>0){ 
+          __real__ kzs = sqrtf(s2);
+          __imag__ kzs = 0;
+        }
+        else{
+          __real__ kzs = 0;
+          __imag__ kzs = sqrtf(-s2);
+        }
         denom = kx*kx + kzp*kzs;
         if (!H){
-          if (denom>0){
+          if (cabsf(denom)>0.001 && fabsf(kx/w) < po_s[igz]){
             d_p[ik] = (i*kx*d_x[ik] + i*kzp*d_z[ik])/denom; 
             d_s[ik] = (-i*kzs*d_x[ik] + i*kx*d_z[ik])/denom;
           }
@@ -578,8 +590,14 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
           }
         }
         else{
-          d_p[ik] = i*kx*d_x[ik] + i*kzs*d_z[ik]; 
-          d_s[ik] = -i*kzp*d_x[ik] + i*kx*d_z[ik];
+          if(fabsf(kx/w) < po_s[igz]){
+            d_p[ik] = i*kx*d_x[ik] + i*kzs*d_z[ik]; 
+            d_s[ik] = -i*kzp*d_x[ik] + i*kx*d_z[ik];
+          }
+          else{
+            d_p[ik] = czero; 
+            d_s[ik] = czero;
+          }
         }
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_p[ik];
@@ -623,19 +641,33 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         else         kx = -(dk*nk - dk*ik);
         s1 = w*w*po_p[igz]*po_p[igz] - kx*kx;
         s2 = w*w*po_s[igz]*po_s[igz] - kx*kx;
-        if (s1>0) kzp = sqrtf(s1);
-        else kzp = 0;
-        if (s2>0) kzs = sqrtf(s2);
-        else kzs = 0;
-        denom = kx*kx + kzp*kzs;
-        if (denom>0){
-          d_x[ik] = (-i*kx*d_p[ik]  + i*kzs*d_s[ik])/denom; 
-          d_z[ik] = (-i*kzp*d_p[ik] - i*kx*d_s[ik])/denom; 
+        if (s1>0){ 
+          __real__ kzp = sqrtf(s1);
+          __imag__ kzp = 0;
         }
+        else{
+          __real__ kzp = 0;
+          __imag__ kzp = sqrtf(-s1);
+        }
+        if (s2>0){ 
+          __real__ kzs = sqrtf(s2);
+          __imag__ kzs = 0;
+        }
+        else{
+          __real__ kzs = 0;
+          __imag__ kzs = sqrtf(-s2);
+        }
+        denom = kx*kx + kzp*kzs;
+        if (cabsf(denom)>0.001 && fabsf(kx/w) < po_s[igz]){
+          d_x[ik] = (-i*kx*d_p[ik]  + i*kzs*d_s[ik])/denom;
+          d_z[ik] = (-i*kzp*d_p[ik] - i*kx*d_s[ik])/denom;
+        } 
         else{
           d_x[ik] = czero; 
           d_z[ik] = czero; 
-        }
+        } 
+        /*d_x[ik] = (-i*kx*d_p[ik]  + i*kzs*d_s[ik]); 
+        d_z[ik] = (-i*kzp*d_p[ik] - i*kx*d_s[ik]);*/ 
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_x[ik];
       fftwf_execute_dft(p2,b,b);

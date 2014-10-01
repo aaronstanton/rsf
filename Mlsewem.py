@@ -132,6 +132,7 @@ wav = par.string("wav", "wav.rsf")
 misfit_name = par.string("misfit", "misfit.rsf")
 np  = par.int("np",1)
 npersocket = par.int("npersocket",1)
+numthreads = par.int("numthreads",1)
 niter  = par.int("niter",1) 
 nz  = par.int("nz",1)
 dz  = par.float("dz",1)
@@ -185,7 +186,7 @@ wd = "tmp_cg_wd.rsf"
 
 forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s1,tmp_s1,pa,pb,pc,pd) 
 forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s2,tmp_s2,pa,pb,pc,pd) 
-forward2 = "%s -np %d \
+forward2 = "%s -np %d omplace -nt %d \
 ~/rsf/bin/sfmpiewem \
 adj=n ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -193,9 +194,9 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (MPIRUN,np,ss1,ss2,tmp_s1,tmp_s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,numthreads,ss1,ss2,tmp_s1,tmp_s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
-adjoint1 = "%s -np %d \
+adjoint1 = "%s -np %d omplace -nt %d \
 ~/rsf/bin/sfmpiewem \
 adj=y ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -203,7 +204,7 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (MPIRUN,np,r1,r2,tmp_g1,tmp_g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,numthreads,r1,r2,tmp_g1,tmp_g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 adjoint2a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g1,g1,pa,pb,pc,pd) 
 adjoint2b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g2,g2,pa,pb,pc,pd) 
 
