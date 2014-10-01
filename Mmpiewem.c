@@ -580,7 +580,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         }
         denom = kx*kx + kzp*kzs;
         if (!H){
-          if (cabsf(denom)>0.001 && fabsf(kx/w) < po_s[igz]){
+          if (cabsf(denom)>=0.00001){ /*  && fabsf(kx/w) <= 1.2*po_s[igz] */
             d_p[ik] = (i*kx*d_x[ik] + i*kzp*d_z[ik])/denom; 
             d_s[ik] = (-i*kzs*d_x[ik] + i*kx*d_z[ik])/denom;
           }
@@ -590,7 +590,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
           }
         }
         else{
-          if(fabsf(kx/w) < po_s[igz]){
+          if(fabsf(kx/w) <= 1.2*po_s[igz]){
             d_p[ik] = i*kx*d_x[ik] + i*kzs*d_z[ik]; 
             d_s[ik] = -i*kzp*d_x[ik] + i*kx*d_z[ik];
           }
@@ -658,7 +658,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
           __imag__ kzs = sqrtf(-s2);
         }
         denom = kx*kx + kzp*kzs;
-        if (cabsf(denom)>0.001 && fabsf(kx/w) < po_s[igz]){
+        if (cabsf(denom)>=0.00001){ /*  && fabsf(kx/w) <= 1.2*po_s[igz] */
           d_x[ik] = (-i*kx*d_p[ik]  + i*kzs*d_s[ik])/denom;
           d_z[ik] = (-i*kzp*d_p[ik] - i*kx*d_s[ik])/denom;
         } 
