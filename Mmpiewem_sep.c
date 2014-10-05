@@ -1,4 +1,4 @@
-/* Shot Profile Wave Equation Migration of 2C data with angle gather imaging condition. Uses MPI over shots and OMP over frequencies.*/
+/* Shot Profile Wave Equation Migration of 2C data (already separated into p and s components) with angle gather imaging condition. Uses MPI over shots and OMP over frequencies.*/
 /*
   Copyright (C) 2014 University of Alberta
   
@@ -124,14 +124,14 @@ int main(int argc, char* argv[])
   vels = sf_input("vs");
   source_wavelet = sf_input("wav"); // assumed to be a P-wave source
   if (adj){
-    fp_dx = sf_input("ux");
-    fp_dz = sf_input("uz");
+    fp_dx = sf_input("ds");
+    fp_dz = sf_input("dp");
     fp_mpp = sf_output("mpp");
     fp_mps = sf_output("mps");
   }
   else{
-    fp_dx = sf_output("ux");
-    fp_dz = sf_output("uz");
+    fp_dx = sf_output("ds");
+    fp_dz = sf_output("dp");
     fp_mpp = sf_input("mpp");
     fp_mps = sf_input("mps");
   }
@@ -569,18 +569,12 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         else kzs = 0;
         denom = kx*kx + kzp*kzs;
         if (!H){
-          if (fabsf(denom)>=0.00001){
-          d_p[ik] = (i*kx*d_x[ik] + i*kzp*d_z[ik])/denom; 
-          d_s[ik] = (-i*kzs*d_x[ik]  + i*kx*d_z[ik])/denom;
-          } 
-          else{
-            d_p[ik] = d_z[ik];
-            d_s[ik] = d_x[ik]; 
-          } 
+          d_p[ik] = d_z[ik]; 
+          d_s[ik] = d_x[ik];
         }
         else{
-          d_p[ik] = i*kx*d_x[ik] + i*kzs*d_z[ik]; 
-          d_s[ik] = -i*kzp*d_x[ik] + i*kx*d_z[ik];
+          d_p[ik] = d_z[ik]; 
+          d_s[ik] = d_x[ik];
         }
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_p[ik];
@@ -629,14 +623,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         if (s2>0) kzs = sqrtf(s2);
         else kzs = 0;
         denom = kx*kx + kzp*kzs;
-        if (fabsf(denom)>=0.00001){
-          d_x[ik] = (-i*kx*d_p[ik] + i*kzs*d_s[ik])/denom; 
-          d_z[ik] = (-i*kzp*d_p[ik]  - i*kx*d_s[ik])/denom;
-        } 
-        else{
-          d_z[ik] = d_p[ik]; 
-          d_x[ik] = d_s[ik]; 
-        } 
+        d_z[ik] = d_p[ik]; 
+        d_x[ik] = d_s[ik]; 
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_x[ik];
       fftwf_execute_dft(p2,b,b);

@@ -1,4 +1,4 @@
-/* Common Shot Isotropic Wavefield Separation of P and SV waves using Helmholtz or Christoffel formulations.
+/* Common Shot Isotropic Wavefield Separation of P and SV waves using Helmholtz operator in Fourier domain.
 */
 /*
   Copyright (C) 2014 University of Alberta
@@ -30,11 +30,10 @@
 #include <fftw3.h>
 #include "myfree.h"
 
-void wesep2dop(float **d_x,float **d_z,float **d_p,float **d_sv,
+void wesep2dop(float **d_x,float **d_z,float **d_p,float **d_s,
                int nt,float ot,float dt,int nmx,float omx,float dmx,
                float **vp,float **vs,float fmin,float fmax,
-               bool adj, bool inv,
-               int mode, 
+               bool H,
                bool verbose);
 void fk_op(sf_complex **m,float **d,int nw,int nk,int nt,int nx,bool adj);
 float signf(float a);
@@ -43,19 +42,17 @@ int main(int argc, char* argv[])
 {
 
   sf_file in1,in2,out1,out2,velp,vels;
-  int n1,n2;
-  int nt,nmx,nz;
-  int it,ix,iz;
-  float o1,o2;
-  float d1,d2;
-  float ot,omx;
-  float dt,dmx;
-  float **d_x,**d_z,**d_p,**d_sv,**vp,**vs,*trace;
-  bool adj;
-  bool inv;
+  int n1,n2,n3;
+  int nt,nmx,nz,nsx;
+  int it,ix,iz,isx;
+  float o1,o2,o3;
+  float d1,d2,d3;
+  float ot,omx,osx;
+  float dt,dmx,dsx;
+  float **d_x,**d_z,**d_p,**d_s,**vp,**vs,*trace;
+  bool H;
   bool verbose;
   float fmin,fmax;
-  int mode;
 
   sf_init (argc,argv);
   in1 = sf_input("in1");
@@ -65,10 +62,7 @@ int main(int argc, char* argv[])
   velp = sf_input("vp");
   vels = sf_input("vs");
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
-  if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
-  if (!sf_getbool("inv",&inv)) inv = false; /* flag for inverse */
-  if (inv) adj = false;
-  if (!sf_getint("mode",&mode)) mode = 1; /* 1=Helmholtz based method, 2=Christoffel based method */
+  if (!sf_getbool("H",&H)) H = true; /* Helmholtz decomposition to p and s = y, Helmholtz recomposition to x and z = n */
   /* read input file parameters */
   if (!sf_histint(  in1,"n1",&n1)) sf_error("No n1= in input");
   if (!sf_histfloat(in1,"d1",&d1)) sf_error("No d1= in input");
@@ -76,8 +70,10 @@ int main(int argc, char* argv[])
   if (!sf_histint(  in1,"n2",&n2)) sf_error("No n2= in input");
   if (!sf_histfloat(in1,"d2",&d2)) sf_error("No d2= in input");
   if (!sf_histfloat(in1,"o2",&o2)) o2=0.;
-
   if (!sf_histint(  velp,"n1",&nz)) sf_error("No n1= in vp");
+  if (!sf_histint(  in1,"n3",&n3)) n3=1;
+  if (!sf_histfloat(in1,"d3",&d3)) d3=1;
+  if (!sf_histfloat(in1,"o3",&o3)) o3=0.;
  
   nmx=n2;
   dmx=d2;  
@@ -85,7 +81,10 @@ int main(int argc, char* argv[])
   nt=n1;  
   dt=d1;  
   ot=o1;
-
+  nsx=n3;
+  osx=o3;
+  dsx=d3;
+  
   if (!sf_getfloat("fmin",&fmin)) fmin = 0;      /* min frequency to process */
   if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/dt; /* max frequency to process */
   if (fmax > 0.5/dt) fmax = 0.5/dt;
@@ -100,6 +99,11 @@ int main(int argc, char* argv[])
   sf_putstring(out1,"label2","x");
   sf_putstring(out1,"unit2","m");
   sf_putstring(out1,"title","P");
+  sf_putfloat(out1,"o3",osx);
+  sf_putfloat(out1,"d3",dsx);
+  sf_putfloat(out1,"n3",nsx);
+  sf_putstring(out1,"label3","sx");
+  sf_putstring(out1,"unit3","m");
   sf_putfloat(out2,"o1",ot);
   sf_putfloat(out2,"d1",dt);
   sf_putfloat(out2,"n1",nt);
@@ -111,6 +115,11 @@ int main(int argc, char* argv[])
   sf_putstring(out2,"label2","x");
   sf_putstring(out2,"unit2","m");
   sf_putstring(out2,"title","SV");
+  sf_putfloat(out2,"o3",osx);
+  sf_putfloat(out2,"d3",dsx);
+  sf_putfloat(out2,"n3",nsx);
+  sf_putstring(out2,"label3","sx");
+  sf_putstring(out2,"unit3","m");
   vp = sf_floatalloc2(nz,nmx);
   vs = sf_floatalloc2(nz,nmx);
   trace = sf_floatalloc( nt > nz ? nt : nz  );
@@ -123,67 +132,63 @@ int main(int argc, char* argv[])
   d_x = sf_floatalloc2(nt,nmx);
   d_z = sf_floatalloc2(nt,nmx);
   d_p = sf_floatalloc2(nt,nmx);
-  d_sv = sf_floatalloc2(nt,nmx);
-  if (adj || inv){
-  for (ix=0;ix<nmx;ix++){
-    sf_floatread(trace,n1,in1);
-    for (it=0;it<nt;it++) d_x[ix][it] = trace[it];
-    sf_floatread(trace,n1,in2);
-    for (it=0;it<nt;it++) d_z[ix][it] = trace[it];
-  }
-  for (ix=0;ix<nmx;ix++){
-    for (it=0;it<nt;it++){
-      d_p[ix][it] = 0.0;
-      d_sv[ix][it] = 0.0;
+  d_s = sf_floatalloc2(nt,nmx);
+  if (H){
+    for (isx=0;isx<nsx;isx++){
+      for (ix=0;ix<nmx;ix++){
+        sf_floatread(trace,n1,in1);
+        for (it=0;it<nt;it++) d_x[ix][it] = trace[it];
+        sf_floatread(trace,n1,in2);
+        for (it=0;it<nt;it++) d_z[ix][it] = trace[it];
+        for (it=0;it<nt;it++){
+          d_p[ix][it] = 0.0;
+          d_s[ix][it] = 0.0;
+        }
+      }
+      wesep2dop(d_x,d_z,d_p,d_s,nt,ot,dt,nmx,omx,dmx,vp,vs,fmin,fmax,H,verbose);
+      for (ix=0; ix<nmx; ix++) {
+        for (it=0; it<nt; it++) trace[it] = d_p[ix][it];	
+        sf_floatwrite(trace,nt,out1);
+        for (it=0; it<nt; it++) trace[it] = d_s[ix][it];
+        sf_floatwrite(trace,nt,out2);
+      }
     }
   }
-  }
   else{
-  for (ix=0;ix<nmx;ix++){
-    sf_floatread(trace,n1,in1);
-    for (it=0;it<nt;it++) d_p[ix][it] = trace[it];
-    sf_floatread(trace,n1,in2);
-    for (it=0;it<nt;it++) d_sv[ix][it] = trace[it];
-  }
-  for (ix=0;ix<nmx;ix++){
-    for (it=0;it<nt;it++){
-      d_x[ix][it] = 0.0;
-      d_z[ix][it] = 0.0;
+    for (isx=0;isx<nsx;isx++){
+      for (ix=0;ix<nmx;ix++){
+        sf_floatread(trace,n1,in1);
+        for (it=0;it<nt;it++) d_p[ix][it] = trace[it];
+        sf_floatread(trace,n1,in2);
+        for (it=0;it<nt;it++) d_s[ix][it] = trace[it];
+        for (it=0;it<nt;it++){
+          d_x[ix][it] = 0.0;
+          d_z[ix][it] = 0.0;
+        }
+      }
+      wesep2dop(d_x,d_z,d_p,d_s,nt,ot,dt,nmx,omx,dmx,vp,vs,fmin,fmax,H,verbose);
+      for (ix=0; ix<nmx; ix++) {
+        for (it=0; it<nt; it++) trace[it] = d_x[ix][it];	
+        sf_floatwrite(trace,nt,out1);
+        for (it=0; it<nt; it++) trace[it] = d_z[ix][it];
+        sf_floatwrite(trace,nt,out2);
+      }
     }
-  }
-  }
-  wesep2dop(d_x,d_z,d_p,d_sv,nt,ot,dt,nmx,omx,dmx,vp,vs,fmin,fmax,adj,inv,mode,verbose);
-  if (adj || inv){
-  for (ix=0; ix<nmx; ix++) {
-    for (it=0; it<nt; it++) trace[it] = d_p[ix][it];	
-    sf_floatwrite(trace,nt,out1);
-    for (it=0; it<nt; it++) trace[it] = d_sv[ix][it];
-    sf_floatwrite(trace,nt,out2);
-  }
-  }
-  else{
-  for (ix=0; ix<nmx; ix++) {
-    for (it=0; it<nt; it++) trace[it] = d_x[ix][it];	
-    sf_floatwrite(trace,nt,out1);
-    for (it=0; it<nt; it++) trace[it] = d_z[ix][it];
-    sf_floatwrite(trace,nt,out2);
-  }
   }
 
   exit (0);
 }
 
-void wesep2dop(float **d_x,float **d_z,float **d_p,float **d_sv,
+void wesep2dop(float **d_x,float **d_z,float **d_p,float **d_s,
                int nt,float ot,float dt,int nmx,float omx,float dmx,
                float **vp,float **vs,float fmin,float fmax,
-               bool adj,bool inv, 
-               int mode,
+               bool H,
                bool verbose)
 {
 
-  sf_complex **D_z,**D_x,**D_p,**D_sv;
+  sf_complex **D_z,**D_x,**D_p,**D_s;
   int iw,ik,nw,nk,padt,padx,ntfft;
-  float w,sp,ss,kx,kzp,kzs,dw,dk,k;
+  float w,sp,ss,kx,kzp,kzs,dw,dk,k,denom;
   sf_complex czero,i,i_neg;
   int ifmax;
   __real__ czero = 0;
@@ -202,20 +207,20 @@ void wesep2dop(float **d_x,float **d_z,float **d_p,float **d_sv,
   D_x = sf_complexalloc2(nw,nk);
   D_z = sf_complexalloc2(nw,nk);
   D_p = sf_complexalloc2(nw,nk);
-  D_sv = sf_complexalloc2(nw,nk);
+  D_s = sf_complexalloc2(nw,nk);
 
   if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
   else ifmax = nw;
   nk = padx*nmx;
   dk = 2*PI/nk/dmx;
   dw = 2*PI/ntfft/dt;
-  if (adj || inv){
+  if (H){
     fk_op(D_x,d_x,nw,nk,nt,nmx,1);
     fk_op(D_z,d_z,nw,nk,nt,nmx,1);
   }
   else{
     fk_op(D_p,d_p,nw,nk,nt,nmx,1);
-    fk_op(D_sv,d_sv,nw,nk,nt,nmx,1);
+    fk_op(D_s,d_s,nw,nk,nt,nmx,1);
   }
   for (ik=0;ik<nk;ik++){
     if (ik<nk/2) kx = dk*ik;
@@ -228,43 +233,26 @@ void wesep2dop(float **d_x,float **d_z,float **d_p,float **d_sv,
       else      kzp = 0;  
       if (ss>0) kzs = sqrtf(ss);
       else      kzs = 0;
-      if (mode==1){
-        if (adj){
-          D_p[ik][iw]  =             kx*D_x[ik][iw] +          kzs*D_z[ik][iw];
-          D_sv[ik][iw] = -signf(kx)*kzp*D_x[ik][iw] + signf(kx)*kx*D_z[ik][iw];
+      if (H){
+        D_p[ik][iw]  = i*kx*D_x[ik][iw] + i*kzs*D_z[ik][iw]; 
+        D_s[ik][iw] =-i*kzp*D_x[ik][iw] + i*kx*D_z[ik][iw];
+      }
+      else{
+        denom = kx*kx + kzp*kzs;
+        if (denom > 0.0001){
+          D_x[ik][iw]  = (-i*kx*D_p[ik][iw] + i*kzs*D_s[ik][iw])/denom; 
+          D_z[ik][iw]  = (-i*kzp*D_p[ik][iw]  - i*kx*D_s[ik][iw])/denom;
         }
         else{
-          D_x[ik][iw]  =  kx*D_p[ik][iw] - signf(kx)*kzp*D_sv[ik][iw];
-          D_z[ik][iw]  = kzs*D_p[ik][iw] +  signf(kx)*kx*D_sv[ik][iw];
+          D_x[ik][iw]  = D_s[ik][iw]; 
+          D_z[ik][iw]  = D_p[ik][iw];
         }
       }
-      else if (mode==2){
-        if (adj){
-          if (w>0){
-            D_p[ik][iw]  = ( vp[0][0]*kx*D_x[ik][iw]  + vp[0][0]*kzp*D_z[ik][iw])/w;
-            D_sv[ik][iw] = (-signf(kx)*vs[0][0]*kzs*D_x[ik][iw] + signf(kx)*vs[0][0]*kx*D_z[ik][iw])/w;
-          }
-          else{
-            D_p[ik][iw]  = czero;
-            D_sv[ik][iw] = czero;
-          }
-        }
-        else{
-          if (w>0){
-            D_x[ik][iw] = (vp[0][0]*kx*D_p[ik][iw]  - signf(kx)*vs[0][0]*kzs*D_sv[ik][iw])/w;
-            D_z[ik][iw] = (vp[0][0]*kzp*D_p[ik][iw] + signf(kx)*vs[0][0]*kx*D_sv[ik][iw])/w;
-          }
-          else{
-            D_x[ik][iw] = czero;
-            D_z[ik][iw] = czero;
-          }
-        }
-      }   
     }  
   }
-  if (adj || inv){
+  if (H){
     fk_op(D_p,d_p,nw,nk,nt,nmx,0);
-    fk_op(D_sv,d_sv,nw,nk,nt,nmx,0);
+    fk_op(D_s,d_s,nw,nk,nt,nmx,0);
   }
   else {
     fk_op(D_x,d_x,nw,nk,nt,nmx,0);
@@ -273,7 +261,7 @@ void wesep2dop(float **d_x,float **d_z,float **d_p,float **d_sv,
   free2complex(D_x);
   free2complex(D_z);
   free2complex(D_p);
-  free2complex(D_sv);
+  free2complex(D_s);
   return;
 }
 

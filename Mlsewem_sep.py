@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-''' least squares shot profile wave equation migration of isotropic 2C data. Inversion follows algorithm 2 of Scales, 1987.
+''' least squares shot profile wave equation migration of isotropic 2C data that has already been separated into P and S waves. Inversion follows algorithm 2 of Scales, 1987.
 References:   
 Scales, John A. "Tomographic inversion via the conjugate gradient method." Geophysics 52.2 (1987): 179-185.
 REQUIRES the PYTHON API and NUMPY and SCIPY
@@ -122,8 +122,8 @@ def cgupdate(filenamein1,filenamein2,a,b):
 # Initialize RSF command line parser    
 par = rsf.Par()
 # Read command line variables
-ux   = par.string("ux", "ux.rsf")
-uz   = par.string("uz", "uz.rsf")
+ux   = par.string("ds", "ds.rsf")
+uz   = par.string("dp", "dp.rsf")
 mpp   = par.string("mpp", "mpp.rsf")
 mps   = par.string("mps", "mps.rsf")
 vp   = par.string("vp", "vp.rsf")
@@ -162,56 +162,56 @@ pd  = par.float("pd",100)
 misfit_file = rsf.Output(misfit_name)
 misfit = numpy.zeros(niter)
 
-r1 = "tmp_cg_r1.rsf"
-r2 = "tmp_cg_r2.rsf"
-g1 = "tmp_cg_g1.rsf"
-g2 = "tmp_cg_g2.rsf"
+r_p = "tmp_cg_r_p.rsf"
+r_s = "tmp_cg_r_s.rsf"
+g_p = "tmp_cg_g_p.rsf"
+g_s = "tmp_cg_g_s.rsf"
 if (reg):
-    tmp_g1 = "tmp_cg_tmp_g1.rsf"
-    tmp_g2 = "tmp_cg_tmp_g2.rsf"
+    tmp_g_p = "tmp_cg_tmp_g_p.rsf"
+    tmp_g_s = "tmp_cg_tmp_g_s.rsf"
 else:
-    tmp_g1 = g1
-    tmp_g2 = g2
-s1 = "tmp_cg_s1.rsf"
-s2 = "tmp_cg_s2.rsf"
+    tmp_g_p = g_p
+    tmp_g_s = g_s
+s_p = "tmp_cg_s_p.rsf"
+s_s = "tmp_cg_s_s.rsf"
 if (reg):
-    tmp_s1 = "tmp_cg_tmp_s1.rsf"
-    tmp_s2 = "tmp_cg_tmp_s2.rsf"
+    tmp_s_p = "tmp_cg_tmp_s_p.rsf"
+    tmp_s_s = "tmp_cg_tmp_s_s.rsf"
 else:
-    tmp_s1 = s1
-    tmp_s2 = s2
-ss1 = "tmp_cg_ss1.rsf"
-ss2 = "tmp_cg_ss2.rsf"
+    tmp_s_p = s_p
+    tmp_s_s = s_s
+ss_p = "tmp_cg_ss_p.rsf"
+ss_s = "tmp_cg_ss_s.rsf"
 wd = "tmp_cg_wd.rsf"                                              
 
-forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s1,tmp_s1,pa,pb,pc,pd) 
-forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s2,tmp_s2,pa,pb,pc,pd) 
+forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s_s,tmp_s_s,pa,pb,pc,pd) 
+forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s_s,tmp_s_s,pa,pb,pc,pd) 
 forward2 = "%s -np %d \
-~/rsf/bin/sfmpiewem \
-adj=n ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
+~/rsf/bin/sfmpiewem_sep \
+adj=n dp=%s ds=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
 nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (MPIRUN,np,ss1,ss2,tmp_s1,tmp_s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,ss_p,ss_s,tmp_s_p,tmp_s_s,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
 adjoint1 = "%s -np %d \
-~/rsf/bin/sfmpiewem \
-adj=y ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
+~/rsf/bin/sfmpiewem_sep \
+adj=y dp=%s ds=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
 nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (MPIRUN,np,r1,r2,tmp_g1,tmp_g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
-adjoint2a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g1,g1,pa,pb,pc,pd) 
-adjoint2b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g2,g2,pa,pb,pc,pd) 
+sz=%f gz=%f" % (MPIRUN,np,r_p,r_s,tmp_g_p,tmp_g_s,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+adjoint2a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g_p,g_p,pa,pb,pc,pd) 
+adjoint2b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g_s,g_s,pa,pb,pc,pd) 
 
 # set up arrays for CG
 sampling_calculate(ux,wd)
-cmd1 = "~/rsf/bin/sfcp %s %s" % (ux,r1)
-cmd2 = "~/rsf/bin/sfcp %s %s" % (uz,r2)
+cmd1 = "~/rsf/bin/sfcp %s %s" % (ux,r_s)
+cmd2 = "~/rsf/bin/sfcp %s %s" % (uz,r_p)
 call(cmd1,shell=True)
 call(cmd2,shell=True)
 
@@ -219,56 +219,62 @@ call(adjoint1,shell=True)
 if (reg):
     call(adjoint2a,shell=True)
     call(adjoint2b,shell=True)
-cmd1 = "~/rsf/bin/sfcp %s %s" % (g1,s1)
-cmd2 = "~/rsf/bin/sfcp %s %s" % (g2,s2)
+cmd1 = "~/rsf/bin/sfcp %s %s" % (g_p,s_p)
+cmd2 = "~/rsf/bin/sfcp %s %s" % (g_s,s_s)
 call(cmd1,shell=True)
 call(cmd2,shell=True)
-cmd1 = "~/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g1,mpp)
-cmd2 = "~/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g2,mps)
+cmd1 = "~/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g_p,mpp)
+cmd2 = "~/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g_s,mps)
 call(cmd1,shell=True)
 call(cmd2,shell=True)
-gamma = innerprod(g1) + innerprod(g2)
+gamma1 = innerprod(g_p)
+gamma2 = innerprod(g_s)
 if (reg):
     call(forward1a,shell=True)
     call(forward1b,shell=True)
 call(forward2,shell=True)
-sampling_apply(ss1,wd)
-sampling_apply(ss2,wd)
+sampling_apply(ss_p,wd)
+sampling_apply(ss_s,wd)
 
 for iter in range(1,niter+1):
-    delta = innerprod(ss1) + innerprod(ss2)
-    alpha = gamma/delta
-    cgupdate(mpp,s1,1,alpha)    # mpp = mpp + alpha*s1
-    cgupdate(mps,s2,1,alpha)    # mps = mps + alpha*s2
-    cgupdate(r1,ss1,1,-alpha)   # r1 = r1 - alpha*ss1     
-    cgupdate(r2,ss2,1,-alpha)   # r2 = r2 - alpha*ss2     
-    misfit[iter-1] = innerprod(r1) + innerprod(r2)
+    delta1 = innerprod(ss_p)
+    delta2 = innerprod(ss_s)
+    alpha1 = gamma1/delta1
+    alpha2 = gamma2/delta2
+    cgupdate(mpp,s_p,1,alpha1)    # mpp = mpp + alpha*s1
+    cgupdate(mps,s_s,1,alpha2)    # mps = mps + alpha*s2
+    cgupdate(r_p,ss_p,1,-alpha1)   # r1 = r1 - alpha*ss1     
+    cgupdate(r_s,ss_s,1,-alpha2)   # r2 = r2 - alpha*ss2     
+    misfit[iter-1] = innerprod(r_p) + innerprod(r_s)
     print >> sys.stderr, "misfit=", misfit[iter-1] 
     call(adjoint1,shell=True)
     if (reg):
         call(adjoint2a,shell=True)
         call(adjoint2b,shell=True)
-    gamma_old = gamma
-    gamma = innerprod(g1) + innerprod(g2)
-    beta = gamma/gamma_old
-    cgupdate(s1,g1,beta,1)      # s1 = beta*s1 + g1
-    cgupdate(s2,g2,beta,1)      # s2 = beta*s2 + g2
+    gamma1_old = gamma1
+    gamma2_old = gamma2
+    gamma1 = innerprod(g_p)
+    gamma2 = innerprod(g_s)
+    beta1 = gamma1/gamma1_old
+    beta2 = gamma2/gamma2_old
+    cgupdate(s_p,g_p,beta1,1)      # s1 = beta*s1 + g1
+    cgupdate(s_s,g_s,beta2,1)      # s2 = beta*s2 + g2
     if (reg):
         call(forward1a,shell=True)
         call(forward1b,shell=True)
     call(forward2,shell=True)
-    sampling_apply(ss1,wd)
-    sampling_apply(ss2,wd)
+    sampling_apply(ss_p,wd)
+    sampling_apply(ss_s,wd)
 
 if (reg):
     # Apply regularization to mpp and mps 
-    cmd = "~/rsf/bin/sfcp %s %s" % (mpp,g1)
+    cmd = "~/rsf/bin/sfcp %s %s" % (mpp,g_p)
     call(cmd,shell=True)
-    cmd = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (g1,mpp,pa,pb,pc,pd) 
+    cmd = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (g_p,mpp,pa,pb,pc,pd) 
     call(cmd,shell=True)
-    cmd = "~/rsf/bin/sfcp %s %s" % (mps,g2)
+    cmd = "~/rsf/bin/sfcp %s %s" % (mps,g_s)
     call(cmd,shell=True)
-    cmd = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (g2,mps,pa,pb,pc,pd)
+    cmd = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (g_s,mps,pa,pb,pc,pd)
     call(cmd,shell=True)
 
 misfit_file.put('n1',niter)

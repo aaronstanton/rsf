@@ -29,6 +29,7 @@ innerprod2
 mpi_progs = '''
 mpiwem
 mpiewem
+mpiewem_sep
 '''
 
 pyprogs='''
@@ -39,6 +40,7 @@ dotwem
 dotewem
 lswem
 lsewem
+lsewem_sep
 dotwavsep
 '''
 
