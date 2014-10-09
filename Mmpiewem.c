@@ -570,8 +570,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         denom = kx*kx + kzp*kzs;
         if (!H){
           if (fabsf(denom)>=0.00001){
-            d_p[ik] = (i*kx*d_x[ik] - i*kzp*d_z[ik])/denom; 
-            d_s[ik] = (i*signf(kx)*kzs*d_x[ik] +  i*signf(kx)*kx*d_z[ik])/denom;
+            d_p[ik] = (i*kx*d_x[ik] + i*kzp*d_z[ik])/denom; 
+            d_s[ik] = (-i*signf(kx)*kzs*d_x[ik] +  i*signf(kx)*kx*d_z[ik])/denom;
           } 
           else{
             d_p[ik] = d_z[ik];
@@ -579,8 +579,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
           } 
         }
         else{
-          d_p[ik] = i*kx*d_x[ik] - i*kzs*d_z[ik]; 
-          d_s[ik] = i*signf(kx)*kzp*d_x[ik] + i*signf(kx)*kx*d_z[ik];
+          d_p[ik] = i*kx*d_x[ik] + i*kzs*d_z[ik]; 
+          d_s[ik] =-i*signf(kx)*kzp*d_x[ik] + i*signf(kx)*kx*d_z[ik];
         }
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_p[ik];
@@ -630,8 +630,8 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         else kzs = 0;
         denom = kx*kx + kzp*kzs;
         if (fabsf(denom)>=0.00001){
-          d_x[ik] = (-i*kx*d_p[ik] - i*signf(kx)*kzs*d_s[ik])/denom; 
-          d_z[ik] = (i*kzp*d_p[ik] - i*signf(kx)*kx*d_s[ik])/denom;
+          d_x[ik] = (-i*kx*d_p[ik] + i*signf(kx)*kzs*d_s[ik])/denom; 
+          d_z[ik] = (-i*kzp*d_p[ik] - i*signf(kx)*kx*d_s[ik])/denom;
         } 
         else{
           d_z[ik] = d_p[ik]; 
