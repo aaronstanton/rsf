@@ -184,9 +184,9 @@ ss_p = "tmp_cg_ss_p.rsf"
 ss_s = "tmp_cg_ss_s.rsf"
 wd = "tmp_cg_wd.rsf"                                              
 
-forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s_s,tmp_s_s,pa,pb,pc,pd) 
+forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s_p,tmp_s_p,pa,pb,pc,pd) 
 forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s_s,tmp_s_s,pa,pb,pc,pd) 
-forward2 = "%s -np %d \
+forward2 = "%s -np %d omplace -nt %d \
 ~/rsf/bin/sfmpiewem_sep \
 adj=n dp=%s ds=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -194,9 +194,9 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (MPIRUN,np,ss_p,ss_s,tmp_s_p,tmp_s_s,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,numthreads,ss_p,ss_s,tmp_s_p,tmp_s_s,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
-adjoint1 = "%s -np %d \
+adjoint1 = "%s -np %d omplace -nt %d \
 ~/rsf/bin/sfmpiewem_sep \
 adj=y dp=%s ds=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -204,7 +204,7 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (MPIRUN,np,r_p,r_s,tmp_g_p,tmp_g_s,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,numthreads,r_p,r_s,tmp_g_p,tmp_g_s,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 adjoint2a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g_p,g_p,pa,pb,pc,pd) 
 adjoint2b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g_s,g_s,pa,pb,pc,pd) 
 
