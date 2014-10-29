@@ -106,6 +106,64 @@ def sampling_apply(filenamein_d,filenamein_wd):
     cmd = "~/rsf/bin/sfrm %s" % (filenametmp)
     call(cmd,shell=True)
 
+def weights_calculate(filenamein1,filenamein2,filenameout):
+    inp1 = rsf.Input(filenamein1)
+    inp2 = rsf.Input(filenamein2)
+    output = rsf.Output(filenameout)
+    assert 'float' == inp1.type
+    n1 = inp1.int('n1')
+    n2 = inp1.int('n2')
+    n3 = inp1.int('n3')
+    o1 = inp1.float('o1')
+    o2 = inp1.float('o2')
+    o3 = inp1.float('o3')
+    d1 = inp1.float('d1')
+    d2 = inp1.float('d2')
+    d3 = inp1.float('d3')
+    assert n1
+    assert n2
+    assert n3
+    assert o1
+    assert o2
+    assert o3
+    assert d1
+    assert d2
+    assert d3
+    trace1 = numpy.zeros(n1,'f')
+    wm = numpy.zeros(n1,'f')
+    output.put('n1',n1)
+    output.put('d1',d1)
+    output.put('o1',o1)
+    output.put('n2',n2)
+    output.put('d2',d2)
+    output.put('o2',o2)
+    output.put('n3',n3)
+    output.put('d3',d3)
+    output.put('o3',o3)
+    for i2 in xrange(n2*n3):
+        inp1.read(trace1)
+        inp2.read(trace2)
+        sum = 0.0
+        for i1 in xrange(n1):
+            wm[i1] = 1 + math.pow(trace1[i1]*trace2[i1],2)
+    	output.write(wm)
+    inp1.close()
+    inp2.close()
+    output.close()
+
+def weights_apply(filenamein,filename_weights):
+    inp = rsf.Input(filenamein)
+    inp_weights = rsf.Input(filename_weights)
+    filenametmp = "tmp_weights_apply.rsf"
+    cmd = "~/rsf/bin/sfmath x=%s y=%s output=\'x*y\' > %s" % (filenamein,filename_weights,filenametmp)
+    call(cmd,shell=True)
+    cmd = "~/rsf/bin/sfcp %s %s" % (filenametmp,filenamein)
+    call(cmd,shell=True)
+    cmd = "~/rsf/bin/sfrm %s" % (filenametmp)
+    call(cmd,shell=True)
+    inp.close()
+    inp_weights.close()
+
 def cgupdate(filenamein1,filenamein2,a,b):
     inp1 = rsf.Input(filenamein1)
     inp2 = rsf.Input(filenamein2)
@@ -122,51 +180,51 @@ def cgupdate(filenamein1,filenamein2,a,b):
 # Initialize RSF command line parser    
 par = rsf.Par()
 # Read command line variables
-ux   = par.string("ux", "ux.rsf")
-uz   = par.string("uz", "uz.rsf")
-mpp   = par.string("mpp", "mpp.rsf")
-mps   = par.string("mps", "mps.rsf")
-vp   = par.string("vp", "vp.rsf")
-vs   = par.string("vs", "vs.rsf")
-wav = par.string("wav", "wav.rsf")
-misfit_name = par.string("misfit", "misfit.rsf")
-np  = par.int("np",1)
-npersocket = par.int("npersocket",1)
-numthreads = par.int("numthreads",1)
-niter  = par.int("niter",1) 
-nz  = par.int("nz",1)
-dz  = par.float("dz",1)
-oz  = par.float("oz",1)
-nt  = par.int("nt",1)
-dt  = par.float("dt",1)
-ot  = par.float("ot",1)
-nhx  = par.int("nhx",1)
-dhx  = par.float("dhx",1)
-ohx  = par.float("ohx",1)
-npx  = par.int("npx",1)
-dpx  = par.float("dpx",1)
-opx  = par.float("opx",1)
-nsx  = par.int("nsx",1)
-dsx  = par.float("dsx",1)
-osx  = par.float("osx",1)
-fmin  = par.float("fmin",1)
-fmax  = par.float("fmax",1)
-sz  = par.float("sz",0)
-gz  = par.float("gz",0)
-reg  = par.bool("reg",False)
-pa  = par.float("pa",-100)
-pb  = par.float("pb",-50)
-pc  = par.float("pc",50)
-pd  = par.float("pd",100)
+ux   = par.string("ux", "ux.rsf") # file to input X component of the data
+uz   = par.string("uz", "uz.rsf") # file to input Z component of the data
+mpp   = par.string("mpp", "mpp.rsf")  # file to output PP image
+mps   = par.string("mps", "mps.rsf")  # file to output PS image
+vp   = par.string("vp", "vp.rsf") # file to input P-wave velocity
+vs   = par.string("vs", "vs.rsf") # file to input S-wave velocity
+wav = par.string("wav", "wav.rsf") # file to input wavelet
+misfit_name = par.string("misfit", "misfit.rsf") # file to output misfit
+np  = par.int("np",1) # number of processes for MPI (parallelization over shot)
+numthreads = par.int("numthreads",1) # number of threads for OpenMP (parallelization over freq)
+niter  = par.int("niter",5) # number of iterations of conjugate gradients
+niter_irls  = par.int("niter_irls",1) # number of external iterations to update weights in CG-IRLS
+nz  = par.int("nz",1) # length of depth axis
+dz  = par.float("dz",1) # increment of depth axis
+oz  = par.float("oz",1) # origin of depth axis
+nt  = par.int("nt",1) # length of time axis
+dt  = par.float("dt",1) # increment of time axis
+ot  = par.float("ot",1) # origin of time axis
+nhx  = par.int("nhx",1) # length of subsurface offset axis (<< max surface offset)
+dhx  = par.float("dhx",1) # increment of subsurface offset axis (usually same as receiver spacing)
+ohx  = par.float("ohx",1) # origin of subsurface offset axis
+npx  = par.int("npx",1) # length of angle axis (tangent of half opening angle)
+dpx  = par.float("dpx",1)# increment of angle axis (tangent of half opening angle)
+opx  = par.float("opx",1)# origin of angle axis (tangent of half opening angle)
+nsx  = par.int("nsx",1) # length of source axis
+dsx  = par.float("dsx",1) # increment source axis
+osx  = par.float("osx",1) # origin of source axis
+fmin  = par.float("fmin",1) # minimum frequency to process
+fmax  = par.float("fmax",1) # maximum frequency to process
+sz  = par.float("sz",0) # source datum
+gz  = par.float("gz",0) # receiver datum
+fkreg  = par.bool("fkreg",False) # Apply FK regularization?
+pa  = par.float("pa",-100) # FK Fan filter slope a
+pb  = par.float("pb",-50) # FK Fan filter slope b
+pc  = par.float("pc",50) # FK Fan filter slope c
+pd  = par.float("pd",100) # FK Fan filter slope d
 
 misfit_file = rsf.Output(misfit_name)
-misfit = numpy.zeros(niter)
+misfit = numpy.zeros(niter*niter_irls)
 
 r1 = "tmp_cg_r1.rsf"
 r2 = "tmp_cg_r2.rsf"
 g1 = "tmp_cg_g1.rsf"
 g2 = "tmp_cg_g2.rsf"
-if (reg):
+if (fkreg):
     tmp_g1 = "tmp_cg_tmp_g1.rsf"
     tmp_g2 = "tmp_cg_tmp_g2.rsf"
 else:
@@ -174,7 +232,7 @@ else:
     tmp_g2 = g2
 s1 = "tmp_cg_s1.rsf"
 s2 = "tmp_cg_s2.rsf"
-if (reg):
+if (fkreg):
     tmp_s1 = "tmp_cg_tmp_s1.rsf"
     tmp_s2 = "tmp_cg_tmp_s2.rsf"
 else:
@@ -183,6 +241,7 @@ else:
 ss1 = "tmp_cg_ss1.rsf"
 ss2 = "tmp_cg_ss2.rsf"
 wd = "tmp_cg_wd.rsf"                                              
+wm = "tmp_cg_wm.rsf"                                              
 
 forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s1,tmp_s1,pa,pb,pc,pd) 
 forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s2,tmp_s2,pa,pb,pc,pd) 
@@ -215,8 +274,13 @@ cmd2 = "~/rsf/bin/sfcp %s %s" % (uz,r2)
 call(cmd1,shell=True)
 call(cmd2,shell=True)
 
+# initialize model weights as identity matrix
 call(adjoint1,shell=True)
-if (reg):
+cmd = "~/rsf/bin/sfmath g=%s output=\'g*0 + 1\' > %s" % (tmp_g1,wm)
+call(cmd,shell=True)
+weights_apply(tmp_g1,wm)
+weights_apply(tmp_g2,wm)
+if (fkreg):
     call(adjoint2a,shell=True)
     call(adjoint2b,shell=True)
 cmd1 = "~/rsf/bin/sfcp %s %s" % (g1,s1)
@@ -228,39 +292,50 @@ cmd2 = "~/rsf/bin/sfmath g=%s output=\'g*0\' > %s" % (g2,mps)
 call(cmd1,shell=True)
 call(cmd2,shell=True)
 gamma = innerprod(g1) + innerprod(g2)
-if (reg):
+if (fkreg):
     call(forward1a,shell=True)
     call(forward1b,shell=True)
+weights_apply(tmp_s1,wm)
+weights_apply(tmp_s2,wm)
 call(forward2,shell=True)
 sampling_apply(ss1,wd)
 sampling_apply(ss2,wd)
 
-for iter in range(1,niter+1):
-    delta = innerprod(ss1) + innerprod(ss2)
-    alpha = gamma/delta
-    cgupdate(mpp,s1,1,alpha)    # mpp = mpp + alpha*s1
-    cgupdate(mps,s2,1,alpha)    # mps = mps + alpha*s2
-    cgupdate(r1,ss1,1,-alpha)   # r1 = r1 - alpha*ss1     
-    cgupdate(r2,ss2,1,-alpha)   # r2 = r2 - alpha*ss2     
-    misfit[iter-1] = innerprod(r1) + innerprod(r2)
-    print >> sys.stderr, "misfit=", misfit[iter-1] 
-    call(adjoint1,shell=True)
-    if (reg):
-        call(adjoint2a,shell=True)
-        call(adjoint2b,shell=True)
-    gamma_old = gamma
-    gamma = innerprod(g1) + innerprod(g2)
-    beta = gamma/gamma_old
-    cgupdate(s1,g1,beta,1)      # s1 = beta*s1 + g1
-    cgupdate(s2,g2,beta,1)      # s2 = beta*s2 + g2
-    if (reg):
-        call(forward1a,shell=True)
-        call(forward1b,shell=True)
-    call(forward2,shell=True)
-    sampling_apply(ss1,wd)
-    sampling_apply(ss2,wd)
+for iter_irls in range(1,niter_irls+1):
+	for iter in range(1,niter+1):
+    	delta = innerprod(ss1) + innerprod(ss2)
+    	alpha = gamma/delta
+    	cgupdate(mpp,s1,1,alpha)    # mpp = mpp + alpha*s1
+    	cgupdate(mps,s2,1,alpha)    # mps = mps + alpha*s2
+    	cgupdate(r1,ss1,1,-alpha)   # r1 = r1 - alpha*ss1     
+    	cgupdate(r2,ss2,1,-alpha)   # r2 = r2 - alpha*ss2     
+    	misfit[(iter_irls-1)*niter + (iter-1)] = innerprod(r1) + innerprod(r2)
+    	print >> sys.stderr, "misfit=", misfit[(iter_irls-1)*niter + (iter-1)] 
+    	call(adjoint1,shell=True)
+        weights_apply(tmp_g1,wm)
+        weights_apply(tmp_g2,wm)
+    	if (fkreg):
+        	call(adjoint2a,shell=True)
+        	call(adjoint2b,shell=True)
+    	gamma_old = gamma
+    	gamma = innerprod(g1) + innerprod(g2)
+    	beta = gamma/gamma_old
+    	cgupdate(s1,g1,beta,1)      # s1 = beta*s1 + g1
+    	cgupdate(s2,g2,beta,1)      # s2 = beta*s2 + g2
+    	if (fkreg):
+        	call(forward1a,shell=True)
+        	call(forward1b,shell=True)
+        weights_apply(tmp_s1,wm)
+        weights_apply(tmp_s2,wm)
+    	call(forward2,shell=True)
+    	sampling_apply(ss1,wd)
+    	sampling_apply(ss2,wd)
+	if (iter_irls == niter_irls):
+    	weights_apply(mpp,wm)
+		weights_apply(mps,wm)
+	weights_calculate(mpp,mps,wm)
 
-if (reg):
+if (fkreg):
     # Apply regularization to mpp and mps 
     cmd = "~/rsf/bin/sfcp %s %s" % (mpp,g1)
     call(cmd,shell=True)
@@ -271,7 +346,7 @@ if (reg):
     cmd = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (g2,mps,pa,pb,pc,pd)
     call(cmd,shell=True)
 
-misfit_file.put('n1',niter)
+misfit_file.put('n1',niter*niter_irls)
 misfit_file.put('o1',1)
 misfit_file.put('d1',1)
 misfit_file.put('label1','Iteration')
