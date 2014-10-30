@@ -302,38 +302,38 @@ sampling_apply(ss1,wd)
 sampling_apply(ss2,wd)
 
 for iter_irls in range(1,niter_irls+1):
-	for iter in range(1,niter+1):
-    	delta = innerprod(ss1) + innerprod(ss2)
-    	alpha = gamma/delta
-    	cgupdate(mpp,s1,1,alpha)    # mpp = mpp + alpha*s1
-    	cgupdate(mps,s2,1,alpha)    # mps = mps + alpha*s2
-    	cgupdate(r1,ss1,1,-alpha)   # r1 = r1 - alpha*ss1     
-    	cgupdate(r2,ss2,1,-alpha)   # r2 = r2 - alpha*ss2     
-    	misfit[(iter_irls-1)*niter + (iter-1)] = innerprod(r1) + innerprod(r2)
-    	print >> sys.stderr, "misfit=", misfit[(iter_irls-1)*niter + (iter-1)] 
-    	call(adjoint1,shell=True)
+    for iter in range(1,niter+1):
+        delta = innerprod(ss1) + innerprod(ss2)
+        alpha = gamma/delta
+        cgupdate(mpp,s1,1,alpha)    # mpp = mpp + alpha*s1
+        cgupdate(mps,s2,1,alpha)    # mps = mps + alpha*s2
+        cgupdate(r1,ss1,1,-alpha)   # r1 = r1 - alpha*ss1     
+        cgupdate(r2,ss2,1,-alpha)   # r2 = r2 - alpha*ss2     
+        misfit[(iter_irls-1)*niter + (iter-1)] = innerprod(r1) + innerprod(r2)
+        print >> sys.stderr, "misfit=", misfit[(iter_irls-1)*niter + (iter-1)] 
+        call(adjoint1,shell=True)
         weights_apply(tmp_g1,wm)
         weights_apply(tmp_g2,wm)
-    	if (fkreg):
-        	call(adjoint2a,shell=True)
-        	call(adjoint2b,shell=True)
-    	gamma_old = gamma
-    	gamma = innerprod(g1) + innerprod(g2)
-    	beta = gamma/gamma_old
-    	cgupdate(s1,g1,beta,1)      # s1 = beta*s1 + g1
-    	cgupdate(s2,g2,beta,1)      # s2 = beta*s2 + g2
-    	if (fkreg):
-        	call(forward1a,shell=True)
-        	call(forward1b,shell=True)
+        if (fkreg):
+            call(adjoint2a,shell=True)
+            call(adjoint2b,shell=True)
+        gamma_old = gamma
+        gamma = innerprod(g1) + innerprod(g2)
+        beta = gamma/gamma_old
+        cgupdate(s1,g1,beta,1)      # s1 = beta*s1 + g1
+        cgupdate(s2,g2,beta,1)      # s2 = beta*s2 + g2
+        if (fkreg):
+            call(forward1a,shell=True)
+            call(forward1b,shell=True)
         weights_apply(tmp_s1,wm)
         weights_apply(tmp_s2,wm)
-    	call(forward2,shell=True)
-    	sampling_apply(ss1,wd)
-    	sampling_apply(ss2,wd)
-	if (iter_irls == niter_irls):
-    	weights_apply(mpp,wm)
-		weights_apply(mps,wm)
-	weights_calculate(mpp,mps,wm)
+        call(forward2,shell=True)
+        sampling_apply(ss1,wd)
+        sampling_apply(ss2,wd)
+    if (iter_irls == niter_irls):
+        weights_apply(mpp,wm)
+        weights_apply(mps,wm)
+        weights_calculate(mpp,mps,wm)
 
 if (fkreg):
     # Apply regularization to mpp and mps 
