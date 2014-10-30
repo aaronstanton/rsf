@@ -333,7 +333,7 @@ for iter_irls in range(1,niter_irls+1):
     if (iter_irls == niter_irls):
         weights_apply(mpp,wm)
         weights_apply(mps,wm)
-        weights_calculate(mpp,mps,wm)
+    weights_calculate(mpp,mps,wm)
 
 if (fkreg):
     # Apply regularization to mpp and mps 
