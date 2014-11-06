@@ -42,6 +42,7 @@ lswem
 lsewem
 lsewem_sep
 dotwavsep
+weights2c
 '''
 
 pymods='''

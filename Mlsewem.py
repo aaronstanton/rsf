@@ -11,6 +11,7 @@ try:
     import os, sys, numpy, scipy
     from subprocess import call
     from textwrap import dedent
+    import math
 except Exception, e:
     print \
 '''ERROR: NEED PYTHON API, NUMPY, SCIPY '''
@@ -106,51 +107,6 @@ def sampling_apply(filenamein_d,filenamein_wd):
     cmd = "~/rsf/bin/sfrm %s" % (filenametmp)
     call(cmd,shell=True)
 
-def weights_calculate(filenamein1,filenamein2,filenameout):
-    inp1 = rsf.Input(filenamein1)
-    inp2 = rsf.Input(filenamein2)
-    output = rsf.Output(filenameout)
-    assert 'float' == inp1.type
-    n1 = inp1.int('n1')
-    n2 = inp1.int('n2')
-    n3 = inp1.int('n3')
-    o1 = inp1.float('o1')
-    o2 = inp1.float('o2')
-    o3 = inp1.float('o3')
-    d1 = inp1.float('d1')
-    d2 = inp1.float('d2')
-    d3 = inp1.float('d3')
-    assert n1
-    assert n2
-    assert n3
-    assert o1
-    assert o2
-    assert o3
-    assert d1
-    assert d2
-    assert d3
-    trace1 = numpy.zeros(n1,'f')
-    wm = numpy.zeros(n1,'f')
-    output.put('n1',n1)
-    output.put('d1',d1)
-    output.put('o1',o1)
-    output.put('n2',n2)
-    output.put('d2',d2)
-    output.put('o2',o2)
-    output.put('n3',n3)
-    output.put('d3',d3)
-    output.put('o3',o3)
-    for i2 in xrange(n2*n3):
-        inp1.read(trace1)
-        inp2.read(trace2)
-        sum = 0.0
-        for i1 in xrange(n1):
-            wm[i1] = 1 + math.pow(trace1[i1]*trace2[i1],2)
-    	output.write(wm)
-    inp1.close()
-    inp2.close()
-    output.close()
-
 def weights_apply(filenamein,filename_weights):
     inp = rsf.Input(filenamein)
     inp_weights = rsf.Input(filename_weights)
@@ -192,6 +148,7 @@ np  = par.int("np",1) # number of processes for MPI (parallelization over shot)
 numthreads = par.int("numthreads",1) # number of threads for OpenMP (parallelization over freq)
 niter  = par.int("niter",5) # number of iterations of conjugate gradients
 niter_irls  = par.int("niter_irls",1) # number of external iterations to update weights in CG-IRLS
+p = par.float("p",80) # percentage (quantile) of amplitude for calculation of weights (high=more sparse weighting function) 
 nz  = par.int("nz",1) # length of depth axis
 dz  = par.float("dz",1) # increment of depth axis
 oz  = par.float("oz",1) # origin of depth axis
@@ -245,7 +202,7 @@ wm = "tmp_cg_wm.rsf"
 
 forward1a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s1,tmp_s1,pa,pb,pc,pd) 
 forward1b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (s2,tmp_s2,pa,pb,pc,pd) 
-forward2 = "%s -np %d omplace -nt %d \
+forward2 = "%s -np %d \
 ~/rsf/bin/sfmpiewem \
 adj=n ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -253,9 +210,9 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (MPIRUN,np,numthreads,ss1,ss2,tmp_s1,tmp_s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,ss1,ss2,tmp_s1,tmp_s2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 
-adjoint1 = "%s -np %d omplace -nt %d \
+adjoint1 = "%s -np %d \
 ~/rsf/bin/sfmpiewem \
 adj=y ux=%s uz=%s mpp=%s mps=%s vp=%s vs=%s wav=%s verbose=n nz=%d dz=%f oz=%f \
 nt=%d dt=%f ot=%f \
@@ -263,9 +220,11 @@ nhx=%d dhx=%f ohx=%f \
 npx=%d dpx=%f opx=%f \
 nsx=%d dsx=%f osx=%f \
 fmin=%f fmax=%f \
-sz=%f gz=%f" % (MPIRUN,np,numthreads,r1,r2,tmp_g1,tmp_g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
+sz=%f gz=%f" % (MPIRUN,np,r1,r2,tmp_g1,tmp_g2,vp,vs,wav,nz,dz,oz,nt,dt,ot,nhx,dhx,ohx,npx,dpx,opx,nsx,dsx,osx,fmin,fmax,sz,gz)
 adjoint2a = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g1,g1,pa,pb,pc,pd) 
 adjoint2b = "~/rsf/bin/sffkfilter axis=3 < %s > %s pa=%f pb=%f pc=%f pd=%f" % (tmp_g2,g2,pa,pb,pc,pd) 
+
+update_weights = "~/rsf/bin/sfweights2c mpp=%s mps=%s w=%s p=%f" %(mpp,mps,wm,p)
 
 # set up arrays for CG
 sampling_calculate(ux,wd)
@@ -333,7 +292,7 @@ for iter_irls in range(1,niter_irls+1):
     if (iter_irls == niter_irls):
         weights_apply(mpp,wm)
         weights_apply(mps,wm)
-    weights_calculate(mpp,mps,wm)
+    call(update_weights,shell=True)
 
 if (fkreg):
     # Apply regularization to mpp and mps 
