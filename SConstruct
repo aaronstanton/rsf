@@ -28,6 +28,7 @@ innerprod2
 
 mpi_progs = '''
 mpiwem
+mpiwem_poynting
 mpiewem
 mpiewem_sep
 '''
