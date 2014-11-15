@@ -461,29 +461,23 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   /* divide the propagation vectors by the image, then normalize them */
   for (ix=0;ix<nmx;ix++){ 
     for (iz=0;iz<nz;iz++){
-      u_sx[ix][iz] = u_sx[ix][iz]/(m[ix][iz] + 0.0001);
-      u_sz[ix][iz] = u_sz[ix][iz]/(m[ix][iz] + 0.0001);
-      u_gx[ix][iz] = u_gx[ix][iz]/(m[ix][iz] + 0.0001);
-      u_gz[ix][iz] = u_gz[ix][iz]/(m[ix][iz] + 0.0001);
+      u_sx[ix][iz] = u_sx[ix][iz]/(m[ix][iz] + 0.00001);
+      u_sz[ix][iz] = u_sz[ix][iz]/(m[ix][iz] + 0.00001);
+      u_gx[ix][iz] = u_gx[ix][iz]/(m[ix][iz] + 0.00001);
+      u_gz[ix][iz] = u_gz[ix][iz]/(m[ix][iz] + 0.00001);
       norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
       norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
-      u_sx[ix][iz] = u_sx[ix][iz]/(norm_s + 0.0001);
-      u_sz[ix][iz] = u_sz[ix][iz]/(norm_s + 0.0001);
-      u_gx[ix][iz] = u_gx[ix][iz]/(norm_g + 0.0001);
-      u_gz[ix][iz] =-u_gz[ix][iz]/(norm_g + 0.0001);
+      u_sx[ix][iz] = u_sx[ix][iz]/(norm_s + 0.00001);
+      u_sz[ix][iz] = u_sz[ix][iz]/(norm_s + 0.00001);
+      u_gx[ix][iz] = u_gx[ix][iz]/(norm_g + 0.00001);
+      u_gz[ix][iz] = u_gz[ix][iz]/(norm_g + 0.00001);
       val1x = u_sx[ix][iz] - u_gx[ix][iz];
       val1z = u_sz[ix][iz] - u_gz[ix][iz];
       val2x = u_sx[ix][iz] + u_gx[ix][iz];
       val2z = u_sz[ix][iz] + u_gz[ix][iz];
-      ang = 90 - atanf( sqrtf(powf(val1x,2) + powf(val1z,2))/(sqrtf(powf(val2x,2) + powf(val2z,2)) + 0.00001))*180/PI;
-      //ang = 90 - acosf(u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz])*90/PI;
-      //dip_x = (u_gx[ix][iz] + u_sx[ix][iz])/2*fabsf(cosf(ang*PI/180));
-      //dip_z = (u_gz[ix][iz] + u_sz[ix][iz])/2*fabsf(cosf(ang*PI/180));
-      //dip = acosf(dip_z/(sqrtf(powf(dip_x,2)+powf(dip_z,2))+0.0001))*180/PI;
-      dip = 2*(90 - atanf(fabsf(u_sz[ix][iz] - u_gz[ix][iz])/(fabsf(u_gx[ix][iz] - u_sx[ix][iz])+0.001))*180/PI);
-      //az_x = (u_gx[ix][iz] - u_sx[ix][iz])/2*fabsf(sinf(ang*PI/180));
-      //az_z = (u_gz[ix][iz] - u_sz[ix][iz])/2*fabsf(sinf(ang*PI/180));
-      //az = acosf(az_z/(sqrtf(powf(az_x,2)+powf(az_z,2))+0.0001))*180/PI;
+      //ang = 90 - atanf( sqrtf(powf(val1x,2) + powf(val1z,2))/(sqrtf(powf(val2x,2) + powf(val2z,2)) + 0.00001))*180/PI;
+      ang = asinf( (u_sz[ix][iz]*u_gx[ix][iz] - u_sx[ix][iz]*u_gz[ix][iz])/(sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2))*sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2)) + 0.00001))*90/PI;
+      dip = 90 - atanf(fabsf(u_sz[ix][iz] - u_gz[ix][iz])/(fabsf(u_sx[ix][iz] - u_gx[ix][iz])+0.00001))*180/PI;
       ang1shot[ix][iz] = ang;
     }
   }
@@ -560,11 +554,11 @@ void extrap1f(float **m,
           #pragma omp atomic
           u_sx[ix][iz] += crealf(p_sx[ix]*conjf(d_xg[ix]));
           #pragma omp atomic
-          u_sz[ix][iz] += crealf(p_sz[ix]*conjf(d_xg[ix]));
+          u_sz[ix][iz] += crealf(-p_sz[ix]*conjf(d_xg[ix]));
           #pragma omp atomic
-          u_gx[ix][iz] += crealf(d_xs[ix]*conjf(p_gx[ix]));
+          u_gx[ix][iz] += crealf(p_gx[ix]*conjf(d_xs[ix]));
           #pragma omp atomic
-          u_gz[ix][iz] += crealf(d_xs[ix]*conjf(p_gz[ix]));
+          u_gz[ix][iz] += crealf(p_gz[ix]*conjf(d_xs[ix]));
         }
       }
     }
