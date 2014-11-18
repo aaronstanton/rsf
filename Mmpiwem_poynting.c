@@ -72,11 +72,12 @@ void free1float(float *p);
 void free2float(float **p);
 void free1complex(sf_complex *p);
 void free2complex(sf_complex **p);
+float signf(float a);
 
 int main(int argc, char* argv[])
 {
 
-  sf_file in,intmp,out,outtmp,outtmp_ang,velp,source_wavelet;
+  sf_file in,intmp,intmp_ang,out,outtmp,outtmp_ang,velp,source_wavelet;
   int nt,nmx,nz,nsx,npx;
   int it,iz,ix,isx,ipx;
   float ot,omx,oz,osx,opx;
@@ -90,7 +91,8 @@ int main(int argc, char* argv[])
   int rank,num_procs;
   char tmpname[256];
   char tmpname_ang[256];
-
+  float alpha,px,px_floor;
+  
   MPI_Status mpi_stat;
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
@@ -220,11 +222,24 @@ int main(int argc, char* argv[])
     for (isx=rank;isx<nsx;isx+=num_procs){
       if (verbose) fprintf(stderr,"reading and de-migrating shot %d...\n",isx);
       if (isx== rank) sf_floatread(m[0],nz*nmx*npx,in);
+      sprintf(tmpname_ang, "tmpang_%d.rsf",isx);
+      intmp_ang = sf_input(tmpname_ang);
+      if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname_ang); 
+      sf_floatread(ang1shot[0],nz*nmx,intmp_ang);
       for (ix=0;ix<nmx;ix++){
         for (iz=0;iz<nz;iz++){
-          // (get ipx from ang1shot[ix][iz];)  ipx = truncf((px - opx)/dpx);  
-          ipx=0;
-          m1shot[ix][iz] = m[ipx*nmx + ix][iz];
+          if (npx>1){
+            px = ang1shot[ix][iz]; 
+            ipx = (int) truncf((px - opx)/dpx);
+            px_floor = truncf((px - opx)/dpx)*dpx + opx;
+            if (ipx >= 0 && ipx+1 < npx){
+	          alpha = (px-px_floor)/dpx;
+	          m1shot[ix][iz]  = (1-alpha)*m[ipx*nmx + ix][iz] + alpha*m[(ipx+1)*nmx + ix][iz];
+	        }
+	      }
+          else{
+	        m1shot[ix][iz] = m[ix][iz];
+	      }
         }
       }
       wem1shot(d1shot,m1shot,ang1shot,wav,
@@ -265,11 +280,25 @@ int main(int argc, char* argv[])
       intmp = sf_input(tmpname);
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname); 
       sf_floatread(m1shot[0],nz*nmx,intmp);
+      sprintf(tmpname_ang, "tmpang_%d.rsf",isx);
+      intmp_ang = sf_input(tmpname_ang);
+      if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname_ang); 
+      sf_floatread(ang1shot[0],nz*nmx,intmp_ang);
       for (ix=0;ix<nmx;ix++){ 
-        for (iz=0;iz<nz;iz++){ 
-          // (get ipx from ang1shot[ix][iz];)  ipx = truncf((px - opx)/dpx);  
-          ipx=0;
-          m[ipx*nmx + ix][iz] += m1shot[ix][iz]; 
+        for (iz=0;iz<nz;iz++){
+          if (npx>1){
+            px = ang1shot[ix][iz]; 
+            ipx = (int) truncf((px - opx)/dpx);
+            px_floor = truncf((px - opx)/dpx)*dpx + opx;
+            if (ipx >= 0 && ipx+1 < npx){
+	          alpha = (px-px_floor)/dpx;
+	          m[ipx*nmx + ix][iz]     += (1-alpha)*m1shot[ix][iz];
+	          m[(ipx+1)*nmx + ix][iz] +=     alpha*m1shot[ix][iz];
+	        }
+	      }
+          else{
+	        m[ix][iz] += m1shot[ix][iz];
+	      }
         }
       }
     }
@@ -355,8 +384,10 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   int *n;
   fftwf_plan p1,p2;
   float *po,**pd,progress;
-  float norm_s,norm_g,val1x,val2x,val1z,val2z;
-  float ang,az_x,az_z,az,dip_x,dip_z,dip;
+  float norm_s,norm_g;
+  float ang,az_x,az_z,az,dip;
+  int nzw,izw,nxw,ixw;
+  float val1,val2,val,max_m,denom;
   
   if (adj){
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = 0.0;
@@ -458,27 +489,20 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
     extrap1f(m,d_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,po,pd,i,czero,p1,p2,adj,verbose);
   }
   
-  /* divide the propagation vectors by the image, then normalize them */
+  /* calculate angle of incidence from propagation vector */
   for (ix=0;ix<nmx;ix++){ 
     for (iz=0;iz<nz;iz++){
-      u_sx[ix][iz] = u_sx[ix][iz]/(m[ix][iz] + 0.00001);
-      u_sz[ix][iz] = u_sz[ix][iz]/(m[ix][iz] + 0.00001);
-      u_gx[ix][iz] = u_gx[ix][iz]/(m[ix][iz] + 0.00001);
-      u_gz[ix][iz] = u_gz[ix][iz]/(m[ix][iz] + 0.00001);
       norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
       norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
       u_sx[ix][iz] = u_sx[ix][iz]/(norm_s + 0.00001);
       u_sz[ix][iz] = u_sz[ix][iz]/(norm_s + 0.00001);
-      u_gx[ix][iz] = u_gx[ix][iz]/(norm_g + 0.00001);
-      u_gz[ix][iz] = u_gz[ix][iz]/(norm_g + 0.00001);
-      val1x = u_sx[ix][iz] - u_gx[ix][iz];
-      val1z = u_sz[ix][iz] - u_gz[ix][iz];
-      val2x = u_sx[ix][iz] + u_gx[ix][iz];
-      val2z = u_sz[ix][iz] + u_gz[ix][iz];
-      //ang = 90 - atanf( sqrtf(powf(val1x,2) + powf(val1z,2))/(sqrtf(powf(val2x,2) + powf(val2z,2)) + 0.00001))*180/PI;
-      ang = asinf( (u_sz[ix][iz]*u_gx[ix][iz] - u_sx[ix][iz]*u_gz[ix][iz])/(sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2))*sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2)) + 0.00001))*90/PI;
-      dip = 90 - atanf(fabsf(u_sz[ix][iz] - u_gz[ix][iz])/(fabsf(u_sx[ix][iz] - u_gx[ix][iz])+0.00001))*180/PI;
-      ang1shot[ix][iz] = ang;
+      u_gx[ix][iz] =-u_gx[ix][iz]/(norm_g + 0.00001);
+      u_gz[ix][iz] =-u_gz[ix][iz]/(norm_g + 0.00001);
+      //ang1shot[ix][iz] = atanf(u_sx[ix][iz]/(u_sz[ix][iz] + 0.00001))*180/PI;      
+      ang = acosf(u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz])*90/PI;
+      az_x = (u_gx[ix][iz] - u_sx[ix][iz])/(2*fabsf(sinf(ang)));
+      //az_z = (u_gz[ix][iz] - u_sz[ix][iz])/(2*fabsf(sinf(ang)));
+      ang1shot[ix][iz] = signf(az_x)*ang;
     }
   }
 
@@ -771,3 +795,12 @@ void free2complex(sf_complex **p)
 	free(p);
 }
 
+float signf(float a)
+/*< sign of a float >*/
+{
+ float b;
+ if (a>0)      b = 1.0;
+ else if (a<0) b =-1.0;
+ else          b = 0.0;
+ return b;
+}

@@ -30,6 +30,7 @@ mpi_progs = '''
 mpiwem
 mpiwem_poynting
 mpiewem
+mpiewem_poynting
 mpiewem_sep
 '''
 
@@ -38,6 +39,7 @@ imagesc
 svd_complex
 svd_complexblk
 dotwem
+dotwem_poynting
 dotewem
 lswem
 lsewem
