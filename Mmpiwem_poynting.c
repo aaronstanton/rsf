@@ -388,6 +388,7 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   float ang,az_x,az_z,az,dip;
   int nzw,izw,nxw,ixw;
   float val1,val2,val,max_m,denom;
+  float cross_prod;
   
   if (adj){
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = 0.0;
@@ -500,9 +501,10 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
       u_gz[ix][iz] =-u_gz[ix][iz]/(norm_g + 0.00001);
       //ang1shot[ix][iz] = atanf(u_sx[ix][iz]/(u_sz[ix][iz] + 0.00001))*180/PI;      
       ang = acosf(u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz])*90/PI;
-      az_x = (u_gx[ix][iz] - u_sx[ix][iz])/(2*fabsf(sinf(ang)));
+      cross_prod = u_sz[ix][iz]*u_gx[ix][iz] - u_sx[ix][iz]*u_gz[ix][iz];
+      //az_x = (u_gx[ix][iz] - u_sx[ix][iz])/(2*fabsf(sinf(ang)));
       //az_z = (u_gz[ix][iz] - u_sz[ix][iz])/(2*fabsf(sinf(ang)));
-      ang1shot[ix][iz] = signf(az_x)*ang;
+      ang1shot[ix][iz] = signf(cross_prod)*ang;
     }
   }
 

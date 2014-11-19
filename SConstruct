@@ -41,6 +41,7 @@ svd_complexblk
 dotwem
 dotwem_poynting
 dotewem
+dotewem_poynting
 lswem
 lsewem
 lsewem_sep
