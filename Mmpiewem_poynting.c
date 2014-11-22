@@ -81,6 +81,7 @@ void write5d(float **data,
              int n5, float o5, float d5, const char *label5, const char *unit5,
              const char *title, sf_file outfile);
 float signf(float a);
+int compare (const void * a, const void * b);
 
 int main(int argc, char* argv[])
 {
@@ -260,7 +261,7 @@ int main(int argc, char* argv[])
             if (ipx >= 0 && ipx+1 < npx){
 	          alpha = (px-px_floor)/dpx;
 	          mpp_1shot[ix][iz]  = (1-alpha)*mpp[ipx*nmx + ix][iz] + alpha*mpp[(ipx+1)*nmx + ix][iz];
-	          mps_1shot[ix][iz]  = signf(px)*((1-alpha)*mps[ipx*nmx + ix][iz] + alpha*mps[(ipx+1)*nmx + ix][iz]);
+	          mps_1shot[ix][iz]  = ((1-alpha)*mps[ipx*nmx + ix][iz] + alpha*mps[(ipx+1)*nmx + ix][iz]);
 	        }
 	      }
           else{
@@ -333,8 +334,8 @@ int main(int argc, char* argv[])
 	          alpha = (px-px_floor)/dpx;
 	          mpp[ipx*nmx + ix][iz]     += (1-alpha)*mpp_1shot[ix][iz];
 	          mpp[(ipx+1)*nmx + ix][iz] +=     alpha*mpp_1shot[ix][iz];
-	          mps[ipx*nmx + ix][iz]     += signf(px)*(1-alpha)*mps_1shot[ix][iz];
-	          mps[(ipx+1)*nmx + ix][iz] +=     signf(px)*alpha*mps_1shot[ix][iz];
+	          mps[ipx*nmx + ix][iz]     += (1-alpha)*mps_1shot[ix][iz];
+	          mps[(ipx+1)*nmx + ix][iz] +=     alpha*mps_1shot[ix][iz];
 	        }
 	      }
           else{
@@ -452,7 +453,10 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
   fftwf_plan p1,p2;
   float *po_p,**pd_p,*po_s,**pd_s,progress;
   float **u_sx,**u_sz,**u_gx,**u_gz;
-  float norm_s,norm_g,ang,cross_prod;
+  float norm_s,norm_g;
+  float *ang,*cross_prod;
+  float ang1,cross_prod1;
+  int nxw,nzw,ixw,izw,index1,index2;
   
   if (adj){
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) mpp[ix][iz] = 0.0;
@@ -621,26 +625,69 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
   //if (verbose) fprintf(stderr,"using %d threads.",numthreads);
   #pragma omp parallel for private(iw) shared(mpp,mps,dp_g_wx,ds_g_wx,progress)
   for (iw=ifmin;iw<ifmax;iw++){ 
-    progress += 1.0/((float) ifmax - ifmin);
-    if (verbose) progress_msg(progress);
+    //progress += 1.0/((float) ifmax - ifmin);
+    //if (verbose) progress_msg(progress);
     eextrap1f(mpp,mps,dp_g_wx,ds_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,po_p,pd_p,po_s,pd_s,i,czero,p1,p2,adj,verbose);
   }
-  
+
   if (adj){
-    /* calculate angles of incidence from propagation vectors */
-    for (ix=0;ix<nmx;ix++){ 
-      for (iz=0;iz<nz;iz++){
-        norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
-        norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
-        u_sx[ix][iz] = u_sx[ix][iz]/(norm_s + 0.00001);
-        u_sz[ix][iz] = u_sz[ix][iz]/(norm_s + 0.00001);
-        u_gx[ix][iz] = -u_gx[ix][iz]/(norm_g + 0.00001);
-        u_gz[ix][iz] = -u_gz[ix][iz]/(norm_g + 0.00001);
-        ang = acosf(u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz])*90/PI;
-        cross_prod = u_sz[ix][iz]*u_gx[ix][iz] - u_sx[ix][iz]*u_gz[ix][iz];
-        ang1shot[ix][iz] = signf(cross_prod)*ang;
+  for (ix=0;ix<nmx;ix++){ 
+    for (iz=0;iz<nz;iz++){
+      norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
+      norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
+      u_sx[ix][iz] = -u_sx[ix][iz]/(norm_s + 0.00001);
+      u_sz[ix][iz] = -u_sz[ix][iz]/(norm_s + 0.00001);
+      u_gx[ix][iz] =  u_gx[ix][iz]/(norm_g + 0.00001);
+      u_gz[ix][iz] = -u_gz[ix][iz]/(norm_g + 0.00001);
+      ang1 = acosf(u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz])*90/PI;
+      cross_prod1 = u_sz[ix][iz]*u_gx[ix][iz] - u_sx[ix][iz]*u_gz[ix][iz];
+      ang1shot[ix][iz] = signf(cross_prod1)*ang1;
+    }
+  }
+
+  /* median filtering to correct sign of the angle */
+  nxw=3;
+  nzw=3;
+  ang = sf_floatalloc(nxw*nzw); 
+  cross_prod = sf_floatalloc(nxw*nzw); 
+  for (ix=0;ix<nmx;ix++){ 
+    for (iz=0;iz<nz;iz++){
+      for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
+        index1 = ix - (int) truncf(nxw/2) + ixw;
+        index2 = iz - (int) truncf(nzw/2) + izw;        
+        if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
+          ang[ixw*nzw + izw] = ang1shot[index1][index2];
+        }
+        else{
+          ang[ixw*nzw + izw] = 0.0;
+        }
+      }}
+      qsort (ang,nxw*nzw, sizeof(*ang), compare);
+      if (signf(ang1shot[ix][iz]) != signf(ang[(int) truncf(nxw*nzw)/2])){
+        ang1shot[ix][iz] = -ang1shot[ix][iz];
       }
     }
+  }
+
+  /* median filtering of outlier angles */
+  for (ix=0;ix<nmx;ix++){ 
+    for (iz=0;iz<nz;iz++){
+      for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
+        index1 = ix - (int) truncf(nxw/2) + ixw;
+        index2 = iz - (int) truncf(nzw/2) + izw;        
+        if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
+          ang[ixw*nzw + izw] = ang1shot[index1][index2];
+        }
+        else{
+          ang[ixw*nzw + izw] = 0.0;
+        }
+      }}
+      qsort (ang,nxw*nzw, sizeof(*ang), compare);
+      if (ang1shot[ix][iz] > 1.5*ang[(int) truncf(nxw*nzw)/2] || ang1shot[ix][iz] < 0.75*ang[(int) truncf(nxw*nzw)/2]){
+        ang1shot[ix][iz] = ang[(int) truncf(nxw*nzw)/2];
+      }
+    }
+  }
   }
   else{
     for (iw=0;iw<nw;iw++){
@@ -772,7 +819,7 @@ void eextrap1f(float **mpp, float **mps,
           #pragma omp atomic
           u_sx[ix][iz] += crealf(p_sx[ix]*conjf(dp_xg[ix]));
           #pragma omp atomic
-          u_sz[ix][iz] += crealf(-p_sz[ix]*conjf(dp_xg[ix]));
+          u_sz[ix][iz] += crealf(p_sz[ix]*conjf(dp_xg[ix]));
           #pragma omp atomic
           u_gx[ix][iz] += crealf(p_gx[ix]*conjf(d_xs[ix]));
           #pragma omp atomic
@@ -1040,3 +1087,9 @@ float signf(float a)
  return b;
 }
 
+int compare (const void * a, const void * b)
+{
+  float fa = *(const float*) a;
+  float fb = *(const float*) b;
+  return (fa > fb) - (fa < fb);
+}

@@ -43,6 +43,7 @@ dotwem_poynting
 dotewem
 dotewem_poynting
 lswem
+lswem_poynting
 lsewem
 lsewem_sep
 dotwavsep
