@@ -49,7 +49,7 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
 void extrap1f(float **m,
               sf_complex **d_g_wx, sf_complex **d_s_wx,
               float **u_sx, float **u_sz, float **u_gx, float **u_gz,
-              int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
+              int iw, int ang_iw_max, int nw,int ifmax,int ntfft,float dw,float dk,int nk,
               int nz, float oz, float dz, float gz, float sz,
               int nmx,float omx, float dmx,
               float *po,float **pd,
@@ -228,6 +228,7 @@ int main(int argc, char* argv[])
   else{
     m = sf_floatalloc2(nz,nmx*npx);
     for (isx=rank;isx<nsx;isx+=num_procs){
+      for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m1shot[ix][iz] = 0.0;
       if (verbose) fprintf(stderr,"reading and de-migrating shot %d...\n",isx);
       if (isx== rank) sf_floatread(m[0],nz*nmx*npx,in);
       sprintf(tmpname_ang, "tmpang_%d.rsf",isx);
@@ -397,8 +398,9 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   float norm_s,norm_g;
   float val1,val2,val,max_m,denom;
   float *m_amp,**W;
-  float ang,cross_prod,dot_prod,amp,costheta;
+  float *ang,cross_prod,dot_prod,amp,costheta;
   int nxw,nzw,ixw,izw,index1,index2;
+  int ifilter,nfilter;
   
   if (adj){
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = 0.0;
@@ -492,13 +494,14 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   }
   
   progress = 0.0;
+  
   //numthreads = omp_get_num_threads();
   //if (verbose) fprintf(stderr,"using %d threads.",numthreads);
-  #pragma omp parallel for private(iw) shared(m,d_g_wx,d_s_wx)
+  #pragma omp parallel for private(iw) shared(m,d_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz)
   for (iw=ifmin;iw<ifmax;iw++){ 
     progress += 1.0/((float) ifmax - ifmin);
    // if (verbose) progress_msg(progress);
-    extrap1f(m,d_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,po,pd,i,czero,p1,p2,adj,verbose);
+    extrap1f(m,d_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,(int) truncf(ifmax/2),nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,po,pd,i,czero,p1,p2,adj,verbose);
   }
   
   if (adj && calc_ang){
@@ -510,35 +513,53 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
         u_sz[ix][iz] *= 1;
         u_gx[ix][iz] *= 1;
         u_gz[ix][iz] *= 1;
-        //norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
-        //norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
-        //dot_prod = u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz];
-        //cross_prod = u_sx[ix][iz]*u_gz[ix][iz] - u_sz[ix][iz]*u_gx[ix][iz];
-        //ang1shot[ix][iz] = signf(cross_prod)*acosf(dot_prod/(norm_s*norm_g + 0.00001))*90/PI;
+        norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
+        norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
+        dot_prod = u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz];
+        cross_prod = u_sx[ix][iz]*u_gz[ix][iz] - u_sz[ix][iz]*u_gx[ix][iz];
+        if (fabsf(dot_prod/(norm_s*norm_g + 0.00001)) > 0.02){
+          ang1shot[ix][iz] = signf(cross_prod)*acosf(dot_prod/(norm_s*norm_g + 0.00001))*90/PI;
+        }
+        else{
+          ang1shot[ix][iz] = 90.;
+        }
       }
     }
 
-    m_amp = sf_floatalloc(nmx*nz); 
-    W = sf_floatalloc2(nz,nmx);
-    smooth_2d(m,W,nmx,dmx,nz,dz,0,0,0.1,0.2,0,0,0.1,0.2,true);
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m_amp[ix*nz + iz] = fabsf(W[ix][iz]);
-    qsort (m_amp,nmx*nz, sizeof(*m_amp), compare);
-    amp = m_amp[(int) truncf(0.8*nmx*nz)];
-
+    /* median filtering of outliers angles */
+    nxw=3;
+    nzw=5;
+    nfilter=2; // number of times to repeat median filter
+    ang = sf_floatalloc(nxw*nzw); 
+    for (ifilter=0;ifilter<nfilter;ifilter++){
     for (ix=0;ix<nmx;ix++){ 
       for (iz=0;iz<nz;iz++){
-        if (fabsf(W[ix][iz]) >= amp) W[ix][iz] = 1;
-        else  W[ix][iz] = atanf(W[ix][iz]);
+        for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
+          index1 = ix - (int) truncf(nxw/2) + ixw;
+          index2 = iz - (int) truncf(nzw/2) + izw;        
+          if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
+            ang[ixw*nzw + izw] = ang1shot[index1][index2];
+          }
+          else{
+            ang[ixw*nzw + izw] = 0.0;
+          }
+        }}
+        qsort (ang,nxw*nzw, sizeof(*ang), compare);
+        if (ang1shot[ix][iz] > 2*ang[(int) truncf(nxw*nzw)/2] || ang1shot[ix][iz] < 0.5*ang[(int) truncf(nxw*nzw)/2]){
+          ang1shot[ix][iz] = ang[(int) truncf(nxw*nzw)/2];
+        }
       }
     }
-    
-    //for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) W[ix][iz] = 1.0;
-    
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) ang1shot[ix][iz] = 0.0;
-    compute_angles(u_sx,u_sz,u_gx,u_gz,ang1shot,W,nmx,dmx,nz,dz,5,true);
+    }
+    free1float(ang);
 
-    free1float(m_amp);
+/*
+    W = sf_floatalloc2(nz,nmx);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) W[ix][iz] = 1.0;
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) ang1shot[ix][iz] = 0.0;
+    compute_angles(u_sx,u_sz,u_gx,u_gz,ang1shot,W,nmx,dmx,nz,dz,10,true);
     free2float(W);
+*/
 
   }
 
@@ -577,7 +598,7 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
 void extrap1f(float **m,
               sf_complex **d_g_wx, sf_complex **d_s_wx,
               float **u_sx, float **u_sz, float **u_gx, float **u_gz,
-              int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
+              int iw, int ang_iw_max, int nw,int ifmax,int ntfft,float dw,float dk,int nk,
               int nz, float oz, float dz, float gz, float sz,
               int nmx,float omx, float dmx,
               float *po,float **pd,
@@ -616,14 +637,16 @@ void extrap1f(float **m,
         for (ix=0;ix<nmx;ix++){
           #pragma omp atomic
           m[ix][iz] += factor*crealf(d_xs[ix]*conjf(d_xg[ix]));
-          #pragma omp atomic
-          u_sx[ix][iz] += crealf(p_sx[ix]*conjf(d_xg[ix]));
-          #pragma omp atomic
-          u_sz[ix][iz] += crealf(p_sz[ix]*conjf(d_xg[ix]));
-          #pragma omp atomic
-          u_gx[ix][iz] += crealf(p_gx[ix]*conjf(d_xs[ix]));
-          #pragma omp atomic
-          u_gz[ix][iz] += crealf(p_gz[ix]*conjf(d_xs[ix]));
+          if (iw<ang_iw_max){
+            #pragma omp atomic
+            u_sx[ix][iz] += crealf(p_sx[ix]*conjf(d_xg[ix]));
+            #pragma omp atomic
+            u_sz[ix][iz] += crealf(p_sz[ix]*conjf(d_xg[ix]));
+            #pragma omp atomic
+            u_gx[ix][iz] += crealf(p_gx[ix]*conjf(d_xs[ix]));
+            #pragma omp atomic
+            u_gz[ix][iz] += crealf(p_gz[ix]*conjf(d_xs[ix]));
+          }
         }
       }
     }
@@ -873,12 +896,12 @@ void compute_angles(float **usx,float **usz,float **ugx,float **ugz,float **m,fl
 
   xa=0;
   xb=0;
-  xc=0.01;
-  xd=0.02;
+  xc=0.03;
+  xd=0.04;
   za=0;
   zb=0;
-  zc=0.01;
-  zd=0.02;
+  zc=0.03;
+  zd=0.04;
 
   for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = 0.0;				
   for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) r[ix][iz] = W[ix][iz]*(usx[ix][iz]*ugx[ix][iz] + usz[ix][iz]*ugz[ix][iz]); // dot product of us and ug
@@ -893,8 +916,7 @@ void compute_angles(float **usx,float **usz,float **ugx,float **ugz,float **m,fl
   for (iter=1;iter<=niter;iter++){
     //forward
     smooth_2d(s,s_tmp,nx,dx,nz,dz,xa,xb,xc,xd,za,zb,zc,zd,false);
-    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) ss[ix][iz] = A[ix][iz]*s_tmp[ix][iz];
-    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) ss[ix][iz] *= W[ix][iz];
+    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) ss[ix][iz] = W[ix][iz]*A[ix][iz]*s_tmp[ix][iz];
     delta = cgdot(ss,nz,nx);
     alpha = gamma/(delta + 0.00000001);
     for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = m[ix][iz] +  s[ix][iz]*alpha;
@@ -912,12 +934,14 @@ void compute_angles(float **usx,float **usz,float **ugx,float **ugz,float **m,fl
 
   for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) g[ix][iz] = m[ix][iz];
   smooth_2d(g,m,nx,dx,nz,dz,xa,xb,xc,xd,za,zb,zc,zd,false);
+
   for (ix=0;ix<nx;ix++){ 
     for (iz=0;iz<nz;iz++){
       if (m[ix][iz] < -1.0 || m[ix][iz] > 1.0) m[ix][iz] = 0.0;
       else m[ix][iz] = signf(usx[ix][iz]*ugz[ix][iz] - usz[ix][iz]*ugx[ix][iz])*acosf(m[ix][iz])*90/PI;
     }
   }
+  
   free2float(ss);
   free2float(g);
   free2float(g_tmp);

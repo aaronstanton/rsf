@@ -48,7 +48,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
                int nz, float oz, float dz, float gz, float sz,
                float **vp, float **vs,
                float fmin, float fmax,
-               bool adj, bool H, bool verbose);
+               bool adj, bool H, bool calc_ang, bool verbose);
 void eextrap1f(float **mpp, float **mps,
                sf_complex **dp_g_wx, sf_complex **ds_g_wx, sf_complex **d_s_wx,
                float **u_sx, float **u_sz, float **u_gx, float **u_gz, 
@@ -109,6 +109,7 @@ int main(int argc, char* argv[])
   char tmpname2[256];
   char tmpname_ang[256];
   float px,px_floor,alpha;
+  bool calc_ang;
   
   MPI_Status mpi_stat;
   MPI_Init(&argc, &argv);
@@ -116,6 +117,7 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   sf_init(argc,argv);
   if (!sf_getbool("adj",&adj)) adj = true; /* flag for adjoint */
+  if (!sf_getbool("calc_ang",&calc_ang)) calc_ang = true; /* flag for computing angles and storing to temporary files for each shot for use in forward operator */
   if (!sf_getbool("H",&H)) H = false; /* flag to use Helmholtz operator for migration only (for least squares migration this should be H=n) */
   velp = sf_input("vp");
   vels = sf_input("vs");
@@ -206,7 +208,7 @@ int main(int argc, char* argv[])
                 wav,
                 nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nz,oz,dz,gz,sz,
                 vp,vs,
-                fmin,fmax,adj,H,verbose);
+                fmin,fmax,adj,H,calc_ang,verbose);
       sprintf(tmpname1, "tmp_mpp_%d.rsf",isx);
       fp_tmp_mpp = sf_output(tmpname1);
       if (verbose) fprintf(stderr,"writing %s to disk.\n",tmpname1);
@@ -227,16 +229,18 @@ int main(int argc, char* argv[])
               1, 0, 1,   " ",        " ",
               1, 0, 1,   " ",        " ",
               "mps", fp_tmp_mps);
-      sprintf(tmpname_ang, "tmp_ang_%d.rsf",isx);
-      fp_tmp_ang = sf_output(tmpname_ang);
-      if (verbose) fprintf(stderr,"writing %s to disk.\n",tmpname_ang);
-      write5d(ang1shot,
+      if (calc_ang){        
+        sprintf(tmpname_ang, "tmp_ang_%d.rsf",isx);
+        fp_tmp_ang = sf_output(tmpname_ang);
+        if (verbose) fprintf(stderr,"writing %s to disk.\n",tmpname_ang);
+        write5d(ang1shot,
               nz,  oz,  dz,          "Depth",    "m",  
               nmx, omx, dmx,         "X",        "m",  
               1, isx*dsx + osx, dsx, "Source-X", "m",  
               1, 0, 1,   " ",        " ",
               1, 0, 1,   " ",        " ",
               "Angle of Incidence", fp_tmp_ang);
+      }
     }
   }
   else{
@@ -276,7 +280,7 @@ int main(int argc, char* argv[])
                 wav,
                 nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nz,oz,dz,gz,sz,
                 vp,vs,
-                fmin,fmax,adj,H,verbose);
+                fmin,fmax,adj,H,calc_ang,verbose);
       sprintf(tmpname1, "tmp_dx_%d.rsf",isx);
       fp_tmp_dx = sf_output(tmpname1);
       if (verbose) fprintf(stderr,"writing %s to disk.\n",tmpname1);
@@ -434,7 +438,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
                int nz, float oz, float dz, float gz, float sz,
                float **vp, float **vs,
                float fmin, float fmax,
-               bool adj, bool H, bool verbose)
+               bool adj, bool H, bool calc_ang, bool verbose)
 /*< Depth migration operator for isotropic 2C data >*/
 {
   int iz,ix,igx,ik,iw,it,nw,nk,padt,padx,ntfft;
@@ -454,8 +458,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
   float *po_p,**pd_p,*po_s,**pd_s,progress;
   float **u_sx,**u_sz,**u_gx,**u_gz;
   float norm_s,norm_g;
-  float *ang,*cross_prod;
-  float ang1,cross_prod1;
+  float dot_prod,cross_prod;
   int nxw,nzw,ixw,izw,index1,index2;
   
   if (adj){
@@ -630,64 +633,23 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
     eextrap1f(mpp,mps,dp_g_wx,ds_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,po_p,pd_p,po_s,pd_s,i,czero,p1,p2,adj,verbose);
   }
 
-  if (adj){
-  for (ix=0;ix<nmx;ix++){ 
-    for (iz=0;iz<nz;iz++){
-      norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
-      norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
-      u_sx[ix][iz] = -u_sx[ix][iz]/(norm_s + 0.00001);
-      u_sz[ix][iz] = -u_sz[ix][iz]/(norm_s + 0.00001);
-      u_gx[ix][iz] =  u_gx[ix][iz]/(norm_g + 0.00001);
-      u_gz[ix][iz] = -u_gz[ix][iz]/(norm_g + 0.00001);
-      ang1 = acosf(u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz])*90/PI;
-      cross_prod1 = u_sz[ix][iz]*u_gx[ix][iz] - u_sx[ix][iz]*u_gz[ix][iz];
-      ang1shot[ix][iz] = signf(cross_prod1)*ang1;
-    }
-  }
-
-  /* median filtering to correct sign of the angle */
-  nxw=3;
-  nzw=3;
-  ang = sf_floatalloc(nxw*nzw); 
-  cross_prod = sf_floatalloc(nxw*nzw); 
-  for (ix=0;ix<nmx;ix++){ 
-    for (iz=0;iz<nz;iz++){
-      for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
-        index1 = ix - (int) truncf(nxw/2) + ixw;
-        index2 = iz - (int) truncf(nzw/2) + izw;        
-        if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
-          ang[ixw*nzw + izw] = ang1shot[index1][index2];
-        }
-        else{
-          ang[ixw*nzw + izw] = 0.0;
-        }
-      }}
-      qsort (ang,nxw*nzw, sizeof(*ang), compare);
-      if (signf(ang1shot[ix][iz]) != signf(ang[(int) truncf(nxw*nzw)/2])){
-        ang1shot[ix][iz] = -ang1shot[ix][iz];
+  if (adj && calc_ang){
+    for (ix=0;ix<nmx;ix++){ 
+      for (iz=0;iz<nz;iz++){
+        // set the polarities of the u's
+        u_sx[ix][iz] *=-1;
+        u_sz[ix][iz] *= 1;
+        u_gx[ix][iz] *= 1;
+        u_gz[ix][iz] *= 1;
+        norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
+        norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
+        dot_prod = u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz];
+        cross_prod = u_sx[ix][iz]*u_gz[ix][iz] - u_sz[ix][iz]*u_gx[ix][iz];
+        //ang1shot[ix][iz] = signf(cross_prod)*acosf(dot_prod/(norm_s*norm_g + 0.00001))*90/PI;
+        ang1shot[ix][iz] = asinf(cross_prod/(norm_s*norm_g + 0.00001))*90/PI;
       }
     }
-  }
 
-  /* median filtering of outlier angles */
-  for (ix=0;ix<nmx;ix++){ 
-    for (iz=0;iz<nz;iz++){
-      for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
-        index1 = ix - (int) truncf(nxw/2) + ixw;
-        index2 = iz - (int) truncf(nzw/2) + izw;        
-        if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
-          ang[ixw*nzw + izw] = ang1shot[index1][index2];
-        }
-        else{
-          ang[ixw*nzw + izw] = 0.0;
-        }
-      }}
-      qsort (ang,nxw*nzw, sizeof(*ang), compare);
-      if (ang1shot[ix][iz] > 1.5*ang[(int) truncf(nxw*nzw)/2] || ang1shot[ix][iz] < 0.75*ang[(int) truncf(nxw*nzw)/2]){
-        ang1shot[ix][iz] = ang[(int) truncf(nxw*nzw)/2];
-      }
-    }
-  }
   }
   else{
     for (iw=0;iw<nw;iw++){
@@ -945,6 +907,9 @@ void ssop(sf_complex *d_x,
       s = (w*w)*(po[iz]*po[iz]) - (k*k);
       if (s>=0){ 
         b[ik] = (fftwf_complex) d_k[ik]*sqrt(s);
+      }
+      else{
+        b[ik] = czero;
       }
     }
     fftwf_execute_dft(p2,b,b);
