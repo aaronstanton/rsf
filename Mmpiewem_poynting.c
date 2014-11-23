@@ -52,7 +52,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
 void eextrap1f(float **mpp, float **mps,
                sf_complex **dp_g_wx, sf_complex **ds_g_wx, sf_complex **d_s_wx,
                float **u_sx, float **u_sz, float **u_gx, float **u_gz, 
-               int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
+               int iw, int ang_iw_max,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
                int nz, float oz,  float dz, float gz, float sz,
                int nmx,float omx, float dmx,
                float *po_p,float **pd_p,float *po_s,float **pd_s,
@@ -265,7 +265,7 @@ int main(int argc, char* argv[])
             if (ipx >= 0 && ipx+1 < npx){
 	          alpha = (px-px_floor)/dpx;
 	          mpp_1shot[ix][iz]  = (1-alpha)*mpp[ipx*nmx + ix][iz] + alpha*mpp[(ipx+1)*nmx + ix][iz];
-	          mps_1shot[ix][iz]  = ((1-alpha)*mps[ipx*nmx + ix][iz] + alpha*mps[(ipx+1)*nmx + ix][iz]);
+	          mps_1shot[ix][iz]  = signf(px)*(((1-alpha)*mps[ipx*nmx + ix][iz] + alpha*mps[(ipx+1)*nmx + ix][iz]));
 	        }
 	      }
           else{
@@ -338,8 +338,8 @@ int main(int argc, char* argv[])
 	          alpha = (px-px_floor)/dpx;
 	          mpp[ipx*nmx + ix][iz]     += (1-alpha)*mpp_1shot[ix][iz];
 	          mpp[(ipx+1)*nmx + ix][iz] +=     alpha*mpp_1shot[ix][iz];
-	          mps[ipx*nmx + ix][iz]     += (1-alpha)*mps_1shot[ix][iz];
-	          mps[(ipx+1)*nmx + ix][iz] +=     alpha*mps_1shot[ix][iz];
+	          mps[ipx*nmx + ix][iz]     += signf(px)*(1-alpha)*mps_1shot[ix][iz];
+	          mps[(ipx+1)*nmx + ix][iz] +=     signf(px)*alpha*mps_1shot[ix][iz];
 	        }
 	      }
           else{
@@ -456,10 +456,11 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
   int *n;
   fftwf_plan p1,p2;
   float *po_p,**pd_p,*po_s,**pd_s,progress;
-  float **u_sx,**u_sz,**u_gx,**u_gz;
+  float **u_sx,**u_sz,**u_gx,**u_gz,*ang;
   float norm_s,norm_g;
   float dot_prod,cross_prod;
   int nxw,nzw,ixw,izw,index1,index2;
+  int ifilter,nfilter;
   
   if (adj){
     for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) mpp[ix][iz] = 0.0;
@@ -630,10 +631,11 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
   for (iw=ifmin;iw<ifmax;iw++){ 
     //progress += 1.0/((float) ifmax - ifmin);
     //if (verbose) progress_msg(progress);
-    eextrap1f(mpp,mps,dp_g_wx,ds_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,po_p,pd_p,po_s,pd_s,i,czero,p1,p2,adj,verbose);
+    eextrap1f(mpp,mps,dp_g_wx,ds_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,(int) truncf(ifmax/2),nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,po_p,pd_p,po_s,pd_s,i,czero,p1,p2,adj,verbose);
   }
 
   if (adj && calc_ang){
+    /* calculate incidence angle from propagation vectors */  
     for (ix=0;ix<nmx;ix++){ 
       for (iz=0;iz<nz;iz++){
         // set the polarities of the u's
@@ -645,13 +647,45 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
         dot_prod = u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz];
         cross_prod = u_sx[ix][iz]*u_gz[ix][iz] - u_sz[ix][iz]*u_gx[ix][iz];
-        //ang1shot[ix][iz] = signf(cross_prod)*acosf(dot_prod/(norm_s*norm_g + 0.00001))*90/PI;
-        ang1shot[ix][iz] = asinf(cross_prod/(norm_s*norm_g + 0.00001))*90/PI;
+        if (fabsf(dot_prod/(norm_s*norm_g)) > 0.02){
+          ang1shot[ix][iz] = signf(cross_prod)*acosf(dot_prod/(norm_s*norm_g))*90/PI;
+        }
+        else{
+          ang1shot[ix][iz] = 90.;
+        }
       }
     }
 
+    /* median filtering of outliers angles */
+    nxw=3;
+    nzw=5;
+    nfilter=2; // number of times to repeat median filter
+    ang = sf_floatalloc(nxw*nzw); 
+    for (ifilter=0;ifilter<nfilter;ifilter++){
+    for (ix=0;ix<nmx;ix++){ 
+      for (iz=0;iz<nz;iz++){
+        for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
+          index1 = ix - (int) truncf(nxw/2) + ixw;
+          index2 = iz - (int) truncf(nzw/2) + izw;        
+          if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
+            ang[ixw*nzw + izw] = ang1shot[index1][index2];
+          }
+          else{
+            ang[ixw*nzw + izw] = 0.0;
+          }
+        }}
+        qsort (ang,nxw*nzw, sizeof(*ang), compare);
+        if (ang1shot[ix][iz] > 2*ang[(int) truncf(nxw*nzw)/2] || ang1shot[ix][iz] < 0.5*ang[(int) truncf(nxw*nzw)/2]){
+          ang1shot[ix][iz] = ang[(int) truncf(nxw*nzw)/2];
+        }
+      }
+    }
+    }
+    free1float(ang);
+    
   }
-  else{
+
+  if (!adj){
     for (iw=0;iw<nw;iw++){
       w = iw*dw;
       for (ix=0;ix<nmx;ix++)   a[ix] = dp_g_wx[ix][iw];
@@ -733,7 +767,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
 void eextrap1f(float **mpp, float **mps,
                sf_complex **dp_g_wx, sf_complex **ds_g_wx, sf_complex **d_s_wx,
                float **u_sx, float **u_sz, float **u_gx, float **u_gz, 
-               int iw,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
+               int iw, int ang_iw_max,int nw,int ifmax,int ntfft,float dw,float dk,int nk,
                int nz, float oz,  float dz, float gz, float sz,
                int nmx,float omx, float dmx,
                float *po_p,float **pd_p,float *po_s,float **pd_s,
@@ -778,14 +812,16 @@ void eextrap1f(float **mpp, float **mps,
           mpp[ix][iz] += factor*crealf(d_xs[ix]*conjf(dp_xg[ix]));
           #pragma omp atomic
           mps[ix][iz] += factor*crealf(d_xs[ix]*conjf(ds_xg[ix]));
-          #pragma omp atomic
-          u_sx[ix][iz] += crealf(p_sx[ix]*conjf(dp_xg[ix]));
-          #pragma omp atomic
-          u_sz[ix][iz] += crealf(p_sz[ix]*conjf(dp_xg[ix]));
-          #pragma omp atomic
-          u_gx[ix][iz] += crealf(p_gx[ix]*conjf(d_xs[ix]));
-          #pragma omp atomic
-          u_gz[ix][iz] += crealf(p_gz[ix]*conjf(d_xs[ix]));
+          if (iw<ang_iw_max){
+            #pragma omp atomic
+            u_sx[ix][iz] += crealf(p_sx[ix]*conjf(dp_xg[ix]));
+            #pragma omp atomic
+            u_sz[ix][iz] += crealf(p_sz[ix]*conjf(dp_xg[ix]));
+            #pragma omp atomic
+            u_gx[ix][iz] += crealf(p_gx[ix]*conjf(d_xs[ix]));
+            #pragma omp atomic
+            u_gz[ix][iz] += crealf(p_gz[ix]*conjf(d_xs[ix]));
+          }
         }
       }
     }
@@ -857,8 +893,8 @@ void ssop(sf_complex *d_x,
   }
   else{
     for(ix=0; ix<nmx;ix++){
-      __real__ L = cos(w*pd[ix][iz]*dz);
-      __imag__ L = sin(w*pd[ix][iz]*dz); 
+      __real__ L = cosf(w*pd[ix][iz]*dz);
+      __imag__ L = sinf(w*pd[ix][iz]*dz); 
       a[ix] = d_x[ix]*L;
     }
   }
@@ -870,8 +906,8 @@ void ssop(sf_complex *d_x,
     else         k = -(dk*nk - dk*ik);
     s = (w*w)*(po[iz]*po[iz]) - (k*k);
     if (s>=0){ 
-      __real__ L = cos(sqrt(s)*dz);
-      __imag__ L = sin(sqrt(s)*dz);
+      __real__ L = cosf(sqrtf(s)*dz);
+      __imag__ L = sinf(sqrtf(s)*dz);
     }
     else L = czero;   // evanescent waves
     d_k[ik] = ((sf_complex) a[ik])*L/sqrtf((float) nk);        
@@ -880,8 +916,8 @@ void ssop(sf_complex *d_x,
   fftwf_execute_dft(p2,b,b);
   if (adj){
     for(ix=0; ix<nmx;ix++){ 
-      __real__ L = cos(w*pd[ix][iz]*dz);
-      __imag__ L = sin(w*pd[ix][iz]*dz);
+      __real__ L = cosf(w*pd[ix][iz]*dz);
+      __imag__ L = sinf(w*pd[ix][iz]*dz);
       d_x[ix] = ((sf_complex) b[ix])*L/sqrtf((float) nk);
     }
   }
@@ -906,7 +942,7 @@ void ssop(sf_complex *d_x,
       else         k = -(dk*nk - dk*ik);
       s = (w*w)*(po[iz]*po[iz]) - (k*k);
       if (s>=0){ 
-        b[ik] = (fftwf_complex) d_k[ik]*sqrt(s);
+        b[ik] = (fftwf_complex) d_k[ik]*sqrtf(s);
       }
       else{
         b[ik] = czero;
