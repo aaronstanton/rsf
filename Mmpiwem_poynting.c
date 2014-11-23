@@ -74,9 +74,10 @@ void free1complex(sf_complex *p);
 void free2complex(sf_complex **p);
 float signf(float a);
 int compare (const void * a, const void * b);
-void compute_angles(float **d,float **usx,float **usz,float **ugx,float **ugz,float **m,int nx,int nz,int verbose);
+void compute_angles(float **usx,float **usz,float **ugx,float **ugz,float **m,float **W,int nx,float dx,int nz,float dz,int niter,int verbose);
 float cgdot(float **x,int nz,int nx);
 void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d);
+void smooth_2d(float **in, float **out, int nx, float dx, int nz, float dz, float xa, float xb, float xc, float xd, float za, float zb, float zc, float zd, bool adj);
 
 int main(int argc, char* argv[])
 {
@@ -395,8 +396,8 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   float *po,**pd,progress;
   float norm_s,norm_g;
   float val1,val2,val,max_m,denom;
-  float *ang,*cross_prod;
-  float ang1,cross_prod1;
+  float *m_amp,**W;
+  float ang,cross_prod,dot_prod,amp,costheta;
   int nxw,nzw,ixw,izw,index1,index2;
   
   if (adj){
@@ -504,65 +505,43 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
     /* calculate incidence angle from propagation vectors */  
     for (ix=0;ix<nmx;ix++){ 
       for (iz=0;iz<nz;iz++){
-        norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
-        norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
-        u_sx[ix][iz] = -u_sx[ix][iz]/(norm_s + 0.00001);
-        u_sz[ix][iz] = -u_sz[ix][iz]/(norm_s + 0.00001);
-        u_gx[ix][iz] =  u_gx[ix][iz]/(norm_g + 0.00001);
-        u_gz[ix][iz] = -u_gz[ix][iz]/(norm_g + 0.00001);
-        ang1= (acosf(u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz])*90/PI);
-        cross_prod1 = (u_sz[ix][iz]*u_gx[ix][iz] - u_sx[ix][iz]*u_gz[ix][iz]);
-        ang1shot[ix][iz] = signf(cross_prod1)*ang1;
+        // set the polarities of the u's
+        u_sx[ix][iz] *=-1;
+        u_sz[ix][iz] *= 1;
+        u_gx[ix][iz] *= 1;
+        u_gz[ix][iz] *= 1;
+        //norm_s = sqrtf(powf(u_sx[ix][iz],2) + powf(u_sz[ix][iz],2));
+        //norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
+        //dot_prod = u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz];
+        //cross_prod = u_sx[ix][iz]*u_gz[ix][iz] - u_sz[ix][iz]*u_gx[ix][iz];
+        //ang1shot[ix][iz] = signf(cross_prod)*acosf(dot_prod/(norm_s*norm_g + 0.00001))*90/PI;
       }
     }
 
-    /* median filtering to correct sign of the angle */
-    nxw=3;
-    nzw=3;
-    ang = sf_floatalloc(nxw*nzw); 
-    cross_prod = sf_floatalloc(nxw*nzw); 
-    for (ix=0;ix<nmx;ix++){ 
-      for (iz=0;iz<nz;iz++){
-        for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
-          index1 = ix - (int) truncf(nxw/2) + ixw;
-          index2 = iz - (int) truncf(nzw/2) + izw;        
-          if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
-            ang[ixw*nzw + izw] = ang1shot[index1][index2];
-          }
-          else{
-            ang[ixw*nzw + izw] = 0.0;
-          }
-        }}
-        qsort (ang,nxw*nzw, sizeof(*ang), compare);
-        if (signf(ang1shot[ix][iz]) != signf(ang[(int) truncf(nxw*nzw)/2])){
-          ang1shot[ix][iz] = -ang1shot[ix][iz];
-        }
-      }
-    }
+    m_amp = sf_floatalloc(nmx*nz); 
+    W = sf_floatalloc2(nz,nmx);
+    smooth_2d(m,W,nmx,dmx,nz,dz,0,0,0.1,0.2,0,0,0.1,0.2,true);
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m_amp[ix*nz + iz] = fabsf(W[ix][iz]);
+    qsort (m_amp,nmx*nz, sizeof(*m_amp), compare);
+    amp = m_amp[(int) truncf(0.8*nmx*nz)];
 
-    /* median filtering of outlier angles */
     for (ix=0;ix<nmx;ix++){ 
       for (iz=0;iz<nz;iz++){
-        for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
-          index1 = ix - (int) truncf(nxw/2) + ixw;
-          index2 = iz - (int) truncf(nzw/2) + izw;        
-          if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
-            ang[ixw*nzw + izw] = ang1shot[index1][index2];
-          }
-          else{
-            ang[ixw*nzw + izw] = 0.0;
-          }
-        }}
-        qsort (ang,nxw*nzw, sizeof(*ang), compare);
-        if (ang1shot[ix][iz] > 1.5*ang[(int) truncf(nxw*nzw)/2] || ang1shot[ix][iz] < 0.75*ang[(int) truncf(nxw*nzw)/2]){
-          ang1shot[ix][iz] = ang[(int) truncf(nxw*nzw)/2];
-        }
+        if (fabsf(W[ix][iz]) >= amp) W[ix][iz] = 1;
+        else  W[ix][iz] = atanf(W[ix][iz]);
       }
     }
-    free1float(ang);
-    free1float(cross_prod);
+    
+    //for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) W[ix][iz] = 1.0;
+    
+    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) ang1shot[ix][iz] = 0.0;
+    compute_angles(u_sx,u_sz,u_gx,u_gz,ang1shot,W,nmx,dmx,nz,dz,5,true);
+
+    free1float(m_amp);
+    free2float(W);
+
   }
-  
+
   if (!adj){
     for (ix=0;ix<nmx;ix++){
       for (iw=0;iw<ifmin;iw++) d_w[iw] = czero;
@@ -713,8 +692,8 @@ void ssop(sf_complex *d_x,
   }
   else{
     for(ix=0; ix<nmx;ix++){
-      __real__ L = cos(w*pd[ix][iz]*dz);
-      __imag__ L = sin(w*pd[ix][iz]*dz); 
+      __real__ L = cosf(w*pd[ix][iz]*dz);
+      __imag__ L = sinf(w*pd[ix][iz]*dz); 
       a[ix] = d_x[ix]*L;
     }
   }
@@ -726,8 +705,8 @@ void ssop(sf_complex *d_x,
     else         k = -(dk*nk - dk*ik);
     s = (w*w)*(po[iz]*po[iz]) - (k*k);
     if (s>=0){ 
-      __real__ L = cos(sqrt(s)*dz);
-      __imag__ L = sin(sqrt(s)*dz);
+      __real__ L = cosf(sqrtf(s)*dz);
+      __imag__ L = sinf(sqrtf(s)*dz);
     }
     else L = czero;
     d_k[ik] = ((sf_complex) a[ik])*L/sqrtf((float) nk);        
@@ -736,8 +715,8 @@ void ssop(sf_complex *d_x,
   fftwf_execute_dft(p2,b,b);
   if (adj){
     for(ix=0; ix<nmx;ix++){ 
-      __real__ L = cos(w*pd[ix][iz]*dz);
-      __imag__ L = sin(w*pd[ix][iz]*dz);
+      __real__ L = cosf(w*pd[ix][iz]*dz);
+      __imag__ L = sinf(w*pd[ix][iz]*dz);
       d_x[ix] = ((sf_complex) b[ix])*L/sqrtf((float) nk);
     }
   }
@@ -763,8 +742,12 @@ void ssop(sf_complex *d_x,
       else         k = -(dk*nk - dk*ik);
       s = (w*w)*(po[iz]*po[iz]) - (k*k);
       if (s>=0){ 
-        b[ik] = (fftwf_complex) d_k[ik]*sqrt(s);
+        b[ik] = (fftwf_complex) d_k[ik]*sqrtf(s);
       }
+      else{ 
+        b[ik] = (fftwf_complex) czero;
+      }
+      
     }
     fftwf_execute_dft(p2,b,b);
     for(ix=0; ix<nmx;ix++){ 
@@ -874,13 +857,12 @@ int compare (const void * a, const void * b)
   return (fa > fb) - (fa < fb);
 }
 
-void compute_angles(float **d,float **usx,float **usz,float **ugx,float **ugz,float **m,int nx,int nz,int verbose)
+void compute_angles(float **usx,float **usz,float **ugx,float **ugz,float **m,float **W,int nx,float dx,int nz,float dz,int niter,int verbose)
 /*< Non-quadratic regularization with CG-LS. The inner CG routine is taken from Algorithm 2 of Scales, 1987. Make sure linear operator passes the dot product. >*/
 {
-  float **v,**s,**s_tmp,**ss,**g,**g_tmp,**r,**A;
-  float alpha,beta,delta,gamma,gamma_old; 
+  float **s,**s_tmp,**ss,**g,**g_tmp,**r,**A,alpha,beta,delta,gamma,gamma_old,misfit;
+  float xa,xb,xc,xd,za,zb,zc,zd;
   int ix,iz,iter;
-  v  = sf_floatalloc2(nz,nx);
   g  = sf_floatalloc2(nz,nx);
   g_tmp  = sf_floatalloc2(nz,nx);
   r  = sf_floatalloc2(nz,nx);
@@ -889,71 +871,53 @@ void compute_angles(float **d,float **usx,float **usz,float **ugx,float **ugz,fl
   ss = sf_floatalloc2(nz,nx);
   A  = sf_floatalloc2(nz,nx);
 
-  for (ix=0;ix<nm;ix++){
-    for (iz=0;iz<nz;iz++){
-      m[ix][iz] = 0.0;				
-      v[ix][iz] = 0.0;
-      r[ix][iz] = d[ix][iz];
-      A[ix][iz] = sqrtf(usx[ix][iz]*usx[ix][iz] + usz[ix][iz]*usz[ix][iz])*sqrtf(ugx[ix][iz]*ugx[ix][iz] + ugz[ix][iz]*ugz[ix][iz]);
-    }
-  }
+  xa=0;
+  xb=0;
+  xc=0.01;
+  xd=0.02;
+  za=0;
+  zb=0;
+  zc=0.01;
+  zd=0.02;
+
+  for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = 0.0;				
+  for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) r[ix][iz] = W[ix][iz]*(usx[ix][iz]*ugx[ix][iz] + usz[ix][iz]*ugz[ix][iz]); // dot product of us and ug
+  for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) A[ix][iz] = sqrtf(usx[ix][iz]*usx[ix][iz] + usz[ix][iz]*usz[ix][iz])*sqrtf(ugx[ix][iz]*ugx[ix][iz] + ugz[ix][iz]*ugz[ix][iz]);
 
   //adjoint
-  for (ix=0;ix<nm;ix++) for (iz=0;iz<nz;iz++) g_tmp[ix][iz] = A[ix][iz]*r[ix][iz];
-  smooth g_tmp in x and z and output g
-
-  for (ix=0;ix<nx;ix++){
-    for (iz=0;iz<nz;iz++){
-      s[ix][iz] = g[ix][iz];
-    }
-  }
+  for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) g_tmp[ix][iz] = W[ix][iz]*A[ix][iz]*r[ix][iz];
+  smooth_2d(g_tmp,g,nx,dx,nz,dz,xa,xb,xc,xd,za,zb,zc,zd,true);
+  for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) s[ix][iz] = g[ix][iz];
   gamma = cgdot(g,nz,nx);
   gamma_old = gamma;
   for (iter=1;iter<=niter;iter++){
-      //forward
-      smooth s in x and z and output s_tmp
-      for (ix=0;ix<nm;ix++) for (iz=0;iz<nz;iz++) ss[ix][iz] = A[ix][iz]*s_tmp[ix][iz];
+    //forward
+    smooth_2d(s,s_tmp,nx,dx,nz,dz,xa,xb,xc,xd,za,zb,zc,zd,false);
+    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) ss[ix][iz] = A[ix][iz]*s_tmp[ix][iz];
+    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) ss[ix][iz] *= W[ix][iz];
+    delta = cgdot(ss,nz,nx);
+    alpha = gamma/(delta + 0.00000001);
+    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = m[ix][iz] +  s[ix][iz]*alpha;
+    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) r[ix][iz] = r[ix][iz] -  ss[ix][iz]*alpha;
+    misfit = cgdot(r,nz,nx);
+    fprintf(stderr,"misfit=%f\n",misfit);
+    //adjoint
+    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) g_tmp[ix][iz] = W[ix][iz]*A[ix][iz]*r[ix][iz];
+    smooth_2d(g_tmp,g,nx,dx,nz,dz,xa,xb,xc,xd,za,zb,zc,zd,true);
+    gamma = cgdot(g,nz,nx);
+    beta = gamma/(gamma_old + 0.00000001);
+    gamma_old = gamma;
+    for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) s[ix][iz] = g[ix][iz] + s[ix][iz]*beta;
+  }
 
-      delta = cgdot(ss,nz,nx);
-      alpha = gamma/(delta + 0.00000001);
-
-      for (ix=0;ix<nx;ix++){
-        for (iz=0;iz<nz;iz++){
-          v[ix][iz] = v[ix][iz] +  s[ix][iz]*alpha;
-          r[ix][iz] = r[ix][iz] -  ss[ix][iz]*alpha;
-        }
-      }
-
-      misfit = cgdot(r,nz,nx);
-      //adjoint
-      for (ix=0;ix<nm;ix++) for (iz=0;iz<nz;iz++) g_tmp[ix][iz] = A[ix][iz]*r[ix][iz];
-      smooth g_tmp in x and z and output g
-
-      for (ix=0;ix<nx;ix++){
-        for (iz=0;iz<nz;iz++){
-          g[ix][iz] = g[ix][iz]*P[ix][iz];
-        }
-      }
-
-      gamma = cgdot(g,nz,nx);
-      beta = gamma/(gamma_old + 0.00000001);
-
-      gamma_old = gamma;
-      for (ix=0;ix<nx;ix++){
-        for (iz=0;iz<nz;iz++){
-          s[ix][iz] = g[ix][iz] + s[ix][iz]*beta;
-        }
-      }
+  for (ix=0;ix<nx;ix++) for (iz=0;iz<nz;iz++) g[ix][iz] = m[ix][iz];
+  smooth_2d(g,m,nx,dx,nz,dz,xa,xb,xc,xd,za,zb,zc,zd,false);
+  for (ix=0;ix<nx;ix++){ 
+    for (iz=0;iz<nz;iz++){
+      if (m[ix][iz] < -1.0 || m[ix][iz] > 1.0) m[ix][iz] = 0.0;
+      else m[ix][iz] = signf(usx[ix][iz]*ugz[ix][iz] - usz[ix][iz]*ugx[ix][iz])*acosf(m[ix][iz])*90/PI;
     }
-
-    for (ix=0;ix<nx;ix++){
-      for (iz=0;iz<nz;iz++){
-        m[ix][iz] = v[ix][iz];
-      }
-    }
-    
-  free2float(v);
-  free2float(vs);
+  }
   free2float(ss);
   free2float(g);
   free2float(g_tmp);
@@ -977,6 +941,43 @@ float cgdot(float **x,int nz,int nx)
     }
   }
   return(cgdot);
+}
+
+void smooth_2d(float **in, float **out, int nx, float dx, int nz, float dz, float xa, float xb, float xc, float xd, float za, float zb, float zc, float zd, bool adj)
+/*< smooth in 2d by applying a bandpass filter on each dimension >*/
+{
+  float *trace1,*trace2;
+  int ix,iz;
+
+  trace1 = sf_floatalloc(nz);
+  trace2 = sf_floatalloc(nx);
+  if (adj){
+    for (ix=0;ix<nx;ix++){  
+      for (iz=0;iz<nz;iz++) trace1[iz] = in[ix][iz];    
+      bpfilter(trace1,dz,nz,za,zb,zc,zd);
+      for (iz=0;iz<nz;iz++) out[ix][iz] = trace1[iz];    
+    }
+    for (iz=0;iz<nz;iz++){  
+      for (ix=0;ix<nx;ix++) trace2[ix] = out[ix][iz];    
+      bpfilter(trace2,dx,nx,xa,xb,xc,xd);
+      for (ix=0;ix<nx;ix++) out[ix][iz] = trace2[ix];    
+    }
+  }
+  else{
+    for (iz=0;iz<nz;iz++){  
+      for (ix=0;ix<nx;ix++) trace2[ix] = in[ix][iz];    
+      bpfilter(trace2,dx,nx,xa,xb,xc,xd);
+      for (ix=0;ix<nx;ix++) out[ix][iz] = trace2[ix];    
+    }
+    for (ix=0;ix<nx;ix++){  
+      for (iz=0;iz<nz;iz++) trace1[iz] = out[ix][iz];    
+      bpfilter(trace1,dz,nz,za,zb,zc,zd);
+      for (iz=0;iz<nz;iz++) out[ix][iz] = trace1[iz];    
+    }
+  }
+  free1float(trace1);
+  free1float(trace2);
+  return;
 }
 
 void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d)
