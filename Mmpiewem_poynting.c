@@ -265,7 +265,7 @@ int main(int argc, char* argv[])
             if (ipx >= 0 && ipx+1 < npx){
 	          alpha = (px-px_floor)/dpx;
 	          mpp_1shot[ix][iz]  = (1-alpha)*mpp[ipx*nmx + ix][iz] + alpha*mpp[(ipx+1)*nmx + ix][iz];
-	          mps_1shot[ix][iz]  = signf(px)*(((1-alpha)*mps[ipx*nmx + ix][iz] + alpha*mps[(ipx+1)*nmx + ix][iz]));
+	          mps_1shot[ix][iz]  = -signf(px)*((1-alpha)*mps[ipx*nmx + ix][iz] + alpha*mps[(ipx+1)*nmx + ix][iz]);
 	        }
 	      }
           else{
@@ -324,6 +324,10 @@ int main(int argc, char* argv[])
       fp_tmp_mpp = sf_input(tmpname1);
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname1); 
       sf_floatread(mpp_1shot[0],nz*nmx,fp_tmp_mpp);
+      sprintf(tmpname2, "tmp_mps_%d.rsf",isx);
+      fp_tmp_mps = sf_input(tmpname2);
+      if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname2); 
+      sf_floatread(mps_1shot[0],nz*nmx,fp_tmp_mps);
       sprintf(tmpname_ang, "tmp_ang_%d.rsf",isx);
       fp_tmp_ang = sf_input(tmpname_ang);
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname_ang); 
@@ -338,8 +342,8 @@ int main(int argc, char* argv[])
 	          alpha = (px-px_floor)/dpx;
 	          mpp[ipx*nmx + ix][iz]     += (1-alpha)*mpp_1shot[ix][iz];
 	          mpp[(ipx+1)*nmx + ix][iz] +=     alpha*mpp_1shot[ix][iz];
-	          mps[ipx*nmx + ix][iz]     += signf(px)*(1-alpha)*mps_1shot[ix][iz];
-	          mps[(ipx+1)*nmx + ix][iz] +=     signf(px)*alpha*mps_1shot[ix][iz];
+	          mps[ipx*nmx + ix][iz]     += -signf(px)*(1-alpha)*mps_1shot[ix][iz];
+	          mps[(ipx+1)*nmx + ix][iz] +=    -signf(px)*alpha*mps_1shot[ix][iz];
 	        }
 	      }
           else{
@@ -596,7 +600,7 @@ void ewem1shot(float **dx_1shot, float **dz_1shot,
         else{
           d_p[ik] = i*kx*d_x[ik] + i*kzs*d_z[ik]; 
           d_s[ik] =-i*kzp*d_x[ik] + i*kx*d_z[ik];
-        }
+        }       
       }
       for (ik=0;ik<nk;ik++)    b[ik] = d_p[ik];
       fftwf_execute_dft(p2,b,b);
