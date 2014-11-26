@@ -517,7 +517,7 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
         norm_g = sqrtf(powf(u_gx[ix][iz],2) + powf(u_gz[ix][iz],2));
         dot_prod = u_sx[ix][iz]*u_gx[ix][iz] + u_sz[ix][iz]*u_gz[ix][iz];
         cross_prod = u_sx[ix][iz]*u_gz[ix][iz] - u_sz[ix][iz]*u_gx[ix][iz];
-        if (fabsf(dot_prod/(norm_s*norm_g)) > 0.02){
+        if (fabsf(dot_prod/(norm_s*norm_g)) > 0.02 && fabsf(dot_prod/(norm_s*norm_g)) <= 1.0){
           ang1shot[ix][iz] = signf(cross_prod)*acosf(dot_prod/(norm_s*norm_g))*90/PI;
         }
         else{

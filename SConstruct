@@ -45,6 +45,7 @@ dotewem_poynting
 lswem
 lswem_poynting
 lsewem
+lsewem_poynting
 lsewem_sep
 dotwavsep
 weights2c
