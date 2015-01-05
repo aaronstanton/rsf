@@ -8,9 +8,10 @@ REQUIRES the PYTHON API and NUMPY and SCIPY
 # Import RSF API
 try:
     import rsf.api as rsf
-    import sys, numpy, scipy
+    import os, sys, numpy, scipy
     from subprocess import call
     from textwrap import dedent
+    import math
 except Exception, e:
     print \
 '''ERROR: NEED PYTHON API, NUMPY, SCIPY '''

@@ -29,18 +29,11 @@
 #include "myfree.h"
 #include "perturb4d.h"
 
-void process_time_windows(float **d,
-			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
-                          int Ltw,int Dtw,
-                          int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd,int iter,int iter_e,float alphai,float alphaf,int ranki,int rankf,
-                          float fmax,int method,int verbose);
 void process1c(float **d,
-	       int verbose,int nt,int nx,float dt,
-               int *x1h,int *x2h,int *x3h,int *x4h,
+	           int verbose,int nt,int nx,float dt,
                int nx1,int nx2,int nx3,int nx4,
                float *wd_no_pad,int iter,int iter_e,float alphai,float alphaf,int ranki,int rankf,float fmax,int method);
-void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf);
+void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,float *k1,float *k2,float *k3,float *k4,int Iter,float perci,float percf,float alphai,float alphaf);
 void mwni5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int itmax_external,int itmax_internal,int verbose);
 float cgdot(sf_complex *x,int nm);
 float max_abs(sf_complex *x, int nm);
@@ -59,14 +52,30 @@ void fold(sf_complex **in, sf_complex *out,int *n,int a);
 void csvd(sf_complex **A,sf_complex **U, float *S,sf_complex **VT,int M,int N);
 void mult_svd(sf_complex **A, sf_complex **U, float *S, sf_complex **VT, int M, int N, int rank);
 void seqsvd5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft, int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float alphai,float alphaf,int ranki, int rankf);
+void radial_filter_gathers(float **d,
+                           float o1,float d1,int n1,
+                           float o2,float d2,int n2,
+                           float o3,float d3,int n3,
+                           float o4,float d4,int n4,
+                           float o5,float d5,int n5,
+                           float fa,float fb,float fc,float fd,
+                           int axis);
+void radial_filter(float **d,float ot, float dt, int nt,float ox, float dx, int nx,float fa,float fb,float fc,float fd);
+void radial_op(float **d,float **m,int nt,int nx,int np,float op,float dp,bool adj);
+void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d);
+void write5d(float **data,
+             int n1, float o1, float d1, const char *label1, const char *unit1,  
+             int n2, float o2, float d2, const char *label2, const char *unit2,  
+             int n3, float o3, float d3, const char *label3, const char *unit3,  
+             int n4, float o4, float d4, const char *label4, const char *unit4,  
+             int n5, float o5, float d5, const char *label5, const char *unit5,
+             const char *title, sf_file outfile);
 
 int main(int argc, char* argv[])
 { 
     int ix,nx,method;
     int n1,n2,n3,n4,n5;
-    int i1,i2,i3,i4,i5;
-    int nx1,nx2,nx3,nx4;
-    int *ix1,*ix2,*ix3,*ix4;
+    int i1,i2;
     float *wd,*trace,**d;
     float d1,o1,d2,o2,d3,o3,d4,o4,d5,o5;
     float sum;
@@ -86,18 +95,18 @@ int main(int argc, char* argv[])
     if (!sf_histint(in,"n1",&n1)) sf_error("No n1= in input");
     if (!sf_histfloat(in,"d1",&d1)) sf_error("No d1= in input");
     if (!sf_histfloat(in,"o1",&o1)) o1=0.;
-    if (!sf_histint(in,"n2",&n5)) sf_error("No n2= in input");
-    if (!sf_histfloat(in,"d2",&d5)) d5=1;
-    if (!sf_histfloat(in,"o2",&o5)) o5=0.;
-    if (!sf_histint(in,"n3",&n4))   n4=1;
-    if (!sf_histfloat(in,"d3",&d4)) d4=1;
-    if (!sf_histfloat(in,"o3",&o4)) o4=0.;
-    if (!sf_histint(in,"n4",&n3))   n3=1;
-    if (!sf_histfloat(in,"d4",&d3)) d3=1;
-    if (!sf_histfloat(in,"o4",&o3)) o3=0.;
-    if (!sf_histint(in,"n5",&n2))   n2=1;
-    if (!sf_histfloat(in,"d5",&d2)) d2=1;
-    if (!sf_histfloat(in,"o5",&o2)) o2=0.;
+    if (!sf_histint(in,"n2",&n2)) sf_error("No n2= in input");
+    if (!sf_histfloat(in,"d2",&d2)) d2=1;
+    if (!sf_histfloat(in,"o2",&o2)) o2=0.;
+    if (!sf_histint(in,"n3",&n3))   n3=1;
+    if (!sf_histfloat(in,"d3",&d3)) d3=1;
+    if (!sf_histfloat(in,"o3",&o3)) o3=0.;
+    if (!sf_histint(in,"n4",&n4))   n4=1;
+    if (!sf_histfloat(in,"d4",&d4)) d4=1;
+    if (!sf_histfloat(in,"o4",&o4)) o4=0.;
+    if (!sf_histint(in,"n5",&n5))   n5=1;
+    if (!sf_histfloat(in,"d5",&d5)) d5=1;
+    if (!sf_histfloat(in,"o5",&o5)) o5=0.;
 
     if (!sf_getint("method",&method)) method = 1; /* reconstruction algorithm to choose (1=POCS,2=MWNI,3=SEQSVD) */
     if (!sf_getint("tw_length",&tw_length)) tw_length = n1; /* length of time windows in number of samples */
@@ -115,20 +124,20 @@ int main(int argc, char* argv[])
     if (fmax > 0.5/d1) fmax = 0.5/d1;
 
     sf_putfloat(out,"o1",o1);
-    sf_putfloat(out,"o2",o5);
-    sf_putfloat(out,"o3",o4);
-    sf_putfloat(out,"o4",o3);
-    sf_putfloat(out,"o5",o2);
+    sf_putfloat(out,"o2",o2);
+    sf_putfloat(out,"o3",o3);
+    sf_putfloat(out,"o4",o4);
+    sf_putfloat(out,"o5",o5);
     sf_putfloat(out,"d1",d1);
-    sf_putfloat(out,"d2",d5);
-    sf_putfloat(out,"d3",d4);
-    sf_putfloat(out,"d4",d3);
-    sf_putfloat(out,"d5",d2);
+    sf_putfloat(out,"d2",d2);
+    sf_putfloat(out,"d3",d3);
+    sf_putfloat(out,"d4",d4);
+    sf_putfloat(out,"d5",d5);
     sf_putfloat(out,"n1",n1);
-    sf_putfloat(out,"n2",n5);
-    sf_putfloat(out,"n3",n4);
-    sf_putfloat(out,"n4",n3);
-    sf_putfloat(out,"n5",n2);
+    sf_putfloat(out,"n2",n2);
+    sf_putfloat(out,"n3",n3);
+    sf_putfloat(out,"n4",n4);
+    sf_putfloat(out,"n5",n5);
     sf_putstring(out,"label1","Time");
     sf_putstring(out,"label2","ix1");
     sf_putstring(out,"label3","ix2");
@@ -140,34 +149,7 @@ int main(int argc, char* argv[])
     sf_putstring(out,"unit4","index");
     sf_putstring(out,"unit5","index"); 
 
-    nx1 = n2; nx2 = n3; nx3 = n4; nx4 = n5;
-    nx = nx1*nx2*nx3*nx4;
-
-    ix1 = sf_intalloc (nx1*nx2*nx3*nx4);
-    ix2 = sf_intalloc (nx1*nx2*nx3*nx4);
-    ix3 = sf_intalloc (nx1*nx2*nx3*nx4);
-    ix4 = sf_intalloc (nx1*nx2*nx3*nx4);
-
-    /* 
-      RSF stores long vectors in an order opposite to FFTW: 
-      RSF:  ix = ix4*nx3*nx2*nx1 + ix3*nx2*nx1 + ix2*nx1 + ix1 
-      FFTW: ix = ix1*nx2*nx3*nx4 + ix2*nx3*nx4 + ix3*nx4 + ix4
-      here we fetch traces from RSF order
-    */
-    ix = 0;
-    for (i5=0; i5<n5; i5++) {	
-      for (i4=0; i4<n4; i4++) {	
-        for (i3=0; i3<n3; i3++) {	
-          for (i2=0; i2<n2; i2++) {	
-            ix1[ix] = i2;
-            ix2[ix] = i3;
-            ix3[ix] = i4;
-            ix4[ix] = i5;
-            ix++;
-          }
-        }
-      }
-    }
+    nx = n2*n3*n4*n5;
 
     trace = sf_floatalloc (n1);
     d = sf_floatalloc2 (n1,nx);
@@ -192,14 +174,12 @@ int main(int argc, char* argv[])
       }      
     }
  
-    if (verbose) fprintf(stderr,"the block has %6.2f %% missing traces.\n", (float) 100 - 100*sum_wd/(nx1*nx2*nx3*nx4));
+    if (verbose) fprintf(stderr,"the block has %6.2f %% missing traces.\n", (float) 100 - 100*sum_wd/(n2*n3*n4*n5));
 
-    process_time_windows(d,
-			 n1,d1,nx1,nx2,nx3,nx4,
-                         tw_length,tw_overlap,
-                         ix1,ix2,ix3,ix4,
-                         wd,iter,iter_e,alphai,alphaf,ranki,rankf,
-                         fmax,method,verbose);
+    process1c(d,
+              verbose,n1,nx,d1,
+              n2,n3,n4,n5,
+              wd,iter,iter_e,alphai,alphaf,ranki,rankf,fmax,method);
 
     for (ix=0; ix<nx; ix++) {
       for (i1=0; i1<n1; i1++) trace[i1] = d[ix][i1];
@@ -209,76 +189,9 @@ int main(int argc, char* argv[])
     exit (0);
 }
 
-void process_time_windows(float **d,
-			  int nt,float dt,int nx1,int nx2,int nx3,int nx4,
-                          int Ltw,int Dtw,
-                          int *ix1_in,int *ix2_in,int *ix3_in,int *ix4_in,
-                          float *wd,int iter,int iter_e,float alphai,float alphaf,int ranki,int rankf,
-                          float fmax,int method, int verbose)
-/***********************************************************************/
-/* process with overlapping time windows */
-/***********************************************************************/
-{
-  int ix,itw,Itw,Ntw,nx,twstart,taper;
-  float **d_tw;
-
-  Ntw = 9999;	
-  nx = nx1*nx2*nx3*nx4;
-  twstart = 0;
-  taper = 0;
-  d_tw = sf_floatalloc2 (nt,nx);
-
-  for (Itw=0;Itw<Ntw;Itw++){	
-    if (Itw == 0){
-      Ntw = trunc(nt/(Ltw-Dtw));
-      if ( (float) nt/(Ltw-Dtw) - (float) Ntw > 0) Ntw++;
-    }		
-    twstart = Itw*(Ltw-Dtw);
-    if (twstart+Ltw-1 >nt) twstart=nt-Ltw;
-    if (Itw*(Ltw-Dtw+1) > nt){
-      Ltw = Ltw + nt - Itw*(Ltw-Dtw+1);
-    }
-    for (ix=0;ix<nx;ix++){ 
-      for (itw=0;itw<Ltw;itw++){
-        d_tw[ix][itw] = d[ix][twstart+itw]*wd[ix];
-      } 
-    }
-
-    if (verbose) fprintf(stderr,"processing time window %d of %d\n",Itw+1,Ntw);
-
-    process1c(d_tw,
-              verbose,Ltw,nx,dt,
-              ix1_in,ix2_in,ix3_in,ix4_in,
-              nx1,nx2,nx3,nx4,
-              wd,iter,iter_e,alphai,alphaf,ranki,rankf,fmax,method);
-
-    if (Itw==0){ 
-      for (ix=0;ix<nx;ix++){ 
-        for (itw=0;itw<Ltw;itw++){   
-	  d[ix][twstart+itw] = d_tw[ix][itw];
-        }
-      }	 	 
-    }
-    else{ 
-      for (ix=0;ix<nx;ix++){ 
-        for (itw=0;itw<Dtw;itw++){   
-	  taper = (float) ((Dtw-1) - itw)/(Dtw-1); 
-	  d[ix][twstart+itw] = d[ix][twstart+itw]*(taper) 
-                             + d_tw[ix][itw]*(1-taper);
-        }
-        for (itw=Dtw;itw<Ltw;itw++){   
-	  d[ix][twstart+itw] = d_tw[ix][itw];
-        }
-      }	 	 
-    }
-  }
- 
-  return;
-}
 
 void process1c(float **d,
-	       int verbose,int nt,int nx,float dt,
-               int *x1h,int *x2h,int *x3h,int *x4h,
+	           int verbose,int nt,int nx,float dt,
                int nx1,int nx2,int nx3,int nx4,
                float *wd_no_pad,int iter,int iter_e,float alphai,float alphaf,int ranki,int rankf,float fmax,int method)
 {  
@@ -306,7 +219,9 @@ void process1c(float **d,
   sf_complex* freqslice;
   float* in;
   sf_complex* freqslice2;
-
+  float dk1,dk2,dk3,dk4;
+  float *k1,*k2,*k3,*k4;
+  float min_k1,max_k1,min_k2,max_k2,min_k3,max_k3,min_k4,max_k4;
   __real__ czero = 0;
   __imag__ czero = 0;
 
@@ -315,7 +230,6 @@ void process1c(float **d,
   padfactor = 2;
   /* copy data from input to FFT array and pad with zeros */
   ntfft = padfactor*nt;
-  /* DANGER: YOU MIGHT WANT TO PAD THE SPATIAL DIRECTIONS TOO.*/
   nx1fft = padfactor*nx1;
   nx2fft = padfactor*nx2;
   nx3fft = padfactor*nx3;
@@ -362,18 +276,25 @@ void process1c(float **d,
   fftwf_destroy_plan(p1);
   fftwf_free(in); fftwf_free(out);
   /********************************************************************************************/
-  for (ix=0;ix<nk;ix++){
-	wd[ix] = 0;  
-  }
-  for (ix_no_pad=0;ix_no_pad<nx;ix_no_pad++){
-	ix = x1h[ix_no_pad]*(nx2fft*nx3fft*nx4fft) + x2h[ix_no_pad]*(nx3fft*nx4fft) + x3h[ix_no_pad]*(nx4fft) + x4h[ix_no_pad];
-      if (wd_no_pad[ix_no_pad] > 0){
-	wd[ix] = wd_no_pad[ix_no_pad];
-      }	
+
+
+  freqslice2= sf_complexalloc(nx1fft*nx2fft*nx3fft*nx4fft);
+  for (ix=0;ix<nk;ix++) wd[ix] = 0.0;
+  ix=0;
+  for (ix1=0;ix1<nx1fft;ix1++){
+    for (ix2=0;ix2<nx2fft;ix2++){
+      for (ix3=0;ix3<nx3fft;ix3++){
+        for (ix4=0;ix4<nx4fft;ix4++){
+          if (ix1 < nx1 && ix2 < nx2 && ix3 < nx3 && ix4 < nx4){ 
+            ix_no_pad = ix4*nx3*nx2*nx1 + ix3*nx2*nx1 + ix2*nx1 + ix1;
+            wd[ix] = wd_no_pad[ix_no_pad];
+          }
+    	  ix++;
+        }
+      }
+    }
   }
 	
-  freqslice2= sf_complexalloc(nx1fft*nx2fft*nx3fft*nx4fft);
-  
   f_low = 0.1;   /* min frequency to process */
   f_high = fmax; /* max frequency to process */
 
@@ -390,24 +311,77 @@ void process1c(float **d,
     if_high = 0;
   }
 
+  k1 = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);
+  k2 = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);
+  k3 = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);
+  k4 = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);
+
+  /* define normalized wavenumber vectors (range between -0.5 to 0.5) */
+  dk1 = (float) 1/nx1fft;
+  dk2 = (float) 1/nx2fft;
+  dk3 = (float) 1/nx3fft;
+  dk4 = (float) 1/nx4fft;
+  ix = 0;
+  for (ix4=0;ix4<nx4fft;ix4++){
+    for (ix3=0;ix3<nx3fft;ix3++){
+      for (ix2=0;ix2<nx2fft;ix2++){
+        for (ix1=0;ix1<nx1fft;ix1++){
+    	  if (ix1<truncf(nx1fft/2)) k1[ix] = dk1*ix1;
+    	  else k1[ix] =  -(dk1*nx1fft - dk1*ix1);
+    	  if (ix2<truncf(nx2fft/2)) k2[ix] = dk2*ix2;
+    	  else k2[ix] =  -(dk2*nx2fft - dk2*ix2);
+    	  if (ix3<truncf(nx3fft/2)) k3[ix] = dk3*ix3;
+    	  else k3[ix] =  -(dk3*nx3fft - dk3*ix3);
+    	  if (ix4<truncf(nx4fft/2)) k4[ix] = dk4*ix4;
+    	  else k4[ix] =  -(dk4*nx4fft - dk4*ix4);
+    	  if (nx1fft==1) k1[ix] = 0.0;
+    	  if (nx2fft==1) k2[ix] = 0.0;
+    	  if (nx3fft==1) k3[ix] = 0.0;
+    	  if (nx4fft==1) k4[ix] = 0.0;
+    	  ix++;
+        }
+      }
+    }
+  }
+
+  min_k1 = k1[0]; max_k1 = k1[0];min_k2 = k2[0]; max_k2 = k2[0];min_k3 = k3[0]; max_k3 = k3[0];min_k4 = k4[0]; max_k4 = k4[0];
+  for (ix=0;ix<nk;ix++){
+    if (k1[ix]<min_k1) min_k1 = k1[ix];
+    if (k1[ix]>max_k1) max_k1 = k1[ix];
+    if (k2[ix]<min_k2) min_k2 = k2[ix];
+    if (k2[ix]>max_k2) max_k2 = k2[ix];
+    if (k3[ix]<min_k3) min_k3 = k3[ix];
+    if (k3[ix]>max_k3) max_k3 = k3[ix];
+    if (k4[ix]<min_k4) min_k4 = k4[ix];
+    if (k4[ix]>max_k4) max_k4 = k4[ix];
+  }
+  fprintf(stderr,"nx1fft=%d min_k1=%f max_k1=%f\n",nx1fft,min_k1,max_k1);
+  fprintf(stderr,"nx2fft=%d min_k2=%f max_k2=%f\n",nx2fft,min_k2,max_k2);
+  fprintf(stderr,"nx3fft=%d min_k3=%f max_k3=%f\n",nx3fft,min_k3,max_k3);
+  fprintf(stderr,"nx4fft=%d min_k4=%f max_k4=%f\n",nx4fft,min_k4,max_k4);
   /* process frequency slices */
   for (iw=if_low;iw<if_high;iw++){
     if (verbose) fprintf(stderr,"\r                                         ");
     if (verbose) fprintf(stderr,"\rfrequency slice %d of %d",iw-if_low+1,if_high-if_low);
 	  
-    for (ix=0;ix<nk;ix++){
-      freqslice[ix] = freqslice2[ix] = czero;	
-    }
-
-    for (ix_no_pad=0;ix_no_pad<nx;ix_no_pad++){
-      ix = x1h[ix_no_pad]*(nx2fft*nx3fft*nx4fft) + x2h[ix_no_pad]*(nx3fft*nx4fft) + x3h[ix_no_pad]*(nx4fft) + x4h[ix_no_pad];
-      if (wd_no_pad[ix_no_pad] > 0){
-	freqslice[ix] = freqslice2[ix] = cpfft[ix_no_pad][iw];
-      }	
+    for (ix=0;ix<nk;ix++) freqslice[ix] = freqslice2[ix] = czero;
+    ix=0;
+    for (ix1=0;ix1<nx1fft;ix1++){
+      for (ix2=0;ix2<nx2fft;ix2++){
+        for (ix3=0;ix3<nx3fft;ix3++){
+          for (ix4=0;ix4<nx4fft;ix4++){
+            if (ix1 < nx1 && ix2 < nx2 && ix3 < nx3 && ix4 < nx4){ 
+              ix_no_pad = ix1*nx2*nx3*nx4 + ix2*nx3*nx4 + ix3*nx4 + ix4;
+	          freqslice[ix] = freqslice2[ix] = cpfft[ix_no_pad][iw];
+            }
+    	    ix++;
+          }
+        }
+      }
     }
 
     /* The reconstruction engine: */
-    if (method==1) pocs5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,perci,percf,alphai,alphaf);
+    if (method==1) pocs5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,k1,k2,k3,k4,iter,perci,percf,alphai,alphaf);
     else if (method==2) mwni5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter_e,iter,verbose);
     else if (method==3) seqsvd5d(freqslice,freqslice2,wd,nx1fft,nx2fft,nx3fft,nx4fft,nk,iter,alphai,alphaf,ranki,rankf);
 
@@ -418,10 +392,10 @@ void process1c(float **d,
     	for (ix3=0;ix3<nx3fft;ix3++){
     	  for (ix4=0;ix4<nx4fft;ix4++){
     	    if (ix1<nx1 && ix2<nx2 && ix3<nx3 && ix4<nx4){
-              ix_no_pad = ix4*nx3*nx2*nx1 + ix3*nx2*nx1 + ix2*nx1 + ix1;
+              ix_no_pad = ix1*nx2*nx3*nx4 + ix2*nx3*nx4 + ix3*nx4 + ix4;
     	      cpfft[ix_no_pad][iw] = freqslice2[ix];
     	    }
-	    ix++;
+            ix++;
     	  }
     	}
       }
@@ -461,11 +435,16 @@ void process1c(float **d,
 
   for (ix=0;ix<nx1*nx2*nx3*nx4;ix++) for (it=0; it<nt; it++) d[ix][it]=pfft[ix][it]/ntfft;
   
+  free1float(k1);
+  free1float(k2);
+  free1float(k3);
+  free1float(k4);
+
   return;
 
 }
 
-void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,int Iter,float perci,float percf,float alphai,float alphaf)
+void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,float *k1,float *k2,float *k3,float *k4,int Iter,float perci,float percf,float alphai,float alphaf)
 {  
 
   sf_complex czero;
@@ -482,16 +461,13 @@ void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,in
   float pclip;
   fftwf_plan p2;
   fftwf_plan p3;
-
   __real__ czero = 0;
   __imag__ czero = 0;
 
+
   mabs = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);  
   mabsiter = sf_floatalloc(nx1fft*nx2fft*nx3fft*nx4fft);
-  /******************************************************************************************** FX1X2 to FK1K2
-  make the plan that will be used for each frequency slice
-  written as a 4D transform with length =1 for two of the dimensions. 
-  This is to make it easier to upgrade to reconstruction of 4 spatial dimensions. */
+  /********************************************************************************************/
   rank = 4;
   n = sf_intalloc(4);
   n[0] = nx1fft;
@@ -501,10 +477,7 @@ void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,in
   p2 = fftwf_plan_dft(rank, n, (fftwf_complex*)freqslice2, (fftwf_complex*)freqslice2, FFTW_FORWARD, FFTW_ESTIMATE);
   /********************************************************************************************/
   
-  /******************************************************************************************** FK1K2 to FX1X2
-  make the plan that will be used for each frequency slice
-  written as a 4D transform with length =1 for two of the dimensions. 
-  This is to make it easier to upgrade to reconstruction of 4 spatial dimensions. */
+  /********************************************************************************************/
   p3 = fftwf_plan_dft(rank, n, (fftwf_complex*)freqslice2, (fftwf_complex*)freqslice2, FFTW_BACKWARD, FFTW_ESTIMATE);
   /********************************************************************************************/
 
@@ -515,7 +488,7 @@ void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,in
   fftwf_execute(p3); /* FFT k to x */
   
   for (ix=0;ix<nk;ix++) freqslice2[ix]=freqslice2[ix]*(1/(float) nk);
-  for (iter=1;iter<Iter;iter++){  /* loop for thresholding */
+  for (iter=0;iter<Iter;iter++){  /* loop for thresholding */
     fftwf_execute(p2); /* FFT x to k */
     
     count = 0;
@@ -533,7 +506,10 @@ void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,in
       /* thresholding */
       if (mabsiter[ix]<sigma) freqslice2[ix] = czero;
       /* band limitation */
-      else{ count++; }
+      //if (fabsf(k1[ix])>0.4) freqslice2[ix] = czero;
+      //if (fabsf(k2[ix])>0.4) freqslice2[ix] = czero;
+      //if (fabsf(k3[ix])>0.4) freqslice2[ix] = czero;
+      //if (fabsf(k4[ix])>0.4) freqslice2[ix] = czero;      
     }
     
     fftwf_execute(p3); /* FFT k to x */
@@ -544,7 +520,6 @@ void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,in
     for (ix=0;ix<nk;ix++) freqslice2[ix]=freqslice[ix]*alpha + freqslice2[ix]*(1-alpha*wd[ix]); /* x,w */
     
   }
-  
   fftwf_destroy_plan(p2);
   fftwf_destroy_plan(p3);
   
@@ -1133,6 +1108,223 @@ void mult_svd(sf_complex **A, sf_complex **U,float *S,sf_complex **VT,int M,int 
   return;
 }
 
+void radial_filter_gathers(float **d,
+                           float o1,float d1,int n1,
+                           float o2,float d2,int n2,
+                           float o3,float d3,int n3,
+                           float o4,float d4,int n4,
+                           float o5,float d5,int n5,
+                           float fa,float fb,float fc,float fd,
+                           int axis)
+{
+  float **d_gather;
+  int i1,i2,i3,i4,i5;
+  // process gathers
+  if (axis==2){
+    d_gather = sf_floatalloc2(n1,n2);
+    for (i3=0;i3<n3;i3++){ for (i4=0;i4<n4;i4++){ for (i5=0;i5<n5;i5++){
+      for (i2=0;i2<n2;i2++) for (i1=0;i1<n1;i1++) d_gather[i2][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1];
+      radial_filter(d_gather,o1,d1,n1,o2,d2,n2,fa,fb,fc,fd); 
+      for (i2=0;i2<n2;i2++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i2][i1]; 
+    }}}
+  }
+  else if (axis==3){
+    d_gather = sf_floatalloc2(n1,n3);
+    for (i2=0;i2<n2;i2++){ for (i4=0;i4<n4;i4++){ for (i5=0;i5<n5;i5++){
+      for (i3=0;i3<n3;i3++) for (i1=0;i1<n1;i1++) d_gather[i3][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
+      radial_filter(d_gather,o1,d1,n1,o3,d3,n3,fa,fb,fc,fd); 
+      for (i3=0;i3<n3;i3++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i3][i1]; 
+    }}}
+  }
+  else if (axis==4){
+    d_gather = sf_floatalloc2(n1,n4);
+    for (i2=0;i2<n2;i2++){ for (i3=0;i3<n3;i3++){ for (i5=0;i5<n5;i5++){
+      for (i4=0;i4<n4;i4++) for (i1=0;i1<n1;i1++) d_gather[i4][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
+      radial_filter(d_gather,o1,d1,n1,o4,d4,n4,fa,fb,fc,fd); 
+      for (i4=0;i4<n4;i4++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i4][i1]; 
+    }}}
+  }
+  else if (axis==5){
+    d_gather = sf_floatalloc2(n1,n5);
+    for (i2=0;i2<n2;i2++){ for (i3=0;i3<n3;i3++){ for (i4=0;i4<n4;i4++){
+      for (i5=0;i5<n5;i5++) for (i1=0;i1<n1;i1++) d_gather[i5][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
+      radial_filter(d_gather,o1,d1,n1,o5,d5,n5,fa,fb,fc,fd); 
+      for (i5=0;i5<n5;i5++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i5][i1]; 
+    }}}
+  }
+                           
+  free2float(d_gather);
+  return;
+}
+
+
+void radial_filter(float **d,float ot, float dt, int nt,float ox, float dx, int nx,float fa,float fb,float fc,float fd)
+{
+  int np,ip,it;
+  float op,dp;
+  float *trace,**m;
+//  sf_file outtmp;
+//  char tmpname[256];
+  
+//  sprintf(tmpname, "tmp_radial_transform.rsf");
+//  outtmp = sf_output(tmpname);
+
+  np=1801;
+  op=-90;
+  dp=0.1;
+  m = sf_floatalloc2(nt,np);
+  trace = sf_floatalloc(nt);  
+  radial_op(d,m,nt,nx,np,op,dp,true); 
+  
+//  write5d(m,
+//          nt,ot,dt,"Time","s",  
+//          np,op,dp,"Angle","Degrees",
+//          1,0,1," "," ",
+//          1,0,1," "," ",
+//          1,0,1," "," ",
+//          "Radial Domain",outtmp);
+//  sf_fileclose(outtmp);
+  
+  for (ip=0;ip<np;ip++){  
+    for (it=0;it<nt;it++) trace[it] = m[ip][it];    
+    bpfilter(trace,dt,nt,fa,fb,fc,fd);
+    for (it=0;it<nt;it++) m[ip][it] = trace[it];    
+  }
+  radial_op(d,m,nt,nx,np,op,dp,false); 
+
+  free1float(trace);
+  free2float(m);
+  return;
+}
+
+void radial_op(float **d,float **m,int nt,int nx,int np,float op,float dp,bool adj)
+{
+  int ip,it,ix;
+  float ox,dx,ot,dt,p,p_floor,x,t,alpha,beta;
+  
+  ox=-1;
+  dx=2/(float) nx;
+  ot=0;
+  dt=1/(float) nt;
+  
+  if (adj){
+    for (it=0;it<nt;it++) for (ip=0;ip<np;ip++) m[ip][it] = 0.0; 
+  }
+  else{
+    for (it=0;it<nt;it++) for (ix=0;ix<nx;ix++) d[ix][it] = 0.0; 
+  }
+  
+  for (it=0;it<nt;it++){ 
+    for (ix=0;ix<nx;ix++){
+      x = ix*dx + ox;
+      t = it*dt + ot;
+      p = (180/PI)*atanf(x/t);
+      //fprintf(stderr,"p=%f\n",p);
+      ip = (int) truncf((p - op)/dp);
+      p_floor = truncf((p - op)/dp)*dp + op;
+      alpha = (p-p_floor)/dp;
+      beta = 1-alpha;
+      if (ip >= 0 && ip+1 < np){
+        if (adj){
+          m[ip][it]   +=  beta*d[ix][it];
+          m[ip+1][it] += alpha*d[ix][it];
+        }
+        else{
+          d[ix][it] += (1/(beta*beta + alpha*alpha))*(beta*m[ip][it] + alpha*m[ip+1][it]);
+	    }
+	  }
+    }
+  }
+  return;
+}
+
+void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d)
+/*< bandpass filter >*/
+{
+  int iw,nw,ntfft,ia,ib,ic,id,it;
+  float *in1, *out2;
+  sf_complex *in2,*out1;
+  sf_complex czero;
+  fftwf_plan p1;
+  fftwf_plan p2;
+
+  __real__ czero = 0;
+  __imag__ czero = 0;
+  ntfft = 4*nt;
+  nw=ntfft/2+1;
+  if(a>0) ia = trunc(a*dt*ntfft);
+  else ia = 0;
+  if(b>0) ib = trunc(b*dt*ntfft);
+  else ib = 1;
+  if(c*dt*ntfft<nw) ic = trunc(c*dt*ntfft);
+  else ic = nw-1;
+  if(d*dt*ntfft<nw) id = trunc(d*dt*ntfft);
+  else id = nw;
+
+  out1 = sf_complexalloc(nw);
+  in1  = sf_floatalloc(ntfft);
+  p1   = fftwf_plan_dft_r2c_1d(ntfft, in1, (fftwf_complex*)out1, FFTW_ESTIMATE);
+  out2 = sf_floatalloc(ntfft);
+  in2  = sf_complexalloc(ntfft);
+  p2   = fftwf_plan_dft_c2r_1d(ntfft, (fftwf_complex*)in2, out2, FFTW_ESTIMATE);
+
+  for (it=0; it<nt; it++) in1[it]=trace[it];
+  for (it=nt; it< ntfft;it++) in1[it] = 0.0;
+  fftwf_execute(p1);
+  for(iw=0;iw<ia;iw++)  in2[iw] = czero; 
+  for(iw=ia;iw<ib;iw++) in2[iw] = out1[iw]*((float) (iw-ia)/(ib-ia))/sqrtf((float) ntfft); 
+  for(iw=ib;iw<ic;iw++) in2[iw] = out1[iw]/sqrtf((float) ntfft); 
+  for(iw=ic;iw<id;iw++) in2[iw] = out1[iw]*(1 - (float) (iw-ic)/(id-ic))/sqrtf((float) ntfft); 
+  for(iw=id;iw<nw;iw++) in2[iw] = czero; 
+  fftwf_execute(p2); /* take the FFT along the time dimension */
+  for(it=0;it<nt;it++) trace[it] = out2[it]/sqrtf((float) ntfft); 
+  
+  fftwf_destroy_plan(p1);
+  fftwf_destroy_plan(p2);
+  fftwf_free(in1); fftwf_free(out1);
+  fftwf_free(in2); fftwf_free(out2);
+  return;
+}
+
+void write5d(float **data,
+             int n1, float o1, float d1, const char *label1, const char *unit1,  
+             int n2, float o2, float d2, const char *label2, const char *unit2,  
+             int n3, float o3, float d3, const char *label3, const char *unit3,  
+             int n4, float o4, float d4, const char *label4, const char *unit4,  
+             int n5, float o5, float d5, const char *label5, const char *unit5,
+             const char *title, sf_file outfile)
+/*< write a 5d array of floats to disk >*/
+{
+  sf_putfloat(outfile,"o1",o1);
+  sf_putfloat(outfile,"d1",d1);
+  sf_putint(outfile,"n1",n1);
+  sf_putstring(outfile,"label1",label1);
+  sf_putstring(outfile,"unit1",unit1);
+  sf_putfloat(outfile,"o2",o2);
+  sf_putfloat(outfile,"d2",d2);
+  sf_putint(outfile,"n2",n2);
+  sf_putstring(outfile,"label2",label2); 
+  sf_putstring(outfile,"unit2",unit2);
+  sf_putfloat(outfile,"o3",o3);
+  sf_putfloat(outfile,"d3",d3);
+  sf_putint(outfile,"n3",n3);
+  sf_putstring(outfile,"label3",label3);
+  sf_putstring(outfile,"unit3",unit3);
+  sf_putfloat(outfile,"o4",o4);
+  sf_putfloat(outfile,"d4",d4);
+  sf_putint(outfile,"n4",n4);
+  sf_putstring(outfile,"label4",label4);
+  sf_putstring(outfile,"unit4",unit4);
+  sf_putfloat(outfile,"o5",o5);
+  sf_putfloat(outfile,"d5",d5);
+  sf_putint(outfile,"n5",n5);
+  sf_putstring(outfile,"label5",label5);
+  sf_putstring(outfile,"unit5",unit5);
+  sf_putstring(outfile,"title",title);
+  sf_floatwrite(data[0],n1*n2*n3*n4*n5,outfile);
+  sf_fileclose(outfile);
+  return;
+}
 
 
 

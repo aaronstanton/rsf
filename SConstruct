@@ -8,6 +8,7 @@ linearevents5d
 geom5d
 pad5d
 reg5d
+pocs5d
 taper5d
 merge5d
 decimate
@@ -19,6 +20,7 @@ velwem
 spbpdn
 wavsep
 fkfilter
+radfilter
 convert_to_angle
 velconvert
 gxsxtomxhx
@@ -31,6 +33,7 @@ mpiwem
 mpiwem_poynting
 mpiewem
 mpiewem_poynting
+mpivwem_poynting
 mpiewem_sep
 '''
 

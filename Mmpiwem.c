@@ -370,8 +370,8 @@ void wem1shot(float **d, float **m,float *wav,
   __imag__ czero = 0;
   __real__ i = 0;
   __imag__ i = 1;
-  padt = 1;
-  padx = 1;
+  padt = 2;
+  padx = 2;
   ntfft = padt*nt;
   nw=ntfft/2+1;
   if(fmax*dt*ntfft+1<nw) ifmax = trunc(fmax*dt*ntfft)+1;
