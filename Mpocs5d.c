@@ -31,18 +31,20 @@
 void pocs(float **d,
 	      int verbose,int nt,int nx,float dt,
           int nx1,int nx2,int nx3,int nx4,
-          float *wd_no_pad,int iter,float alphai,float alphaf,float fmax);
-void pocs5d(sf_complex *freqslice,sf_complex *freqslice2,float *wd,int nx1fft,int nx2fft,int nx3fft,int nx4fft,int nk,float *k1,float *k2,float *k3,float *k4,int Iter,float perci,float percf,float alphai,float alphaf);
+          float *wd_no_pad,int niter,
+          float alphai,float alphaf,
+          float fmax,
+          int smooth1,int smooth2,int smooth3,int smooth4,int smooth5,
+          bool soft);
 void radial_filter_gathers(float **d,
                            float o1,float d1,int n1,
                            float o2,float d2,int n2,
                            float o3,float d3,int n3,
                            float o4,float d4,int n4,
                            float o5,float d5,int n5,
-                           float fa,float fb,float fc,float fd,
-                           int axis);
-void radial_filter(float **d,float ot, float dt, int nt,float ox, float dx, int nx,float fa,float fb,float fc,float fd);
-void radial_op(float **d,float **m,int nt,int nx,int ntp,int np,float op,float dp,bool adj);
+                           int axis,int L);
+void radial_filter(float **d, int nt, int nx, int nL);
+float signf(float a);
 void mean_filter(float *trace, int nt, int ntw, int nrepeat);
 void write5d(float **data,
              int n1, float o1, float d1, const char *label1, const char *unit1,  
@@ -66,7 +68,9 @@ int main(int argc, char* argv[])
     float alphai, alphaf, fmax;
     int sum_wd;
     bool verbose;
- 
+    int smooth1,smooth2,smooth3,smooth4,smooth5;
+    bool soft;
+    
     in = sf_input("in");
     out = sf_output("out");
 
@@ -94,6 +98,12 @@ int main(int argc, char* argv[])
     if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity 0=quiet 1=loud */
     if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/d1; /* max frequency to process */
     if (fmax > 0.5/d1) fmax = 0.5/d1;
+    if (!sf_getint("smooth1",&smooth1)) smooth1 = 0; /* length of spectral smoothing window for dimension 1 */
+    if (!sf_getint("smooth2",&smooth2)) smooth2 = 0; /* length of spectral smoothing window for dimension 2  */
+    if (!sf_getint("smooth3",&smooth3)) smooth3 = 0; /* length of spectral smoothing window for dimension 3  */
+    if (!sf_getint("smooth4",&smooth4)) smooth4 = 0; /* length of spectral smoothing window for dimension 4  */
+    if (!sf_getint("smooth5",&smooth5)) smooth5 = 0; /* length of spectral smoothing window for dimension 5  */
+    if (!sf_getbool("soft",&soft)) soft = false; /* Type of thresholding, default is hard thresholding */
 
     sf_putfloat(out,"o1",o1);
     sf_putfloat(out,"o2",o2);
@@ -151,7 +161,10 @@ int main(int argc, char* argv[])
     pocs(d,
          verbose,n1,nx,d1,
          n2,n3,n4,n5,
-         wd,niter,alphai,alphaf,fmax);
+         wd,niter,alphai,alphaf,
+         fmax,
+         smooth1,smooth2,smooth3,smooth4,smooth5,
+         soft);
 
     for (ix=0; ix<nx; ix++) {
       for (i1=0; i1<n1; i1++) trace[i1] = d[ix][i1];
@@ -165,7 +178,11 @@ int main(int argc, char* argv[])
 void pocs(float **d,
 	      int verbose,int nt,int nx,float dt,
           int nx1,int nx2,int nx3,int nx4,
-          float *wd_no_pad,int niter,float alphai,float alphaf,float fmax)
+          float *wd_no_pad,int niter,
+          float alphai,float alphaf,
+          float fmax,
+          int smooth1,int smooth2,int smooth3,int smooth4,int smooth5,
+          bool soft)
 {  
   int it,ix,iw,ntfft,nx1fft,nx2fft,nx3fft,nx4fft,nw,nk,if_low,if_high,padfactor,ix_no_pad,ix1,ix2,ix3,ix4,nclip,iter,*n,ix1_shift,ix2_shift,ix3_shift,ix4_shift,ix_shift;
   float perci,percf,*wd,**M,**Mshift,*thres,*in1,*out2,f_low,f_high,alpha,pclip,*amp,*trace;
@@ -174,8 +191,8 @@ void pocs(float **d,
   
   __real__ czero = 0;
   __imag__ czero = 0;
-  perci = 0.999;
-  percf = 0.001;
+  perci = 0.9999;
+  percf = 0.0;
   padfactor = 2;
   /* copy data from input to FFT array and pad with zeros */
   ntfft = padfactor*nt;
@@ -189,22 +206,6 @@ void pocs(float **d,
   if(nx4==1) nx4fft = 1;
   nw=ntfft/2+1;
   nk=nx1fft*nx2fft*nx3fft*nx4fft;
-
-/*
-  fprintf(stderr,"nt=%d\n",nt);
-  fprintf(stderr,"nx1=%d\n",nx1);
-  fprintf(stderr,"nx2=%d\n",nx2);
-  fprintf(stderr,"nx3=%d\n",nx3);
-  fprintf(stderr,"nx4=%d\n",nx4);
-  fprintf(stderr,"ntfft=%d\n",ntfft);
-  fprintf(stderr,"nx1fft=%d\n",nx1fft);
-  fprintf(stderr,"nx2fft=%d\n",nx2fft);
-  fprintf(stderr,"nx3fft=%d\n",nx3fft);
-  fprintf(stderr,"nx4fft=%d\n",nx4fft);
-  fprintf(stderr,"nx=%d\n",nx);
-  fprintf(stderr,"nw=%d\n",nw);
-  fprintf(stderr,"nk=%d\n",nk);
-*/
 
   wd = sf_floatalloc(nk);
   D    = sf_complexalloc2(nw,nk);
@@ -262,10 +263,10 @@ void pocs(float **d,
   // build iteration dependent threshold schedule
   thres = sf_floatalloc(niter);
   for (iter=0;iter<niter;iter++){
-    pclip = 100*(perci - (iter-1)*((perci-percf)/(niter-1)));
+    pclip = 100*(perci - iter*((perci-percf)/niter));
     nclip = SF_MAX(SF_MIN(nw*nk*pclip/100. + .5,nw*nk-1),0);
     thres[iter]=sf_quantile(nclip,nw*nk,amp);
-    //fprintf(stderr,"thres[%d]=%f\n",iter,thres[iter]);
+    //fprintf(stderr,"thres[%d]=%f pclip=%f \n",iter,thres[iter],pclip);
   }
 
   trace = sf_floatalloc(nw); 
@@ -288,25 +289,32 @@ void pocs(float **d,
       for (ix=0;ix<nk;ix++) D[ix][iw] = freqslice[ix];
     }
     // *****************************************************************************
+
+
+if (!soft){ // hard thresholding
+
     for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) if (sf_cabs(D[ix][iw])<thres[iter]) M[ix][iw] = 0.0;
-    for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) D[ix][iw] = D[ix][iw]*M[ix][iw]; 
-    for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) M[ix][iw] = cabsf(D[ix][iw]);
     for (iw=0;iw<if_low;iw++)   for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
     for (iw=if_high;iw<nw;iw++) for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
 
-    // smooth M along the frequency axis
-    for (ix=0;ix<nk;ix++){
-      for (iw=0;iw<nw;iw++) trace[iw] = M[ix][iw];
-      mean_filter(trace,nw,5,3);
-      for (iw=0;iw<nw;iw++) M[ix][iw] = trace[iw];    
+/*    
+    if (iter==0){    
+    sf_file outtmp1;
+    char tmpname1[256];
+    sprintf(tmpname1, "01_fk_raw.rsf");
+    outtmp1 = sf_output(tmpname1);  
+    write5d(M,
+            nw,0,1,"w","index",  
+            nx1fft,0,1,"k1","Index",
+            nx2fft,0,1,"k2","Index",
+            nx3fft,0,1,"k3","Index",
+            nx4fft,0,1,"k4","Index",
+            "Unfiltered F-K Mask",outtmp1);
+    sf_fileclose(outtmp1);
     }
+*/
 
-    // replace original values
-    for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) if (sf_cabs(D[ix][iw])>=thres[iter]) M[ix][iw] = cabsf(D[ix][iw]);
-
-
-
-/*
+    if (smooth2>0 || smooth3>0 || smooth4>0 || smooth5>0){
     // map M to Mshift
     for (iw=if_low;iw<if_high;iw++){
       for (ix1=0;ix1<nx1fft;ix1++){ for (ix2=0;ix2<nx2fft;ix2++){ for (ix3=0;ix3<nx3fft;ix3++){ for (ix4=0;ix4<nx4fft;ix4++){
@@ -323,39 +331,20 @@ void pocs(float **d,
         Mshift[ix_shift][iw] = M[ix][iw];
       }}}}
     }
-
-//if (iter==0){    
-//sf_file outtmp1;
-//char tmpname1[256];
-//sprintf(tmpname1, "01_fk_raw.rsf");
-//outtmp1 = sf_output(tmpname1);  
-//write5d(Mshift,
-//        nw,0,1,"w","index",  
-//        nx1fft,0,1,"k1","Index",
-//        nx2fft,0,1,"k2","Index",
-//        nx3fft,0,1,"k3","Index",
-//        nx4fft,0,1,"k4","Index",
-//        "F-K Unfiltered",outtmp1);
-//sf_fileclose(outtmp1);
-//}
     
-    radial_filter_gathers(Mshift,0,1,nw,0,1,nx1fft,0,1,nx2fft,0,1,nx3fft,0,1,nx4fft,0,0,0.05,0.15,2);
-
-//if (iter==0){    
-//sf_file outtmp2;
-//char tmpname2[256];
-//sprintf(tmpname2, "02_fk_filtered.rsf");
-//outtmp2 = sf_output(tmpname2);  
-//write5d(Mshift,
-//        nw,0,1,"w","index",  
-//        nx1fft,0,1,"k1","Index",
-//        nx2fft,0,1,"k2","Index",
-//        nx3fft,0,1,"k3","Index",
-//        nx4fft,0,1,"k4","Index",
-//        "F-K Filtered",outtmp2);
-//sf_fileclose(outtmp2);
-//}
-
+    if (smooth2>0){
+      radial_filter_gathers(Mshift,0,1,nw,0,1,nx1fft,0,1,nx2fft,0,1,nx3fft,0,1,nx4fft,2,smooth2);
+    }
+    if (smooth3>0){
+      radial_filter_gathers(Mshift,0,1,nw,0,1,nx1fft,0,1,nx2fft,0,1,nx3fft,0,1,nx4fft,3,smooth3);
+    }
+    if (smooth4>0){
+      radial_filter_gathers(Mshift,0,1,nw,0,1,nx1fft,0,1,nx2fft,0,1,nx3fft,0,1,nx4fft,4,smooth4);
+    }
+    if (smooth5>0){
+      radial_filter_gathers(Mshift,0,1,nw,0,1,nx1fft,0,1,nx2fft,0,1,nx3fft,0,1,nx4fft,5,smooth5);
+    }
+    
     // map Mshift to M
     for (iw=if_low;iw<if_high;iw++){
       for (ix1=0;ix1<nx1fft;ix1++){ for (ix2=0;ix2<nx2fft;ix2++){ for (ix3=0;ix3<nx3fft;ix3++){ for (ix4=0;ix4<nx4fft;ix4++){
@@ -372,13 +361,52 @@ void pocs(float **d,
         M[ix][iw] = Mshift[ix_shift][iw];
       }}}}
     }
+    }
+
+
+    if (smooth1>0){
+    // smooth M along the frequency axis
+    for (ix=0;ix<nk;ix++){
+      for (iw=0;iw<nw;iw++) trace[iw] = M[ix][iw];
+      mean_filter(trace,nw,smooth1,1);
+      for (iw=0;iw<nw;iw++) M[ix][iw] = trace[iw];    
+    }
+    }
+
+/*
+    if (iter==0){    
+    sf_file outtmp2;
+    char tmpname2[256];
+    sprintf(tmpname2, "02_fk_filtered.rsf");
+    outtmp2 = sf_output(tmpname2);  
+    write5d(M,
+            nw,0,1,"w","index",  
+            nx1fft,0,1,"k1","Index",
+            nx2fft,0,1,"k2","Index",
+            nx3fft,0,1,"k3","Index",
+            nx4fft,0,1,"k4","Index",
+            "Filtered F-K Mask",outtmp2);
+    sf_fileclose(outtmp2);
+    }
 */
 
+    for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) D[ix][iw] = D[ix][iw]*M[ix][iw]; 
+}
+else { // soft thresholding
+    for (iw=if_low;iw<if_high;iw++){ 
+      for (ix=0;ix<nk;ix++){ 
+        if (sf_cabs(D[ix][iw])<thres[iter]) M[ix][iw] = 0.0;
+        else M[ix][iw] = sf_cabs(D[ix][iw]) - thres[iter];
+      }
+    }
+    for (iw=0;iw<if_low;iw++)   for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
+    for (iw=if_high;iw<nw;iw++) for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
     for (iw=if_low;iw<if_high;iw++){ for (ix=0;ix<nk;ix++){ 
       __real__ D[ix][iw] = M[ix][iw]*cosf(cargf(D[ix][iw]));
       __imag__ D[ix][iw] = M[ix][iw]*sinf(cargf(D[ix][iw]));
     }}
-    
+}
+
     // *****************************************************************************
     // transform D from w-k to w-x (afterwards re-zero the zero pad regions of the array)
     for (iw=if_low;iw<if_high;iw++){
@@ -441,8 +469,7 @@ void radial_filter_gathers(float **d,
                            float o3,float d3,int n3,
                            float o4,float d4,int n4,
                            float o5,float d5,int n5,
-                           float fa,float fb,float fc,float fd,
-                           int axis)
+                           int axis,int L)
 {
   float **d_gather;
   int i1,i2,i3,i4,i5;
@@ -451,7 +478,7 @@ void radial_filter_gathers(float **d,
     d_gather = sf_floatalloc2(n1,n2);
     for (i3=0;i3<n3;i3++){ for (i4=0;i4<n4;i4++){ for (i5=0;i5<n5;i5++){
       for (i2=0;i2<n2;i2++) for (i1=0;i1<n1;i1++) d_gather[i2][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1];
-      radial_filter(d_gather,o1,d1,n1,o2,d2,n2,fa,fb,fc,fd); 
+      radial_filter(d_gather,n1,n2,L); 
       for (i2=0;i2<n2;i2++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i2][i1]; 
     }}}
   }
@@ -459,7 +486,7 @@ void radial_filter_gathers(float **d,
     d_gather = sf_floatalloc2(n1,n3);
     for (i2=0;i2<n2;i2++){ for (i4=0;i4<n4;i4++){ for (i5=0;i5<n5;i5++){
       for (i3=0;i3<n3;i3++) for (i1=0;i1<n1;i1++) d_gather[i3][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
-      radial_filter(d_gather,o1,d1,n1,o3,d3,n3,fa,fb,fc,fd); 
+      radial_filter(d_gather,n1,n3,L); 
       for (i3=0;i3<n3;i3++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i3][i1]; 
     }}}
   }
@@ -467,7 +494,7 @@ void radial_filter_gathers(float **d,
     d_gather = sf_floatalloc2(n1,n4);
     for (i2=0;i2<n2;i2++){ for (i3=0;i3<n3;i3++){ for (i5=0;i5<n5;i5++){
       for (i4=0;i4<n4;i4++) for (i1=0;i1<n1;i1++) d_gather[i4][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
-      radial_filter(d_gather,o1,d1,n1,o4,d4,n4,fa,fb,fc,fd); 
+      radial_filter(d_gather,n1,n4,L); 
       for (i4=0;i4<n4;i4++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i4][i1]; 
     }}}
   }
@@ -475,7 +502,7 @@ void radial_filter_gathers(float **d,
     d_gather = sf_floatalloc2(n1,n5);
     for (i2=0;i2<n2;i2++){ for (i3=0;i3<n3;i3++){ for (i4=0;i4<n4;i4++){
       for (i5=0;i5<n5;i5++) for (i1=0;i1<n1;i1++) d_gather[i5][i1] = d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1]; 
-      radial_filter(d_gather,o1,d1,n1,o5,d5,n5,fa,fb,fc,fd); 
+      radial_filter(d_gather,n1,n5,L); 
       for (i5=0;i5<n5;i5++) for (i1=0;i1<n1;i1++) d[i5*n4*n3*n2 + i4*n3*n2 + i3*n2 + i2][i1] = d_gather[i5][i1]; 
     }}}
   }
@@ -484,110 +511,64 @@ void radial_filter_gathers(float **d,
   return;
 }
 
-void radial_filter(float **d,float ot, float dt, int nt,float ox, float dx, int nx,float fa,float fb,float fc,float fd)
+void radial_filter(float **d, int nt, int nx, int nL)
 {
-  int np,ip,it,ix,ntp;
-  float op,dp,p;
-  float *trace,**m;
-  float dmax1,dmax2;
-//  sf_file outtmp;
-//  char tmpname[256];  
-//  sprintf(tmpname, "tmp_radial_transform.rsf");
-//  outtmp = sf_output(tmpname);
-
-  np=1801;
-  op=-90;
-  dp=0.1;
-  ntp = truncf(1.4142*nt);
-
-  m = sf_floatalloc2(ntp,np);
-  trace = sf_floatalloc(ntp);  
-  radial_op(d,m,nt,nx,ntp,np,op,dp,true); 
-  //dmax1 = 0.0;
-  //for (ix=0;ix<nx;ix++) for (it=0;it<nt;it++) if (fabsf(d[ix][it]) > dmax1) dmax1 = fabsf(d[ix][it]);
-
-  for (ip=0;ip<np;ip++){
-    p = ip*dp + op;
-    if (fabsf(p)>60){
-      for (it=0;it<nt;it++) m[ip][it] *= cosf(fabsf(p)*PI/180)/cosf(60*PI/180);
+  int iL,it0,ix0,it,ix;
+  float dx,dt,oL,dL,L,x0,t0,x,t,theta,t1,t2,x1,x2,w1,w2,w3,w4;
+  float **dout;
+  
+  dt = 1/(float) nt;
+  dx = 2/(float) nx;  
+  dL = dt/4;//(dt < dx) ? dt : dx;
+  oL = -dL*(((float) nL-1)/2);
+  dout = sf_floatalloc2(nt,nx);
+  //fprintf(stderr,"oL=%f dL=%f\n",oL,dL);
+  for (ix0=0;ix0<nx;ix0++){
+    for (it0=0;it0<nt;it0++){
+      dout[ix0][it0] = 0.0;
+      x0 = ix0*dx - 1; 
+      t0 = it0*dt; 
+      if (t0>0) theta = atanf(fabsf(x0)/t0);
+      else theta = 90;
+      for (iL=0;iL<nL;iL++){
+        L = iL*dL + oL;       
+        //bilinear interpolation to get 1 value from 4 surrounding points.
+        t = t0 + L*cosf(theta);
+        it = (int) truncf(t/dt);
+        t1 = it*dt;
+        t2 = t1 + dt;
+        x = x0 + signf(x0)*L*sinf(theta);
+        ix = (int) truncf((x + 1)/dx);
+        x1 = ix*dx - 1;
+        x2 = x1 + dx;
+        w1 = (t2-t)*(x2-x)/((t2-t1)*(x2-x1));
+        w2 = (t-t1)*(x2-x)/((t2-t1)*(x2-x1));
+        w3 = (t2-t)*(x-x1)/((t2-t1)*(x2-x1));
+        w4 = (t-t1)*(x-x1)/((t2-t1)*(x2-x1));
+        if (it >= 0 && it+1 < nt && ix >= 0 && ix+1 < nx && w1 >= 0 && w2 >= 0 && w3 >= 0 && w4 >= 0){
+          dout[ix0][it0] += (w1*d[ix][it] + w2*d[ix][it+1] + w3*d[ix+1][it] + w4*d[ix+1][it+1])/nL;
+        }
+        //MARK
+        //fprintf(stderr,"ix0=%d it0=%d ix=%d it=%d \n",ix0,it0,ix,it);
+        //dout[ix0][it0] += d[ix][it]/nL;
+        //MARK
+      }
     }
   }
+  for (ix=0;ix<nx;ix++) for (it=0;it<nt;it++) d[ix][it] = dout[ix][it];
 
-/*
-  write5d(m,
-          ntp,ot,dt,"Time","s",  
-          np,op,dp,"Angle","Degrees",
-          1,0,1," "," ",
-          1,0,1," "," ",
-          1,0,1," "," ",
-          "Radial Domain",outtmp);
-  sf_fileclose(outtmp); 
-*/
-
-  for (ip=0;ip<np;ip++){
-    for (it=0;it<ntp;it++) trace[it] = m[ip][it];
-    mean_filter(trace,ntp,10,2);
-    for (it=0;it<ntp;it++) m[ip][it] = trace[it];    
-  }
-
-  radial_op(d,m,nt,nx,ntp,np,op,dp,false); 
-  //for (ix=0;ix<nx;ix++) for (it=0;it<nt;it++) if (d[ix][it] > 1.0) d[ix][it] = 1.0;
-  //for (ix=0;ix<nx;ix++) for (it=0;it<nt;it++) if (d[ix][it] < 1.0) d[ix][it] = 1.0;
-  
-  free1float(trace);
-  free2float(m);
+  free2float(dout);
   return;
 }
 
-void radial_op(float **d,float **m,int nt,int nx,int ntp,int np,float op,float dp,bool adj)
+float signf(float a)
+/*< sign of a float >*/
 {
-  int ip,it,ix,itp;
-  float ox,dx,ot,dt,p,t_floor,x_floor,x,t,tp,t1,t2,x1,x2,w1,w2,w3,w4,norm;
-  
-  ox=-1;
-  dx=2/(float) nx;
-  ot=0;
-  dt=1/(float) nt;
-  
-  if (adj){
-    for (it=0;it<nt;it++) for (ip=0;ip<np;ip++) m[ip][it] = 0.0; 
-  }
-  else{
-    for (it=0;it<nt;it++) for (ix=0;ix<nx;ix++) d[ix][it] = 0.0; 
-  }
-  
-  for (itp=0;itp<ntp;itp++){ 
-    for (ip=0;ip<np;ip++){
-      tp = itp*dt + ot;
-      p = ip*dp + op;
-      t = tp*cosf(p*PI/180);
-      it = (int) truncf((t - ot)/dt);
-      t1 = it*dt + ot;
-      t2 = t1 + dt;
-      x = tp*sinf(p*PI/180);
-      ix = (int) truncf((x - ox)/dx);
-      x1 = ix*dx + ox;
-      x2 = x1 + dx;
-      w1 = (t2-t)*(x2-x)/((t2-t1)*(x2-x1));
-      w2 = (t-t1)*(x2-x)/((t2-t1)*(x2-x1));
-      w3 = (t2-t)*(x-x1)/((t2-t1)*(x2-x1));
-      w4 = (t-t1)*(x-x1)/((t2-t1)*(x2-x1));
-      // bilinear interpolation into bins
-      if (it >= 0 && it+1 < nt && ix >= 0 && ix+1 < nx && x>-1 && x<1 && t>0 && t<ntp*dt+ot){
-      //if (w1<0 || w1>1 || w2<0 || w2>1 || w3<0 || w3>1 || w4<0 || w4>1) fprintf(stderr,"w1=%f w2=%f w3=%f w4=%f t=%f t1=%f t2=%f x=%f x1=%f x2=%f\n",w1,w2,w3,w4,t,t1,t2,x,x1,x2);
-        if (adj){
-          m[ip][itp] += w1*d[ix][it] + w2*d[ix][it+1] + w3*d[ix+1][it] + w4*d[ix+1][it+1];
-        }
-        else{
-          d[ix][it]     += w1*m[ip][itp]*0.1;
-          d[ix][it+1]   += w2*m[ip][itp]*0.1;
-          d[ix+1][it]   += w3*m[ip][itp]*0.1;
-          d[ix+1][it+1] += w4*m[ip][itp]*0.1;
-	    }
-	  }
-    }
-  }
-  return;
+ float b;
+ if (a>0)      b = 1.0;
+ else if (a<0) b =-1.0;
+ else          b = 0.0;
+ return b;
 }
 
 void mean_filter(float *trace, int nt, int ntw, int nrepeat)
@@ -595,23 +576,25 @@ void mean_filter(float *trace, int nt, int ntw, int nrepeat)
 {
   int irepeat,it,itw,index1;
   float sum,nsum;
-
+  float *tracein;
+  tracein = sf_floatalloc(nt); 
   /* calculate mean value of a window and assign it to the central index */
     for (irepeat=0;irepeat<nrepeat;irepeat++){
+      for (it=0;it<nt;it++) tracein[it] = trace[it];
       for (it=0;it<nt;it++){
         sum  = 0.0;
         nsum = 0.0;
         for (itw=0;itw<ntw;itw++){
           index1 = it - (int) truncf(ntw/2) + itw;
           if (index1>=0 && index1<nt){
-            sum += trace[index1];
+            sum += tracein[index1];
             nsum += 1.0;
           }
         }
         trace[it] = sum/nsum;
       }
     }
-
+  free1float(tracein);
   return;
 }
 
