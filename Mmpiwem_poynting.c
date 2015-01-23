@@ -40,7 +40,7 @@
 
 void wem1shot(float **d, float **m, float **ang1shot,float *wav,
               int nt, float ot, float dt, 
-              int nmx, float omx, float dmx,
+              int nmx, int nmx2,float omx, float dmx,
               int isx, int nsx, float osx, float dsx,
               int nz, float oz, float dz, float gz, float sz,
               float **vel, float fmin, float fmax,
@@ -51,7 +51,7 @@ void extrap1f(float **m,
               float **u_sx, float **u_sz, float **u_gx, float **u_gz,
               int iw, int ang_iw_max, int nw,int ifmax,int ntfft,float dw,float dk,int nk,
               int nz, float oz, float dz, float gz, float sz,
-              int nmx,float omx, float dmx,
+              int nmx,int nmx2,float omx, float dmx,
               float *po,float **pd,
               sf_complex i,sf_complex czero,
               fftwf_plan p1,fftwf_plan p2,
@@ -78,15 +78,16 @@ void compute_angles(float **usx,float **usz,float **ugx,float **ugz,float **m,fl
 float cgdot(float **x,int nz,int nx);
 void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d);
 void smooth_2d(float **in, float **out, int nx, float dx, int nz, float dz, float xa, float xb, float xc, float xd, float za, float zb, float zc, float zd, bool adj);
+void cinterp1d(sf_complex *y1,sf_complex *y2,int nx1,int factor,int npoint,bool adj);
 
 int main(int argc, char* argv[])
 {
 
   sf_file in,intmp,intmp_ang,out,outtmp,outtmp_ang,velp,source_wavelet;
-  int nt,nmx,nz,nsx,npx;
+  int nt,nmx,nmx2,nz,nsx,npx;
   int it,iz,ix,isx,ipx;
   float ot,omx,oz,osx,opx;
-  float dt,dmx,dz,dsx,dpx;
+  float dt,dmx,dmx2,dz,dsx,dpx;
   float gz,sz;
   float **m1shot,**d1shot,**ang1shot,**vp,*wav,**m;
   bool adj;
@@ -98,6 +99,7 @@ int main(int argc, char* argv[])
   char tmpname_ang[256];
   float alpha,px,px_floor;
   bool calc_ang;
+  bool aa;
   MPI_Status mpi_stat;
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
@@ -160,6 +162,15 @@ int main(int argc, char* argv[])
 
   if (!sf_getfloat("gz",&gz)) gz = 0; /* depth of the receivers */
   if (!sf_getfloat("sz",&sz)) sz = 0; /* depth of the sources */
+  if (!sf_getbool("aa",&aa)) aa = false; /* anti-aliasing. if y then wavefields are interpolated by a factor of 2 prior to imaging condition. */
+  if (aa){ 
+    nmx2 = 2*nmx-1;
+    dmx2 = dmx/2;
+  }
+  else{
+    nmx2 = nmx;
+    dmx2 = dmx;
+  }
   if (fmax > 0.5/dt) fmax = 0.5/dt;
   wav = sf_floatalloc(nt);
   sf_floatread(wav,nt,source_wavelet);
@@ -168,8 +179,8 @@ int main(int argc, char* argv[])
   sf_floatread(vp[0],nz*nmx,velp);
   sf_fileclose(velp);
   d1shot = sf_floatalloc2(nt,nmx);
-  m1shot = sf_floatalloc2(nz,nmx);
-  ang1shot = sf_floatalloc2(nz,nmx);
+  m1shot = sf_floatalloc2(nz,nmx2);
+  ang1shot = sf_floatalloc2(nz,nmx2);
   if (adj){
     for (isx=rank;isx<nsx;isx+=num_procs){
       if (verbose) fprintf(stderr,"reading and migrating shot %d...\n",isx);
@@ -177,7 +188,7 @@ int main(int argc, char* argv[])
       sf_seek(in,iseek,SEEK_SET);    
       sf_floatread(d1shot[0],nt*nmx,in);
       wem1shot(d1shot,m1shot,ang1shot,wav,
-               nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nz,oz,dz,gz,sz,
+               nt,ot,dt,nmx,nmx2,omx,dmx,isx,nsx,osx,dsx,nz,oz,dz,gz,sz,
                vp,fmin,fmax,adj,calc_ang,verbose);
       sprintf(tmpname, "tmpdmig_%d.rsf",isx);
       outtmp = sf_output(tmpname);
@@ -188,8 +199,8 @@ int main(int argc, char* argv[])
       sf_putstring(outtmp,"label1","Depth");
       sf_putstring(outtmp,"unit1","m");
       sf_putfloat(outtmp,"o2",omx);
-      sf_putfloat(outtmp,"d2",dmx);
-      sf_putfloat(outtmp,"n2",nmx);
+      sf_putfloat(outtmp,"d2",dmx2);
+      sf_putfloat(outtmp,"n2",nmx2);
       sf_putstring(outtmp,"label2","X");
       sf_putstring(outtmp,"unit2","m");
       sf_putfloat(outtmp,"o3",isx*dsx + osx);
@@ -198,7 +209,7 @@ int main(int argc, char* argv[])
       sf_putstring(outtmp,"label3","Source-x");
       sf_putstring(outtmp,"unit3","m");
       sf_putstring(outtmp,"title","Migrated Shot");
-      sf_floatwrite(m1shot[0],nz*nmx,outtmp);
+      sf_floatwrite(m1shot[0],nz*nmx2,outtmp);
       sf_fileclose(outtmp);
       if (calc_ang){
         sprintf(tmpname_ang, "tmpang_%d.rsf",isx);
@@ -210,8 +221,8 @@ int main(int argc, char* argv[])
         sf_putstring(outtmp_ang,"label1","Depth");
         sf_putstring(outtmp_ang,"unit1","m");
         sf_putfloat(outtmp_ang,"o2",omx);
-        sf_putfloat(outtmp_ang,"d2",dmx);
-        sf_putfloat(outtmp_ang,"n2",nmx);
+        sf_putfloat(outtmp_ang,"d2",dmx2);
+        sf_putfloat(outtmp_ang,"n2",nmx2);
         sf_putstring(outtmp_ang,"label2","X");
         sf_putstring(outtmp_ang,"unit2","m");
         sf_putfloat(outtmp_ang,"o3",isx*dsx + osx);
@@ -220,22 +231,22 @@ int main(int argc, char* argv[])
         sf_putstring(outtmp_ang,"label3","Source-x");
         sf_putstring(outtmp_ang,"unit3","m");
         sf_putstring(outtmp_ang,"title","Angle");
-        sf_floatwrite(ang1shot[0],nz*nmx,outtmp_ang);
+        sf_floatwrite(ang1shot[0],nz*nmx2,outtmp_ang);
         sf_fileclose(outtmp_ang);
       }
     }
   }
   else{
-    m = sf_floatalloc2(nz,nmx*npx);
+    m = sf_floatalloc2(nz,nmx2*npx);
     for (isx=rank;isx<nsx;isx+=num_procs){
-      for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m1shot[ix][iz] = 0.0;
+      for (ix=0;ix<nmx2;ix++) for (iz=0;iz<nz;iz++) m1shot[ix][iz] = 0.0;
       if (verbose) fprintf(stderr,"reading and de-migrating shot %d...\n",isx);
-      if (isx== rank) sf_floatread(m[0],nz*nmx*npx,in);
+      if (isx== rank) sf_floatread(m[0],nz*nmx2*npx,in);
       sprintf(tmpname_ang, "tmpang_%d.rsf",isx);
       intmp_ang = sf_input(tmpname_ang);
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname_ang); 
-      sf_floatread(ang1shot[0],nz*nmx,intmp_ang);
-      for (ix=0;ix<nmx;ix++){
+      sf_floatread(ang1shot[0],nz*nmx2,intmp_ang);
+      for (ix=0;ix<nmx2;ix++){
         for (iz=0;iz<nz;iz++){
           if (npx>1){
             px = ang1shot[ix][iz]; 
@@ -243,7 +254,7 @@ int main(int argc, char* argv[])
             px_floor = truncf((px - opx)/dpx)*dpx + opx;
             if (ipx >= 0 && ipx+1 < npx){
 	          alpha = (px-px_floor)/dpx;
-	          m1shot[ix][iz]  = (1-alpha)*m[ipx*nmx + ix][iz] + alpha*m[(ipx+1)*nmx + ix][iz];
+	          m1shot[ix][iz]  = (1-alpha)*m[ipx*nmx2 + ix][iz] + alpha*m[(ipx+1)*nmx2 + ix][iz];
 	        }
 	      }
           else{
@@ -253,7 +264,7 @@ int main(int argc, char* argv[])
       }
 
       wem1shot(d1shot,m1shot,ang1shot,wav,
-               nt,ot,dt,nmx,omx,dmx,isx,nsx,osx,dsx,nz,oz,dz,gz,sz,
+               nt,ot,dt,nmx,nmx2,omx,dmx,isx,nsx,osx,dsx,nz,oz,dz,gz,sz,
                vp,fmin,fmax,adj,calc_ang,verbose);
 
       sprintf(tmpname, "tmpd_%d.rsf",isx);
@@ -284,18 +295,18 @@ int main(int argc, char* argv[])
   MPI_Barrier(MPI_COMM_WORLD);
 
   if (adj && rank==0){
-    m = sf_floatalloc2(nz,nmx*npx);
-    for (ix=0;ix<nmx;ix++) for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) m[ipx*nmx + ix][iz] = 0.0;
+    m = sf_floatalloc2(nz,nmx2*npx);
+    for (ix=0;ix<nmx2;ix++) for (ipx=0;ipx<npx;ipx++) for (iz=0;iz<nz;iz++) m[ipx*nmx2 + ix][iz] = 0.0;
     for (isx=0;isx<nsx;isx++){
       sprintf(tmpname, "tmpdmig_%d.rsf",isx);
       intmp = sf_input(tmpname);
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname); 
-      sf_floatread(m1shot[0],nz*nmx,intmp);
+      sf_floatread(m1shot[0],nz*nmx2,intmp);
       sprintf(tmpname_ang, "tmpang_%d.rsf",isx);
       intmp_ang = sf_input(tmpname_ang);
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname_ang); 
-      sf_floatread(ang1shot[0],nz*nmx,intmp_ang);
-      for (ix=0;ix<nmx;ix++){ 
+      sf_floatread(ang1shot[0],nz*nmx2,intmp_ang);
+      for (ix=0;ix<nmx2;ix++){ 
         for (iz=0;iz<nz;iz++){
           if (npx>1){
             px = ang1shot[ix][iz]; 
@@ -303,8 +314,8 @@ int main(int argc, char* argv[])
             px_floor = truncf((px - opx)/dpx)*dpx + opx;
             if (ipx >= 0 && ipx+1 < npx){
 	          alpha = (px-px_floor)/dpx;
-	          m[ipx*nmx + ix][iz]     += (1-alpha)*m1shot[ix][iz];
-	          m[(ipx+1)*nmx + ix][iz] +=     alpha*m1shot[ix][iz];
+	          m[ipx*nmx2 + ix][iz]     += (1-alpha)*m1shot[ix][iz];
+	          m[(ipx+1)*nmx2 + ix][iz] +=     alpha*m1shot[ix][iz];
 	        }
 	      }
           else{
@@ -320,8 +331,8 @@ int main(int argc, char* argv[])
     sf_putstring(out,"label1","Depth");
     sf_putstring(out,"unit1","m");
     sf_putfloat(out,"o2",omx);
-    sf_putfloat(out,"d2",dmx);
-    sf_putfloat(out,"n2",nmx);
+    sf_putfloat(out,"d2",dmx2);
+    sf_putfloat(out,"n2",nmx2);
     sf_putstring(out,"label2","X");
     sf_putstring(out,"unit2","m");
     sf_putfloat(out,"o3",opx);
@@ -330,7 +341,7 @@ int main(int argc, char* argv[])
     sf_putstring(out,"label3","Angle");
     sf_putstring(out,"unit3"," ");
     sf_putstring(out,"title","Migrated data");
-    sf_floatwrite(m[0],nz*nmx*npx,out);
+    sf_floatwrite(m[0],nz*nmx2*npx,out);
     free2float(m);
     sf_fileclose(intmp);
   }  
@@ -375,7 +386,7 @@ int main(int argc, char* argv[])
 
 void wem1shot(float **d, float **m, float **ang1shot,float *wav,
               int nt, float ot, float dt, 
-              int nmx, float omx, float dmx,
+              int nmx, int nmx2, float omx, float dmx,
               int isx, int nsx, float osx, float dsx,
               int nz, float oz, float dz, float gz, float sz,
               float **vel, float fmin, float fmax,
@@ -403,11 +414,11 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   int ifilter,nfilter;
   
   if (adj){
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = 0.0;
+    for (ix=0;ix<nmx2;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] = 0.0;
   }
   else{
     for (ix=0;ix<nmx;ix++) for (it=0;it<nt;it++) d[ix][it] = 0.0;
-    for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] *= sqrtf(nmx*nz);
+    for (ix=0;ix<nmx2;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] *= sqrtf(nmx*nz);
   }
   __real__ czero = 0;
   __imag__ czero = 0;
@@ -479,12 +490,12 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
     }
   }
   
-  u_sx = sf_floatalloc2(nz,nmx);
-  u_sz = sf_floatalloc2(nz,nmx);
-  u_gx = sf_floatalloc2(nz,nmx);
-  u_gz = sf_floatalloc2(nz,nmx);
+  u_sx = sf_floatalloc2(nz,nmx2);
+  u_sz = sf_floatalloc2(nz,nmx2);
+  u_gx = sf_floatalloc2(nz,nmx2);
+  u_gz = sf_floatalloc2(nz,nmx2);
 
-  for (ix=0;ix<nmx;ix++){ 
+  for (ix=0;ix<nmx2;ix++){ 
     for (iz=0;iz<nz;iz++){
       u_sx[ix][iz] = 0.0;
       u_sz[ix][iz] = 0.0;
@@ -500,13 +511,13 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   #pragma omp parallel for private(iw) shared(m,d_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz)
   for (iw=ifmin;iw<ifmax;iw++){ 
     progress += 1.0/((float) ifmax - ifmin);
-   // if (verbose) progress_msg(progress);
-    extrap1f(m,d_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,(int) truncf(ifmax/2),nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,omx,dmx,po,pd,i,czero,p1,p2,adj,verbose);
+    if (verbose) progress_msg(progress);
+    extrap1f(m,d_g_wx,d_s_wx,u_sx,u_sz,u_gx,u_gz,iw,(int) truncf(ifmax/2),nw,ifmax,ntfft,dw,dk,nk,nz,oz,dz,gz,sz,nmx,nmx2,omx,dmx,po,pd,i,czero,p1,p2,adj,verbose);
   }
   
   if (adj && calc_ang){
     /* calculate incidence angle from propagation vectors */  
-    for (ix=0;ix<nmx;ix++){ 
+    for (ix=0;ix<nmx2;ix++){ 
       for (iz=0;iz<nz;iz++){
         // set the polarities of the u's
         u_sx[ix][iz] *=-1;
@@ -532,12 +543,12 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
     nfilter=2; // number of times to repeat median filter
     ang = sf_floatalloc(nxw*nzw); 
     for (ifilter=0;ifilter<nfilter;ifilter++){
-    for (ix=0;ix<nmx;ix++){ 
+    for (ix=0;ix<nmx2;ix++){ 
       for (iz=0;iz<nz;iz++){
         for (ixw=0;ixw<nxw;ixw++){ for (izw=0;izw<nzw;izw++){
           index1 = ix - (int) truncf(nxw/2) + ixw;
           index2 = iz - (int) truncf(nzw/2) + izw;        
-          if (index1>=0 && index1<nmx && index2>=0 && index2<nz){
+          if (index1>=0 && index1<nmx2 && index2>=0 && index2<nz){
             ang[ixw*nzw + izw] = ang1shot[index1][index2];
           }
           else{
@@ -575,7 +586,7 @@ void wem1shot(float **d, float **m, float **ang1shot,float *wav,
   }
   
   if (adj){
-   for (ix=0;ix<nmx;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] *= sqrtf(nmx*nz);
+   for (ix=0;ix<nmx2;ix++) for (iz=0;iz<nz;iz++) m[ix][iz] *= sqrtf(nmx*nz);
   }
   
   free1int(n); 
@@ -601,7 +612,7 @@ void extrap1f(float **m,
               float **u_sx, float **u_sz, float **u_gx, float **u_gz,
               int iw, int ang_iw_max, int nw,int ifmax,int ntfft,float dw,float dk,int nk,
               int nz, float oz, float dz, float gz, float sz,
-              int nmx,float omx, float dmx,
+              int nmx,int nmx2,float omx, float dmx,
               float *po,float **pd,
               sf_complex i,sf_complex czero,
               fftwf_plan p1,fftwf_plan p2,
@@ -611,6 +622,7 @@ void extrap1f(float **m,
   float w,factor,z;
   int iz,ix; 
   sf_complex *d_xg,*d_xs,*p_sx,*p_sz,*p_gx,*p_gz,**smig;
+  sf_complex *d_xg2,*d_xs2,*p_sx2,*p_sz2,*p_gx2,*p_gz2;
   
   d_xg = sf_complexalloc(nmx);
   d_xs = sf_complexalloc(nmx);
@@ -618,6 +630,13 @@ void extrap1f(float **m,
   p_sz = sf_complexalloc(nmx);
   p_gx = sf_complexalloc(nmx);
   p_gz = sf_complexalloc(nmx);
+
+  d_xg2 = sf_complexalloc(nmx2);
+  d_xs2 = sf_complexalloc(nmx2);
+  p_sx2 = sf_complexalloc(nmx2);
+  p_sz2 = sf_complexalloc(nmx2);
+  p_gx2 = sf_complexalloc(nmx2);
+  p_gz2 = sf_complexalloc(nmx2);
 
   if (iw==0) factor = 1;
   else factor = 2;
@@ -632,21 +651,41 @@ void extrap1f(float **m,
       z = oz + dz*iz;
       if (z >= sz){
         ssop(d_xs,p_sx,p_sz,w,dk,nk,nmx,-dz,iz,po,pd,i,czero,p1,p2,true,true,verbose);
+        if (nmx2>nmx){
+          cinterp1d(d_xs,d_xs2,nmx,2,11,true);
+        }
+        else{ 
+          for (ix=0;ix<nmx;ix++) d_xs2[ix] = d_xs[ix]; 
+        }
       } 
       if (z >= gz){
         ssop(d_xg,p_gx,p_gz,w,dk,nk,nmx,dz,iz,po,pd,i,czero,p1,p2,true,true,verbose);
-        for (ix=0;ix<nmx;ix++){
+        if (nmx2>nmx){
+          cinterp1d(d_xg,d_xg2,nmx,2,11,true);
+          cinterp1d(p_sx,p_sx2,nmx,2,11,true);
+          cinterp1d(p_sz,p_sz2,nmx,2,11,true);
+          cinterp1d(p_gx,p_gx2,nmx,2,11,true);
+          cinterp1d(p_gz,p_gz2,nmx,2,11,true);
+        }
+        else{ 
+          for (ix=0;ix<nmx;ix++) d_xg2[ix] = d_xg[ix]; 
+          for (ix=0;ix<nmx;ix++) p_sx2[ix] = p_sx[ix]; 
+          for (ix=0;ix<nmx;ix++) p_sz2[ix] = p_sz[ix]; 
+          for (ix=0;ix<nmx;ix++) p_gx2[ix] = p_gx[ix]; 
+          for (ix=0;ix<nmx;ix++) p_gz2[ix] = p_gz[ix]; 
+        }
+        for (ix=0;ix<nmx2;ix++){
           #pragma omp atomic
-          m[ix][iz] += factor*crealf(d_xs[ix]*conjf(d_xg[ix]));
+          m[ix][iz] += factor*crealf(d_xs2[ix]*conjf(d_xg2[ix]));
           if (iw<ang_iw_max){
             #pragma omp atomic
-            u_sx[ix][iz] += crealf(p_sx[ix]*conjf(d_xg[ix]));
+            u_sx[ix][iz] += crealf(p_sx2[ix]*conjf(d_xg2[ix]));
             #pragma omp atomic
-            u_sz[ix][iz] += crealf(p_sz[ix]*conjf(d_xg[ix]));
+            u_sz[ix][iz] += crealf(p_sz2[ix]*conjf(d_xg2[ix]));
             #pragma omp atomic
-            u_gx[ix][iz] += crealf(p_gx[ix]*conjf(d_xs[ix]));
+            u_gx[ix][iz] += crealf(p_gx2[ix]*conjf(d_xs2[ix]));
             #pragma omp atomic
-            u_gz[ix][iz] += crealf(p_gz[ix]*conjf(d_xs[ix]));
+            u_gz[ix][iz] += crealf(p_gz2[ix]*conjf(d_xs2[ix]));
           }
         }
       }
@@ -681,13 +720,21 @@ void extrap1f(float **m,
     }
     free2complex(smig);
   }
+  
   free1complex(d_xg);
   free1complex(d_xs);
   free1complex(p_sx);
   free1complex(p_sz);
   free1complex(p_gx);
-  free1complex(p_gz);
-
+  free1complex(p_gz);  
+  free1complex(d_xg2);
+  free1complex(d_xs2);
+  free1complex(p_sx2);
+  free1complex(p_sz2);
+  free1complex(p_gx2);
+  free1complex(p_gz2);
+  
+  
   return;
 }
 
@@ -1053,5 +1100,44 @@ void bpfilter(float *trace, float dt, int nt, float a, float b, float c, float d
   return;
 }
 
-
-
+void cinterp1d(sf_complex *y1,sf_complex *y2,int nx1,int factor,int npoint,bool adj)
+/*< npoint sinc interpolation of complex data. input:  an array of length n, output: an array of length factor*n - 1 >*/
+{
+  int ix1,ix2,index;
+  float a;
+  
+  
+  if (adj){ 
+    for (ix2=0; ix2<factor*nx1-1; ix2++){
+      __real__ y2[ix2] = 0.0;
+      __imag__ y2[ix2] = 0.0;    
+    }
+  }
+  else{ 
+    for (ix1=0; ix1<nx1; ix1++){
+      __real__ y1[ix1] = 0.0;
+      __imag__ y1[ix1] = 0.0;    
+    }
+  }
+  for (ix2=0; ix2<factor*nx1-1; ix2++){
+    index = (int) truncf((ix2+1)/factor);
+    for (ix1=index - (int) truncf(npoint/2); ix1< index + (int) truncf(npoint/2); ix1++){
+      if (ix2-ix1*factor != 0) a = sinf(PI * (float) (ix2-ix1*factor)/factor)/(PI * (float) (ix2-ix1*factor)/factor);
+      else a = 1;
+      if (adj){
+        if (ix1>=0 && ix1<nx1){
+          __real__ y2[ix2] += crealf(y1[ix1])*a;
+          __imag__ y2[ix2] += cimagf(y1[ix1])*a;
+        }
+      }
+      else{
+        if (ix1>=0 && ix1<nx1){
+          __real__ y1[ix1] += crealf(y2[ix2])*a;
+          __imag__ y1[ix1] += cimagf(y2[ix2])*a;
+        }
+      }
+    }
+  }
+  
+  return;
+}

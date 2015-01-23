@@ -53,6 +53,7 @@ void write5d(float **data,
              int n4, float o4, float d4, const char *label4, const char *unit4,  
              int n5, float o5, float d5, const char *label5, const char *unit5,
              const char *title, sf_file outfile);
+int compare (const void * a, const void * b);
 
 int main(int argc, char* argv[])
 { 
@@ -157,15 +158,18 @@ int main(int argc, char* argv[])
     }
  
     if (verbose) fprintf(stderr,"the block has %6.2f %% missing traces.\n", (float) 100 - 100*sum_wd/(n2*n3*n4*n5));
+    
 
-    pocs(d,
-         verbose,n1,nx,d1,
-         n2,n3,n4,n5,
-         wd,niter,alphai,alphaf,
-         fmax,
-         smooth1,smooth2,smooth3,smooth4,smooth5,
-         soft);
-
+    if ((float) sum_wd/(n2*n3*n4*n5) > 0.05){
+      pocs(d,
+           verbose,n1,nx,d1,
+           n2,n3,n4,n5,
+           wd,niter,alphai,alphaf,
+           fmax,
+           smooth1,smooth2,smooth3,smooth4,smooth5,
+           soft);
+    }
+        
     for (ix=0; ix<nx; ix++) {
       for (i1=0; i1<n1; i1++) trace[i1] = d[ix][i1];
       sf_floatwrite(trace,n1,out);
@@ -184,14 +188,14 @@ void pocs(float **d,
           int smooth1,int smooth2,int smooth3,int smooth4,int smooth5,
           bool soft)
 {  
-  int it,ix,iw,ntfft,nx1fft,nx2fft,nx3fft,nx4fft,nw,nk,if_low,if_high,padfactor,ix_no_pad,ix1,ix2,ix3,ix4,nclip,iter,*n,ix1_shift,ix2_shift,ix3_shift,ix4_shift,ix_shift;
-  float perci,percf,*wd,**M,**Mshift,*thres,*in1,*out2,f_low,f_high,alpha,pclip,*amp,*trace;
+  int it,ix,iw,ntfft,nx1fft,nx2fft,nx3fft,nx4fft,nw,nk,if_low,if_high,padfactor,ix_no_pad,ix1,ix2,ix3,ix4,iter,*n,ix1_shift,ix2_shift,ix3_shift,ix4_shift,ix_shift,nzero;
+  float perc,perci,percf,*wd,**M,**Mshift,thres,*in1,*out2,f_low,f_high,alpha,*amp,*trace;
   sf_complex czero,*freqslice,*out1,*in2,**D,**Dobs;
   fftwf_plan p1,p2,p3,p4; 
   
   __real__ czero = 0;
   __imag__ czero = 0;
-  perci = 0.9999;
+  perci = 1.0;
   percf = 0.0;
   padfactor = 2;
   /* copy data from input to FFT array and pad with zeros */
@@ -253,23 +257,9 @@ void pocs(float **d,
   p2 = fftwf_plan_dft(4, n, (fftwf_complex*)freqslice, (fftwf_complex*)freqslice, FFTW_FORWARD, FFTW_ESTIMATE);  
   p3 = fftwf_plan_dft(4, n, (fftwf_complex*)freqslice, (fftwf_complex*)freqslice, FFTW_BACKWARD, FFTW_ESTIMATE);
 
-  amp = sf_floatalloc(nk*nw);
-  for (iw=0;iw<nw;iw++){  
-    for (ix=0;ix<nk;ix++) freqslice[ix] = D[ix][iw];
-    fftwf_execute(p2);
-    for (ix=0;ix<nk;ix++) amp[ix*nw + iw] = sf_cabs(freqslice[ix]);
-  }
-
-  // build iteration dependent threshold schedule
-  thres = sf_floatalloc(niter);
-  for (iter=0;iter<niter;iter++){
-    pclip = 100*(perci - iter*((perci-percf)/niter));
-    nclip = SF_MAX(SF_MIN(nw*nk*pclip/100. + .5,nw*nk-1),0);
-    thres[iter]=sf_quantile(nclip,nw*nk,amp);
-    //fprintf(stderr,"thres[%d]=%f pclip=%f \n",iter,thres[iter],pclip);
-  }
 
   trace = sf_floatalloc(nw); 
+  amp = sf_floatalloc(nk*nw);
 
   for (iter=0;iter<niter;iter++){
     for (ix=0;ix<nk;ix++) for (iw=0;iw<nw;iw++) M[ix][iw] = 1.0;
@@ -290,10 +280,22 @@ void pocs(float **d,
     }
     // *****************************************************************************
 
-
+    // obtain median of non-zero amplitudes
+    nzero = 0;
+    for (iw=0;iw<nw;iw++){  
+      for (ix=0;ix<nk;ix++){ 
+        amp[ix*nw + iw] = sf_cabs(D[ix][iw]);
+        if (amp[ix*nw + iw] > 0.000001) nzero++;
+      }
+    }
+    qsort (amp,nk*nw, sizeof(*amp), compare);
+    perc = perci + iter*((percf-perci)/(niter-1));
+    thres = amp[(int) truncf(nk*nw - 1 - (1-perc)*nzero)];
+    //fprintf(stderr,"perc=%f thres=%f\n",perc,thres);
+    
 if (!soft){ // hard thresholding
 
-    for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) if (sf_cabs(D[ix][iw])<thres[iter]) M[ix][iw] = 0.0;
+    for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) if (sf_cabs(D[ix][iw])<thres) M[ix][iw] = 0.0;
     for (iw=0;iw<if_low;iw++)   for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
     for (iw=if_high;iw<nw;iw++) for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
 
@@ -393,10 +395,14 @@ if (!soft){ // hard thresholding
     for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) D[ix][iw] = D[ix][iw]*M[ix][iw]; 
 }
 else { // soft thresholding
+
     for (iw=if_low;iw<if_high;iw++){ 
       for (ix=0;ix<nk;ix++){ 
-        if (sf_cabs(D[ix][iw])<thres[iter]) M[ix][iw] = 0.0;
-        else M[ix][iw] = sf_cabs(D[ix][iw]) - thres[iter];
+        if (sf_cabs(D[ix][iw])<thres) M[ix][iw] = 0.0;
+        // thresholding halfway between "soft" (power=1) and "stein" (power=2) thresholding
+        // the generalization of the thresholding operator is found here:
+        // Chartrand, Rick, and Brendt Wohlberg. "A nonconvex ADMM algorithm for group sparsity with sparse groups." Acoustics, Speech and Signal Processing (ICASSP), 2013 IEEE International Conference on. IEEE, 2013.
+        else M[ix][iw] = sf_cabs(D[ix][iw])*(1 - powf(thres/(sf_cabs(D[ix][iw]) + 0.0000001),1.5));
       }
     }
     for (iw=0;iw<if_low;iw++)   for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
@@ -447,7 +453,6 @@ else { // soft thresholding
   free1float(amp);
   free2float(M);
   free2float(Mshift);
-  free1float(thres);
   free1float(in1);
   free1float(out2);
   free1complex(out1);
@@ -638,8 +643,12 @@ void write5d(float **data,
   return;
 }
 
-
-
+int compare (const void * a, const void * b)
+{
+  float fa = *(const float*) a;
+  float fb = *(const float*) b;
+  return (fa > fb) - (fa < fb);
+}
 
 
 

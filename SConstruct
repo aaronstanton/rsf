@@ -33,6 +33,7 @@ mpiwem
 mpiwem_poynting
 mpiewem
 mpiewem_poynting
+mpivwem
 mpivwem_poynting
 mpiewem_sep
 '''

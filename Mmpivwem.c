@@ -86,7 +86,7 @@ int compare (const void * a, const void * b);
 int main(int argc, char* argv[])
 {
 
-  sf_file fp_dx,fp_dz,fp_mppx,fp_mppz,fp_mpsx,fp_mpsz;
+  sf_file fp_dx,fp_dz,fp_mpp,fp_mps;
   sf_file fp_tmp_dx,fp_tmp_dz;
   sf_file fp_tmp_mppx,fp_tmp_mppz,fp_tmp_mpsx,fp_tmp_mpsz,fp_tmp_ang;
   sf_file velp,vels,source_wavelet;
@@ -98,7 +98,7 @@ int main(int argc, char* argv[])
   float **mppx_1shot,**mppz_1shot,**mpsx_1shot,**mpsz_1shot,**ang1shot;
   float **dx_1shot,**dz_1shot;
   float **vp,**vs,*wav;
-  float **mppx,**mppz,**mpsx,**mpsz;
+  float **mpp,**mps;
   bool adj;
   bool verbose;
   float fmin,fmax;
@@ -124,18 +124,14 @@ int main(int argc, char* argv[])
   if (adj){
     fp_dx = sf_input("ux");
     fp_dz = sf_input("uz");
-    fp_mppx = sf_output("mppx");
-    fp_mppz = sf_output("mppz");
-    fp_mpsx = sf_output("mpsx");
-    fp_mpsz = sf_output("mpsz");
+    fp_mpp = sf_output("mpp");
+    fp_mps = sf_output("mps");
   }
   else{
     fp_dx = sf_output("ux");
     fp_dz = sf_output("uz");
-    fp_mppx = sf_input("mppx");
-    fp_mppz = sf_input("mppz");
-    fp_mpsx = sf_input("mpsx");
-    fp_mpsz = sf_input("mpsz");
+    fp_mpp = sf_input("mpp");
+    fp_mps = sf_input("mps");
   }
   if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity flag*/
 
@@ -171,15 +167,15 @@ int main(int argc, char* argv[])
     if (!sf_histfloat(fp_dx,"o3",&osx)) osx=0.0;
   }
   else{
-    if (!sf_histint(  fp_mppx,"n1",&nz)) sf_error("No n1= in input");
-    if (!sf_histfloat(fp_mppx,"d1",&dz)) sf_error("No d1= in input");
-    if (!sf_histfloat(fp_mppx,"o1",&oz)) sf_error("No o1= in input");
-    if (!sf_histint(  fp_mppx,"n2",&nmx)) sf_error("No n2= in input");
-    if (!sf_histfloat(fp_mppx,"d2",&dmx)) sf_error("No d2= in input");
-    if (!sf_histfloat(fp_mppx,"o2",&omx)) sf_error("No o2= in input");
-    if (!sf_histint(  fp_mppx,"n3",&npx)) sf_error("No n3= in input");
-    if (!sf_histfloat(fp_mppx,"d3",&dpx)) sf_error("No d3= in input");
-    if (!sf_histfloat(fp_mppx,"o3",&opx)) sf_error("No o3= in input");
+    if (!sf_histint(  fp_mpp,"n1",&nz)) sf_error("No n1= in input");
+    if (!sf_histfloat(fp_mpp,"d1",&dz)) sf_error("No d1= in input");
+    if (!sf_histfloat(fp_mpp,"o1",&oz)) sf_error("No o1= in input");
+    if (!sf_histint(  fp_mpp,"n2",&nmx)) sf_error("No n2= in input");
+    if (!sf_histfloat(fp_mpp,"d2",&dmx)) sf_error("No d2= in input");
+    if (!sf_histfloat(fp_mpp,"o2",&omx)) sf_error("No o2= in input");
+    if (!sf_histint(  fp_mpp,"n3",&npx)) sf_error("No n3= in input");
+    if (!sf_histfloat(fp_mpp,"d3",&dpx)) sf_error("No d3= in input");
+    if (!sf_histfloat(fp_mpp,"o3",&opx)) sf_error("No o3= in input");
   }
   if (!sf_getfloat("fmin",&fmin)) fmin = 0; /* min frequency to process */
   if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/dt; /* max frequency to process */
@@ -267,17 +263,13 @@ int main(int argc, char* argv[])
     }
   }
   else{
-    mppx        = sf_floatalloc2(nz,nmx*npx);
-    mppz        = sf_floatalloc2(nz,nmx*npx);
-    mpsx        = sf_floatalloc2(nz,nmx*npx);
-    mpsz        = sf_floatalloc2(nz,nmx*npx);
+    mpp        = sf_floatalloc2(nz,nmx*npx);
+    mps        = sf_floatalloc2(nz,nmx*npx);
     for (isx=rank;isx<nsx;isx+=num_procs){
       if (verbose) fprintf(stderr,"reading and de-migrating shot %d...\n",isx);
       if (isx== rank){
-        sf_floatread(mppx[0],nz*nmx*npx,fp_mppx);
-        sf_floatread(mppz[0],nz*nmx*npx,fp_mppz);
-        sf_floatread(mpsx[0],nz*nmx*npx,fp_mpsx);
-        sf_floatread(mpsz[0],nz*nmx*npx,fp_mpsz);
+        sf_floatread(mpp[0],nz*nmx*npx,fp_mpp);
+        sf_floatread(mps[0],nz*nmx*npx,fp_mps);
       }
       sprintf(tmpname_ang, "tmp_ang_%d.rsf",isx);
       fp_tmp_ang = sf_input(tmpname_ang);
@@ -291,17 +283,17 @@ int main(int argc, char* argv[])
             ipx = (int) truncf((px - opx)/dpx);
             if (ipx >= 0 && ipx+1 < npx){
 	          alpha = (px-px_floor)/dpx;
-	          mppx_1shot[ix][iz]  = (1-alpha)*mppx[ipx*nmx + ix][iz] + alpha*mppx[(ipx+1)*nmx + ix][iz];
-	          mppz_1shot[ix][iz]  = (1-alpha)*mppz[ipx*nmx + ix][iz] + alpha*mppz[(ipx+1)*nmx + ix][iz];
-	          mpsx_1shot[ix][iz]  = (1-alpha)*mpsx[ipx*nmx + ix][iz] + alpha*mpsx[(ipx+1)*nmx + ix][iz];
-	          mpsz_1shot[ix][iz]  = (1-alpha)*mpsz[ipx*nmx + ix][iz] + alpha*mpsz[(ipx+1)*nmx + ix][iz];
+	          mppx_1shot[ix][iz]  = sinf(fabsf(px)*PI/180)*((1-alpha)*mpp[ipx*nmx + ix][iz] + alpha*mpp[(ipx+1)*nmx + ix][iz]);
+	          mppz_1shot[ix][iz]  = cosf(fabsf(px)*PI/180)*((1-alpha)*mpp[ipx*nmx + ix][iz] + alpha*mpp[(ipx+1)*nmx + ix][iz]);
+	          mpsx_1shot[ix][iz]  = cosf(fabsf(px)*PI/180)*((1-alpha)*mps[ipx*nmx + ix][iz] + alpha*mps[(ipx+1)*nmx + ix][iz]);
+	          mpsz_1shot[ix][iz]  = sinf(fabsf(px)*PI/180)*((1-alpha)*mps[ipx*nmx + ix][iz] + alpha*mps[(ipx+1)*nmx + ix][iz]);
 	        }
 	      }
           else{
-	        mppx_1shot[ix][iz] = mppx[ix][iz];
-	        mppz_1shot[ix][iz] = mppz[ix][iz];
-	        mpsx_1shot[ix][iz] = mpsx[ix][iz];
-	        mpsz_1shot[ix][iz] = mpsz[ix][iz];
+	        mppx_1shot[ix][iz] = mpp[ix][iz];
+	        mppz_1shot[ix][iz] = mpp[ix][iz];
+	        mpsx_1shot[ix][iz] = mps[ix][iz];
+	        mpsz_1shot[ix][iz] = mps[ix][iz];
 	      }	      
         }
       }
@@ -333,14 +325,10 @@ int main(int argc, char* argv[])
               1, 0, 1,   " ",        " ",
               "dz", fp_tmp_dz);
     }
-    free2float(mppx);
-    free2float(mppz);
-    free2float(mpsx);
-    free2float(mpsz);
-    sf_fileclose(fp_mppx);
-    sf_fileclose(fp_mppz);
-    sf_fileclose(fp_mpsx);
-    sf_fileclose(fp_mpsz);
+    free2float(mpp);
+    free2float(mps);
+    sf_fileclose(fp_mpp);
+    sf_fileclose(fp_mps);
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
@@ -350,14 +338,10 @@ int main(int argc, char* argv[])
   sf_fileclose(source_wavelet);
 
   if (adj && rank==0){
-    mppx = sf_floatalloc2(nz,nmx*npx);
-    mppz = sf_floatalloc2(nz,nmx*npx);
-    mpsx = sf_floatalloc2(nz,nmx*npx);
-    mpsz = sf_floatalloc2(nz,nmx*npx);
-    for (iz=0;iz<nz;iz++) for (ix=0;ix<nmx*npx;ix++) mppx[ix][iz] = 0.0; 
-    for (iz=0;iz<nz;iz++) for (ix=0;ix<nmx*npx;ix++) mppz[ix][iz] = 0.0; 
-    for (iz=0;iz<nz;iz++) for (ix=0;ix<nmx*npx;ix++) mpsx[ix][iz] = 0.0; 
-    for (iz=0;iz<nz;iz++) for (ix=0;ix<nmx*npx;ix++) mpsz[ix][iz] = 0.0; 
+    mpp = sf_floatalloc2(nz,nmx*npx);
+    mps = sf_floatalloc2(nz,nmx*npx);
+    for (iz=0;iz<nz;iz++) for (ix=0;ix<nmx*npx;ix++) mpp[ix][iz] = 0.0; 
+    for (iz=0;iz<nz;iz++) for (ix=0;ix<nmx*npx;ix++) mps[ix][iz] = 0.0; 
     for (isx=0;isx<nsx;isx++){
       sprintf(tmpname1, "tmp_mppx_%d.rsf",isx);
       fp_tmp_mppx = sf_input(tmpname1);
@@ -387,21 +371,15 @@ int main(int argc, char* argv[])
             ipx = (int) truncf((px - opx)/dpx);
             if (ipx >= 0 && ipx+1 < npx){
 	          alpha = (px-px_floor)/dpx;
-	          mppx[ipx*nmx + ix][iz]     += (1-alpha)*mppx_1shot[ix][iz];
-	          mppx[(ipx+1)*nmx + ix][iz] +=     alpha*mppx_1shot[ix][iz];
-	          mppz[ipx*nmx + ix][iz]     += (1-alpha)*mppz_1shot[ix][iz];
-	          mppz[(ipx+1)*nmx + ix][iz] +=     alpha*mppz_1shot[ix][iz];
-	          mpsx[ipx*nmx + ix][iz]     += (1-alpha)*mpsx_1shot[ix][iz];
-	          mpsx[(ipx+1)*nmx + ix][iz] +=     alpha*mpsx_1shot[ix][iz];
-	          mpsz[ipx*nmx + ix][iz]     += (1-alpha)*mpsz_1shot[ix][iz];
-	          mpsz[(ipx+1)*nmx + ix][iz] +=     alpha*mpsz_1shot[ix][iz];
+	          mpp[ipx*nmx + ix][iz]     += (1-alpha)*(signf(px)*sinf(fabsf(px)*PI/180)*mppx_1shot[ix][iz] + cosf(fabsf(px)*PI/180)*mppz_1shot[ix][iz]);
+	          mpp[(ipx+1)*nmx + ix][iz] +=     alpha*(signf(px)*sinf(fabsf(px)*PI/180)*mppx_1shot[ix][iz] + cosf(fabsf(px)*PI/180)*mppz_1shot[ix][iz]);
+	          mps[ipx*nmx + ix][iz]     += (1-alpha)*(signf(px)*cosf(fabsf(px)*PI/180)*mpsx_1shot[ix][iz] + sinf(fabsf(px)*PI/180)*mpsz_1shot[ix][iz]);
+	          mps[(ipx+1)*nmx + ix][iz] +=     alpha*(signf(px)*cosf(fabsf(px)*PI/180)*mpsx_1shot[ix][iz] + sinf(fabsf(px)*PI/180)*mpsz_1shot[ix][iz]);
 	        }
 	      }
           else{
-	        mppx[ix][iz] += mppx_1shot[ix][iz];
-	        mppz[ix][iz] += mppz_1shot[ix][iz];
-	        mpsx[ix][iz] += mpsx_1shot[ix][iz];
-	        mpsz[ix][iz] += mpsz_1shot[ix][iz];
+	        mpp[ix][iz] += mppx_1shot[ix][iz] + mppz_1shot[ix][iz];
+	        mps[ix][iz] += mpsx_1shot[ix][iz] + mpsz_1shot[ix][iz];
 	      }	      
         }
       }
@@ -411,38 +389,22 @@ int main(int argc, char* argv[])
       sf_fileclose(fp_tmp_mpsz);
       sf_fileclose(fp_tmp_ang);
     }
-    write5d(mppx,
+    write5d(mpp,
             nz,  oz,  dz,          "Depth",    "m",  
             nmx, omx, dmx,         "X",        "m",  
             npx, opx, dpx,         "\\F10 q\\F3 ",   " ",  
             1, 0, 1, " ", " ",  
             1, 0, 1,   " ",        " ",
-            "mppx", fp_mppx);
-    write5d(mppz,
+            "mpp", fp_mpp);
+    write5d(mps,
             nz,  oz,  dz,          "Depth",    "m",  
             nmx, omx, dmx,         "X",        "m",  
             npx, opx, dpx,         "\\F10 q\\F3 ",   " ",  
             1, 0, 1, " ", " ",  
             1, 0, 1,   " ",        " ",
-            "mppz", fp_mppz);
-    write5d(mpsx,
-            nz,  oz,  dz,          "Depth",    "m",  
-            nmx, omx, dmx,         "X",        "m",  
-            npx, opx, dpx,         "\\F10 q\\F3 ",   " ",  
-            1, 0, 1, " ", " ",  
-            1, 0, 1,   " ",        " ",
-            "mpsx", fp_mpsx);
-    write5d(mpsz,
-            nz,  oz,  dz,          "Depth",    "m",  
-            nmx, omx, dmx,         "X",        "m",  
-            npx, opx, dpx,         "\\F10 q\\F3 ",   " ",  
-            1, 0, 1, " ", " ",  
-            1, 0, 1,   " ",        " ",
-            "mpsz", fp_mpsz);
-    free2float(mppx);
-    free2float(mppz);
-    free2float(mpsx);
-    free2float(mpsz);
+            "mps", fp_mps);
+    free2float(mpp);
+    free2float(mps);
   }  
   else if (!adj && rank==0){
     sf_putfloat(fp_dx,"o1",ot);
