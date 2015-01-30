@@ -29,13 +29,20 @@
 #include "myfree.h"
 
 void pocs(float **d,
-	      int verbose,int nt,int nx,float dt,
+	      int nt,int nx,float dt,
           int nx1,int nx2,int nx3,int nx4,
           float *wd_no_pad,int niter,
-          float alphai,float alphaf,
+          float alpha,
           float fmax,
-          float p);
+          float p, bool debias,
+          bool verbose);
 int compare (const void * a, const void * b);
+void cg(sf_complex *m,float *wm,int nm,
+	    sf_complex *d,float *wd,int nd,
+	    int *n,
+	    int niter,
+	    bool verbose);
+float cgdot(sf_complex *x,int nm);
 
 int main(int argc, char* argv[])
 { 
@@ -48,14 +55,13 @@ int main(int argc, char* argv[])
     sf_file in,out;
     sf_init (argc,argv);
     int niter;
-    float alphai, alphaf, fmax;
+    float alpha, fmax;
     int sum_wd;
-    bool verbose;
+    bool verbose, debias;
     float p;
     
     in = sf_input("in");
     out = sf_output("out");
-
 
     /* read input file parameters */
     if (!sf_histint(in,"n1",&n1)) sf_error("No n1= in input");
@@ -75,12 +81,12 @@ int main(int argc, char* argv[])
     if (!sf_histfloat(in,"o5",&o5)) o5=0.;
 
     if (!sf_getint("niter",&niter)) niter = 100; /* number of iterations */
-    if (!sf_getfloat("alphai",&alphai)) alphai = 1; /* denoising parameter for 1st iteration 1=no denoise */
-    if (!sf_getfloat("alphaf",&alphaf)) alphaf = 1; /* denoising parameter for last iteration 1=no denoise */
-    if (!sf_getbool("verbose",&verbose)) verbose = false; /* verbosity 0=quiet 1=loud */
+    if (!sf_getfloat("alpha",&alpha)) alpha = 1; /* denoising parameter (1=no denoise) */
+    if (!sf_getbool("verbose",&verbose)) verbose = false; /* flag for verbosity */
     if (!sf_getfloat("fmax",&fmax)) fmax = 0.5/d1; /* max frequency to process */
     if (fmax > 0.5/d1) fmax = 0.5/d1;
     if (!sf_getfloat("p",&p)) p = 8.0; /* Exponent for thresholding, 1=>soft 2=>stein large=>hard */
+    if (!sf_getbool("debias",&debias)) debias = false; /* flag for debias */
 
     sf_putfloat(out,"o1",o1);
     sf_putfloat(out,"o2",o2);
@@ -138,11 +144,12 @@ int main(int argc, char* argv[])
 
     if ((float) sum_wd/(n2*n3*n4*n5) > 0.05){
       pocs(d,
-           verbose,n1,nx,d1,
+           n1,nx,d1,
            n2,n3,n4,n5,
-           wd,niter,alphai,alphaf,
+           wd,niter,alpha,
            fmax,
-           p);
+           p,debias,
+           verbose);
     }
         
     for (ix=0; ix<nx; ix++) {
@@ -154,24 +161,26 @@ int main(int argc, char* argv[])
 }
 
 void pocs(float **d,
-	  int verbose,int nt,int nx,float dt,
+	      int nt,int nx,float dt,
           int nx1,int nx2,int nx3,int nx4,
           float *wd_no_pad,int niter,
-          float alphai,float alphaf,
+          float alpha,
           float fmax,
-          float p)
+          float p, bool debias,
+          bool verbose)
 {  
   int it,ix,iw,ntfft,nx1fft,nx2fft,nx3fft,nx4fft,nw,nk,if_low,if_high,padfactor,ix_no_pad,ix1,ix2,ix3,ix4,iter,*n,nzero;
-  float perc,perci,percf,*wd,**M,thres,*in1,*out2,f_low,f_high,alpha,*amp,*trace;
-  sf_complex czero,*freqslice,*out1,*in2,**D,**Dobs;
+  float perc,perci,percf,*wd,thres,*in1,*out2,f_low,f_high,*amp,*trace,**T,*wm;
+  sf_complex czero,*freqslice,*out1,*in2,**D,**Dobs,*m,**M,**R,*r;
   fftwf_plan p1,p2,p3,p4; 
+  bool debug;
   
   __real__ czero = 0;
   __imag__ czero = 0;
-  perci = 1.0;
-  percf = 0.0;
+  perci = 0.99;
+  percf = 0.90;
   padfactor = 2;
-  /* copy data from input to FFT array and pad with zeros */
+  
   ntfft = padfactor*nt;
   nx1fft = padfactor*nx1;
   nx2fft = padfactor*nx2;
@@ -186,11 +195,15 @@ void pocs(float **d,
 
   wd = sf_floatalloc(nk);
   D    = sf_complexalloc2(nw,nk);
+  R    = sf_complexalloc2(nw,nk);
+  M    = sf_complexalloc2(nw,nk);
+  m    = sf_complexalloc(nk);
+  r    = sf_complexalloc(nk);
+  wm   = sf_floatalloc(nk);
+  T    = sf_floatalloc2(nw,nk);
   Dobs = sf_complexalloc2(nw,nk);
-  M    = sf_floatalloc2(nw,nk);
-  for (ix=0;ix<nk;ix++) for (iw=0;iw<nw;iw++) D[ix][iw] = czero;
-  for (ix=0;ix<nk;ix++) for (iw=0;iw<nw;iw++) Dobs[ix][iw] = czero;
-  for (ix=0;ix<nk;ix++) for (iw=0;iw<nw;iw++) M[ix][iw] = 0.0;
+  for (ix=0;ix<nk;ix++) for (iw=0;iw<nw;iw++) M[ix][iw] = R[ix][iw] = D[ix][iw] = Dobs[ix][iw] = czero;
+  for (ix=0;ix<nk;ix++) m[ix] = r[ix] =  czero;
 
   in1 = sf_floatalloc(ntfft);
   out1 = sf_complexalloc(nw);
@@ -202,7 +215,7 @@ void pocs(float **d,
       for (it=0; it<nt; it++) in1[it] = d[ix_no_pad][it];
       for (it=nt;it<ntfft;it++) in1[it] = 0.0;       
       fftwf_execute(p1);
-      for(iw=0;iw<nw;iw++) D[ix][iw] = Dobs[ix][iw] = out1[iw]; 
+      for(iw=0;iw<nw;iw++) R[ix][iw] = D[ix][iw] = Dobs[ix][iw] = out1[iw]; 
     }
   }}}}
 
@@ -232,26 +245,21 @@ void pocs(float **d,
   amp = sf_floatalloc(nk*nw);
 
   for (iter=0;iter<niter;iter++){
-
-    for (ix=0;ix<nk;ix++) for (iw=0;iw<nw;iw++) M[ix][iw] = 1.0;
-    // *****************************************************************************
-    // transform D from w-x to w-k (first re-zero the zero pad regions of the array)
+    for (iw=0;iw<nw;iw++) for (ix=0;ix<nk;ix++) T[ix][iw] = 0; 
     for (iw=if_low;iw<if_high;iw++){
       for (ix1=0;ix1<nx1fft;ix1++){ for (ix2=0;ix2<nx2fft;ix2++){ for (ix3=0;ix3<nx3fft;ix3++){ for (ix4=0;ix4<nx4fft;ix4++){
         ix = ix1*nx2fft*nx3fft*nx4fft + ix2*nx3fft*nx4fft + ix3*nx4fft + ix4;
         if (ix1 < nx1 && ix2 < nx2 && ix3 < nx3 && ix4 < nx4){ 
-          freqslice[ix] = D[ix][iw];
+          freqslice[ix] = R[ix][iw];
         }
         else{
           freqslice[ix] = czero;
         }
       }}}}
       fftwf_execute(p2);
-      for (ix=0;ix<nk;ix++) D[ix][iw] = freqslice[ix];
+      for (ix=0;ix<nk;ix++) D[ix][iw] = freqslice[ix]/sqrt((float) nk);
     }
-    // *****************************************************************************
-
-    // obtain median of non-zero amplitudes
+    // Projection 1: Thresholding
     nzero = 0;
     for (iw=0;iw<nw;iw++){  
       for (ix=0;ix<nk;ix++){ 
@@ -260,41 +268,95 @@ void pocs(float **d,
       }
     }
     qsort (amp,nk*nw, sizeof(*amp), compare);
-    perc = perci + iter*((percf-perci)/(niter-1));
+    perc = perci + ((float) iter)*((percf-perci)/((float) niter-1));
     thres = amp[(int) truncf(nk*nw - 1 - (1-perc)*nzero)];
-
+    //fprintf(stderr,"perc=%f thres=%f\n",perc,thres);
     for (iw=if_low;iw<if_high;iw++){
       for (ix=0;ix<nk;ix++){
-        if (sf_cabs(D[ix][iw])<thres) M[ix][iw] = 0.0;
-        else M[ix][iw] = sf_cabs(D[ix][iw])*(1 - powf(thres/(sf_cabs(D[ix][iw]) + 0.0000001),p));
+        if (sf_cabs(D[ix][iw])<thres) D[ix][iw]  = czero;
+        else{ 
+          D[ix][iw] = D[ix][iw]*(1 - powf(thres/(sf_cabs(D[ix][iw]) + 0.0000001),p));
+          T[ix][iw] = 1.0;
+        }
       }
     }
     
-    for (iw=0;iw<if_low;iw++)   for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
-    for (iw=if_high;iw<nw;iw++) for (ix=0;ix<nk;ix++) M[ix][iw] = 0.0;
-    for (iw=if_low;iw<if_high;iw++){ for (ix=0;ix<nk;ix++){ 
-      __real__ D[ix][iw] = M[ix][iw]*cosf(cargf(D[ix][iw]));
-      __imag__ D[ix][iw] = M[ix][iw]*sinf(cargf(D[ix][iw]));
-    }}
-
-    // *****************************************************************************
+    if (0){
+      for (iw=if_low;iw<if_high;iw++){
+        if (iw==20) debug=true;
+        else debug=false;
+        for (ix=0;ix<nk;ix++) r[ix] = Dobs[ix][iw];
+        for (ix=0;ix<nk;ix++) m[ix] = D[ix][iw];
+        for (ix=0;ix<nk;ix++) wm[ix] = T[ix][iw];
+        cg(m,wm,nk,r,wd,nk,n,10,debug);
+        for (ix=0;ix<nk;ix++) M[ix][iw] = m[ix];
+      }
+    }
+    else{
+      for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) M[ix][iw] += D[ix][iw];
+    }
+    
     // transform D from w-k to w-x (afterwards re-zero the zero pad regions of the array)
     for (iw=if_low;iw<if_high;iw++){
-      for (ix=0;ix<nk;ix++) freqslice[ix] = D[ix][iw];
+      for (ix=0;ix<nk;ix++) freqslice[ix] = M[ix][iw];
       fftwf_execute(p3);
       for (ix1=0;ix1<nx1fft;ix1++){ for (ix2=0;ix2<nx2fft;ix2++){ for (ix3=0;ix3<nx3fft;ix3++){ for (ix4=0;ix4<nx4fft;ix4++){
         ix = ix1*nx2fft*nx3fft*nx4fft + ix2*nx3fft*nx4fft + ix3*nx4fft + ix4;
         if (ix1 < nx1 && ix2 < nx2 && ix3 < nx3 && ix4 < nx4){ 
-          D[ix][iw] = freqslice[ix]/nk;
+          D[ix][iw] = freqslice[ix]/sqrt((float) nk);
         }
         else{
           D[ix][iw] = czero;
         }
       }}}}
     }
-    alpha=alphai + (iter-1)*((alphaf-alphai)/(niter-1));
-    for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) D[ix][iw] = alpha*Dobs[ix][iw] + (1-alpha*wd[ix])*D[ix][iw];
+    // Projection 2: Subtract from original traces
+    for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) R[ix][iw] = Dobs[ix][iw] - wd[ix]*D[ix][iw];
   }
+
+  if (debias){
+      for (iw=if_low;iw<if_high;iw++){
+        if (iw==20) debug=true;
+        else debug=false;
+        for (ix=0;ix<nk;ix++) r[ix] = Dobs[ix][iw];
+        for (ix=0;ix<nk;ix++) m[ix] = M[ix][iw];
+        for (ix=0;ix<nk;ix++) wm[ix] = T[ix][iw];
+        cg(m,wm,nk,r,wd,nk,n,10,debug);
+        for (ix=0;ix<nk;ix++) M[ix][iw] = m[ix];
+      }
+
+    // transform D from w-k to w-x (afterwards re-zero the zero pad regions of the array)
+    for (iw=if_low;iw<if_high;iw++){
+      for (ix=0;ix<nk;ix++) freqslice[ix] = M[ix][iw];
+      fftwf_execute(p3);
+      for (ix1=0;ix1<nx1fft;ix1++){ for (ix2=0;ix2<nx2fft;ix2++){ for (ix3=0;ix3<nx3fft;ix3++){ for (ix4=0;ix4<nx4fft;ix4++){
+        ix = ix1*nx2fft*nx3fft*nx4fft + ix2*nx3fft*nx4fft + ix3*nx4fft + ix4;
+        if (ix1 < nx1 && ix2 < nx2 && ix3 < nx3 && ix4 < nx4){ 
+          D[ix][iw] = freqslice[ix]/sqrt((float) nk);
+        }
+        else{
+          D[ix][iw] = czero;
+        }
+      }}}}
+    }
+
+  }
+
+  for (iw=if_low;iw<if_high;iw++){
+    for (ix=0;ix<nk;ix++) freqslice[ix] = M[ix][iw];
+    fftwf_execute(p3);
+    for (ix1=0;ix1<nx1fft;ix1++){ for (ix2=0;ix2<nx2fft;ix2++){ for (ix3=0;ix3<nx3fft;ix3++){ for (ix4=0;ix4<nx4fft;ix4++){
+      ix = ix1*nx2fft*nx3fft*nx4fft + ix2*nx3fft*nx4fft + ix3*nx4fft + ix4;
+      if (ix1 < nx1 && ix2 < nx2 && ix3 < nx3 && ix4 < nx4){ 
+        D[ix][iw] = freqslice[ix]/sqrt((float) nk);
+      }
+      else{
+        D[ix][iw] = czero;
+      }
+    }}}}
+  }
+  //for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) D[ix][iw] = alpha*Dobs[ix][iw] + (1 - alpha*wd[ix])*D[ix][iw];
+
   free1complex(freqslice);
   in2 = sf_complexalloc(ntfft);
   out2 = sf_floatalloc(ntfft);
@@ -310,15 +372,19 @@ void pocs(float **d,
   }}}}
 
   free1float(trace);
-  free1float(wd);
   free1float(amp);
-  free2float(M);
   free1float(in1);
   free1float(out2);
   free1complex(out1);
   free1complex(in2);
+  free1complex(m);
+  free1float(wd);
+  free1float(wm);
   free2complex(D);
   free2complex(Dobs);
+  free2float(T);
+  free2complex(R);
+  free1complex(r);
   fftwf_destroy_plan(p1);
   fftwf_destroy_plan(p2);
   fftwf_destroy_plan(p3);
@@ -335,6 +401,86 @@ int compare (const void * a, const void * b)
   return (fa > fb) - (fa < fb);
 }
 
+void cg(sf_complex *m,float *wm,int nm,
+	    sf_complex *d,float *wd,int nd,
+	    int *n,
+	    int niter,
+	    bool verbose)
+/* 
+   Quadratic regularization with CG-LS Algorithm 2 from Scales, 1987.
+*/
 
+{
+  sf_complex *p,*q,*r,*s;
+  float alpha,beta,r_dot,q_dot; 
+  int i,iter;
+  fftwf_plan s_to_r,p_to_q;
 
+  p = sf_complexalloc(nm);
+  r = sf_complexalloc(nm);
+  q = sf_complexalloc(nd);
+  s = sf_complexalloc(nd);
+
+  s_to_r   = fftwf_plan_dft(4,n,(fftwf_complex*)s,(fftwf_complex*)r,FFTW_FORWARD,FFTW_ESTIMATE);
+  p_to_q = fftwf_plan_dft(4,n,(fftwf_complex*)p,(fftwf_complex*)q,FFTW_BACKWARD,FFTW_ESTIMATE);
+
+  for (i=0;i<nm;i++) p[i] = m[i];
+  fftwf_execute(p_to_q);
+  for (i=0;i<nd;i++) s[i] = d[i] - q[i]*wd[i]/sqrt((float) nm);
+
+  fftwf_execute(s_to_r);
+  for (i=0;i<nm;i++) r[i] = r[i]*wm[i]/sqrt((float) nm);
+  for (i=0;i<nm;i++) p[i] = r[i];
+
+  r_dot = cgdot(r,nm);
+  if (r_dot < 0.0000001) return; 
+
+  fftwf_execute(p_to_q);
+  for (i=0;i<nm;i++) q[i] = q[i]*wd[i]/sqrt((float) nm);
+
+  if (verbose) fprintf(stderr,"misfit=");
+  for (iter=0;iter<niter;iter++){
+    if (verbose) fprintf(stderr,"%6.4f,",cgdot(s,nd));
+    q_dot = cgdot(q,nd);
+    if (q_dot > 0.00001) alpha = cgdot(r,nm)/q_dot; 
+    else break;
+    for (i=0;i<nm;i++) m[i] = m[i] + alpha*p[i];
+    for (i=0;i<nd;i++) s[i] = s[i] - alpha*q[i];
+    r_dot = cgdot(r,nm);
+    fftwf_execute(s_to_r);
+    for (i=0;i<nm;i++) r[i] = r[i]*wm[i]/sqrt((float) nm);
+    if (r_dot > 0.0000001) beta = cgdot(r,nm)/r_dot; 
+    else  break;
+    for (i=0;i<nm;i++) p[i] = r[i] + beta*p[i];
+    fftwf_execute(p_to_q);
+    for (i=0;i<nd;i++) q[i] = q[i]*wd[i]/sqrt((float) nm);
+  }
+  if (verbose) fprintf(stderr,"\n");
+
+  fftwf_destroy_plan(s_to_r);
+  fftwf_destroy_plan(p_to_q);
+  free1complex(p);
+  free1complex(q);
+  free1complex(r);
+  free1complex(s);
+
+  return;
+}
+
+float cgdot(sf_complex *x,int nm)
+{
+  /*     Compute the inner product */
+  /*     dot=(x,x) for complex x */     
+  int i;
+  float  cgdot; 
+  sf_complex val;
+  
+  __real__ val = 0;
+  __imag__ val = 0;
+  for (i=0;i<nm;i++){  
+    val = val + conjf(x[i])*x[i];
+  }
+  cgdot= crealf(val);
+  return(cgdot);
+}
 
