@@ -30,19 +30,8 @@
 
 void pocs(float **d,int nt,int nx,float dt,int nx1,int nx2,int nx3,int nx4,
           float *wd_no_pad,int niter,float alpha,float fmax,float p, 
-          bool debias,int order,int smooth1,int smooth2,int smooth3,int smooth4,int nrepeat,
-          bool verbose);
+          bool debias,bool verbose);
 int compare (const void * a, const void * b);
-void cg(float *m,int nm,
-	    float *d,int nd,
-	    float *wd,
-	    int nx1, int nx2, int nx3, int nx4,
-	    int niter,
-	    int order,
-	    bool verbose);
-void polynomial_interp_4d_op(float *d,float *m,int nx1,int nx2,int nx3,int nx4,int order,bool adj);
-float cgdot(float *x,int nx);
-float cgdot2(float *x,float *y,int nx);
 void smooth4d(float *d, float *wd,
               int nx1,int smooth1,
               int nx2,int smooth2,
@@ -67,8 +56,6 @@ int main(int argc, char* argv[])
     bool verbose;
     float p;
     bool debias;
-    int order;
-    int smooth1,smooth2,smooth3,smooth4,nrepeat;
     
     in = sf_input("in");
     out = sf_output("out");
@@ -97,13 +84,6 @@ int main(int argc, char* argv[])
     if (fmax > 0.5/d1) fmax = 0.5/d1;
     if (!sf_getfloat("p",&p)) p = 8.0; /* Exponent for thresholding, 1=>soft 2=>stein large=>hard thresholding */
     if (!sf_getbool("debias",&debias)) debias = false; /* flag for amplitude compensation of interpolated traces */
-    if (!sf_getint("order",&order)) order = 1; /* polynomial order used if debias selected (1 = linear, 2= quadratic) */
-    order++;
-    if (!sf_getint("smooth1",&smooth1)) smooth1 = 0; /* length of debias filter in the x1 direction */
-    if (!sf_getint("smooth2",&smooth2)) smooth2 = 0; /* length of debias filter in the x2 direction */
-    if (!sf_getint("smooth3",&smooth3)) smooth3 = 0; /* length of debias filter in the x3 direction */
-    if (!sf_getint("smooth4",&smooth4)) smooth4 = 0; /* length of debias filter in the x4 direction */
-    if (!sf_getint("nrepeat",&nrepeat)) nrepeat = 1; /* number of times to apply debias filter */
     sf_putfloat(out,"o1",o1);
     sf_putfloat(out,"o2",o2);
     sf_putfloat(out,"o3",o3);
@@ -158,7 +138,7 @@ int main(int argc, char* argv[])
     if (verbose) fprintf(stderr,"the block has %6.2f %% missing traces.\n", (float) 100 - 100*sum_wd/(n2*n3*n4*n5));
     
     if ((float) sum_wd/(n2*n3*n4*n5) > 0.05){
-      pocs(d,n1,nx,d1,n2,n3,n4,n5,wd,niter,alpha,fmax,p,debias,order,smooth1,smooth2,smooth3,smooth4,nrepeat,verbose);
+      pocs(d,n1,nx,d1,n2,n3,n4,n5,wd,niter,alpha,fmax,p,debias,verbose);
     }
         
     for (ix=0; ix<nx; ix++) {
@@ -172,11 +152,10 @@ int main(int argc, char* argv[])
 
 void pocs(float **d,int nt,int nx,float dt,int nx1,int nx2,int nx3,int nx4,
           float *wd_no_pad,int niter,float alpha,float fmax,float p, 
-          bool debias,int order,int smooth1,int smooth2,int smooth3,int smooth4,int nrepeat,
-          bool verbose)
+          bool debias,bool verbose)
 {  
   int it,ix,iw,ntfft,nx1fft,nx2fft,nx3fft,nx4fft,nw,nk,if_low,if_high,padfactor,ix_no_pad,ix1,ix2,ix3,ix4,iter,*n,nzero;
-  float perc,perci,percf,*wd,thres,*in1,*out2,f_low,f_high,*amp,*m,*b1,*b2,bias;
+  float perc,perci,percf,*wd,thres,*in1,*out2,f_low,f_high,*amp,*b1,*b2,median,bias;
   sf_complex czero,*freqslice,*out1,*in2,**D,**Dobs;
   fftwf_plan p1,p2,p3,p4; 
   
@@ -289,46 +268,6 @@ void pocs(float **d,int nt,int nx,float dt,int nx1,int nx2,int nx3,int nx4,
     for (iw=if_low;iw<if_high;iw++) for (ix=0;ix<nk;ix++) D[ix][iw] = alpha*Dobs[ix][iw] + (1-alpha*wd[ix])*D[ix][iw];
   }
   
-/*
-  if (debias){
-    m = sf_floatalloc(order*order*order*order);
-    b = sf_floatalloc(nk);
-    for (ix=0;ix<nk;ix++) wd[ix] = 1.0;
-    for (iw=if_low;iw<if_high;iw++){
-      for (ix=0;ix<nk;ix++) b[ix] = sf_cabs(D[ix][iw]);
-      for (ix=0;ix<order*order*order*order;ix++) m[ix] = 0.0;
-      cg(m,order*order*order*order,b,nk,wd,nx1fft,nx2fft,nx3fft,nx4fft,5,order,verbose);
-      polynomial_interp_4d_op(b,m,nx1fft,nx2fft,nx3fft,nx4fft,order,false);
-      for (ix=0;ix<nk;ix++){ 
-        if (sf_cabs(D[ix][iw])>1e-5) bias = b[ix]/(sf_cabs(D[ix][iw]));
-        else bias = 1.0;
-        if (wd[ix]==0 && bias<10) D[ix][iw] = bias*D[ix][iw];
-      }
-      //for (ix=0;ix<nk;ix++) __real__ D[ix][iw] = b[ix]*cosf(cargf(D[ix][iw]));
-      //for (ix=0;ix<nk;ix++) __imag__ D[ix][iw] = b[ix]*sinf(cargf(D[ix][iw]));
-    }
-    free1float(m);
-    free1float(b);
-  }
-*/  
-
-/*
-  float *m1 = sf_floatalloc(order*order*order*order);
-  float *b1 = sf_floatalloc(nk);
-  float *m2 = sf_floatalloc(order*order*order*order);
-  float *b2 = sf_floatalloc(nk);
-  init_genrand((unsigned long) 1);
-  for (ix=0;ix<nk;ix++) b1[ix] = genrand_real1();
-  for (ix=0;ix<order*order*order*order;ix++) m2[ix] = genrand_real1();
-  polynomial_interp_4d_op(b2,m2,nx1fft,nx2fft,nx3fft,nx4fft,order,false);
-  polynomial_interp_4d_op(b1,m1,nx1fft,nx2fft,nx3fft,nx4fft,order,true);
-  fprintf(stderr,"Dot product test: %f %f\n",cgdot2(b1,b2,nk),cgdot2(m1,m2,order*order*order*order));
-  free1float(m1);
-  free1float(b1);
-  free1float(m2);
-  free1float(b2);
-*/
-
   free1complex(freqslice);
   in2 = sf_complexalloc(ntfft);
   out2 = sf_floatalloc(ntfft);
@@ -344,14 +283,51 @@ void pocs(float **d,int nt,int nx,float dt,int nx1,int nx2,int nx3,int nx4,
   }}}}
 
   if (debias){
+    // scale RMS amplitude to median value of observed traces
     b1 = sf_floatalloc(nx);
     b2 = sf_floatalloc(nx);
-    for (ix=0;ix<nx;ix++) b1[ix] = 0.0;
-    for(it=0;it<nt;it++) for (ix=0;ix<nx;ix++) b1[ix] += d[ix][it]*d[ix][it];
-    for (ix=0;ix<nx;ix++) b2[ix] = b1[ix];
-    qsort (b2,nx, sizeof(*b2), compare);
-    //smooth4d(b2,wd,nx1,smooth1,nx2,smooth2,nx3,smooth3,nx4,smooth4,nrepeat,verbose);
-    for(it=0;it<nt;it++) for (ix=0;ix<nx;ix++) if (wd[ix]==0) d[ix][it] *= b2[(int) truncf((float) nx/2)]/b1[ix];
+    nzero = 0;
+    for (ix=0;ix<nx;ix++){
+      b1[ix] = b2[ix] = 0.0;
+      if (wd_no_pad[ix]){
+        for(it=0;it<nt;it++) b1[ix] += d[ix][it]*d[ix][it];
+        nzero++;
+      }
+      for(it=0;it<nt;it++) b2[ix] += d[ix][it]*d[ix][it];
+      b1[ix] = sqrtf(b1[ix]);
+      b2[ix] = sqrtf(b2[ix]);
+    }
+    qsort (b1,nx, sizeof(*b1), compare);
+    median = b1[(int) truncf(nx - 1 - 0.5*nzero)];
+    for (ix=0;ix<nx;ix++){
+      if (wd_no_pad[ix]==0 && b2[ix] > 1e-8) bias = median/b2[ix];
+      else bias = 1.0;
+      if (bias < 2.0) for(it=0;it<nt;it++) d[ix][it] *= bias;
+      else            for(it=0;it<nt;it++) d[ix][it] *= 2.0;
+    }
+    // smooth RMS amplitude laterally
+    for (ix=0;ix<nx;ix++){
+      b1[ix] = b2[ix] = 0.0;
+      for(it=0;it<nt;it++) b1[ix] += d[ix][it]*d[ix][it];
+      for(it=0;it<nt;it++) b2[ix] += d[ix][it]*d[ix][it];
+      b1[ix] = sqrtf(b1[ix]);
+      b2[ix] = sqrtf(b2[ix]);
+    }
+
+    int smooth1,smooth2,smooth3,smooth4;
+    if (nx1>50) smooth1 = 5;
+    else        smooth1 = 0;
+    if (nx2>50) smooth2 = 5;
+    else        smooth2 = 0;
+    if (nx3>50) smooth3 = 5;
+    else        smooth3 = 0;
+    if (nx4>50) smooth4 = 5;
+    else        smooth4 = 0;
+    smooth4d(b1,wd,nx1,smooth1,nx2,smooth2,nx3,smooth3,nx4,smooth4,5,verbose);    
+    for (ix=0;ix<nx;ix++){
+      if (wd_no_pad[ix]==0 && b2[ix] > 1e-8) for(it=0;it<nt;it++) d[ix][it] *= b1[ix]/b2[ix];
+    }
+    
     free1float(b1);
     free1float(b2);
   }
@@ -378,99 +354,6 @@ int compare (const void * a, const void * b)
   float fa = *(const float*) a;
   float fb = *(const float*) b;
   return (fa > fb) - (fa < fb);
-}
-
-void cg(float *m,int nm,
-	float *d,int nd,
-	float *wd,
-        int nx1, int nx2, int nx3, int nx4,
-	int niter,
-	int order,
-	bool verbose)
-/* 
-   Polynomial interpolation of amplitudes in 4 spatial dimensions using CG.
-*/
-{
-  float *p,*q,*r,*s;
-  float alpha,beta,r_dot,q_dot; 
-  int i,iter;
-  p = sf_floatalloc(nm);
-  r = sf_floatalloc(nm);
-  q = sf_floatalloc(nd);
-  s = sf_floatalloc(nd);
-  for (i=0;i<nm;i++) m[i] = 0.0;
-  for (i=0;i<nd;i++) s[i] = d[i] *wd[i];
-  polynomial_interp_4d_op(s,r,nx1,nx2,nx3,nx4,order,true);
-  for (i=0;i<nm;i++) p[i] = r[i];
-  r_dot = cgdot(r,nm);
-  if (r_dot < 1e-5) return; 
-  polynomial_interp_4d_op(q,p,nx1,nx2,nx3,nx4,order,false);
-  for (i=0;i<nd;i++) q[i] = q[i]*wd[i];
-  if (verbose) fprintf(stderr,"misfit=");
-
-  for (iter=0;iter<niter;iter++){
-    if (verbose) fprintf(stderr,"%6.4f,",cgdot(s,nd));
-    q_dot = cgdot(q,nd);
-    if (q_dot > 1e-5) alpha = cgdot(r,nm)/q_dot; 
-    else break;
-    for (i=0;i<nm;i++) m[i] = m[i] + alpha*p[i];
-    for (i=0;i<nd;i++) s[i] = s[i] - alpha*q[i];
-    r_dot = cgdot(r,nm);
-    polynomial_interp_4d_op(s,r,nx1,nx2,nx3,nx4,order,true);
-    if (r_dot > 1e-5) beta = cgdot(r,nm)/r_dot; 
-    else  break;
-    for (i=0;i<nm;i++) p[i] = r[i] + beta*p[i];
-    polynomial_interp_4d_op(q,p,nx1,nx2,nx3,nx4,order,false);
-    for (i=0;i<nd;i++) q[i] = q[i]*wd[i];
-  }
-  if (verbose) fprintf(stderr,"\n");
-
-  free1float(p);
-  free1float(q);
-  free1float(r);
-  free1float(s);
-
-  return;
-}
-
-void polynomial_interp_4d_op(float *d,float *m,int nx1,int nx2,int nx3,int nx4,int order,bool adj)
-{
-  int i1,i2,i3,i4,ix1,ix2,ix3,ix4,ix;
-  float val;
-  if (adj) for (ix=0;ix<order*order*order*order;ix++) m[ix] = 0.0;
-  else     for (ix=0;ix<nx1*nx2*nx3*nx4;ix++) d[ix] = 0.0;
-  for (ix1=0;ix1<nx1;ix1++){ for (ix2=0;ix2<nx2;ix2++){ for (ix3=0;ix3<nx3;ix3++){ for (ix4=0;ix4<nx4;ix4++){ 
-    for (i1=0;i1<order;i1++){ for (i2=0;i2<order;i2++){ for (i3=0;i3<order;i3++){ for (i4=0;i4<order;i4++){ 
-      val = powf((float) ix1,(float) i1)*powf((float) ix2,(float) i2)*powf((float) ix3,(float) i3)*powf((float) ix4,(float) i4);
-      if (adj) m[i4*order*order*order + i3*order*order + i2*order + i1] += val*d[ix4*nx3*nx2*nx1 + ix3*nx2*nx1 + ix2*nx1 + ix1];
-      else     d[ix4*nx3*nx2*nx1 + ix3*nx2*nx1 + ix2*nx1 + ix1] += val*m[i4*order*order*order + i3*order*order + i2*order + i1];
-    }}}}
-  }}}}
-  return;
-}
-
-float cgdot(float *x,int nx)
-/*     Compute the inner product */
-{
-  int ix;
-  float val;
-  val = 0.0;
-  for (ix=0;ix<nx;ix++){  
-    val = val + x[ix]*x[ix];
-  }
-  return(val);
-}
-
-float cgdot2(float *x,float *y,int nx)
-/*     Compute the inner product of two vectors */
-{
-  int ix;
-  float val;
-  val = 0.0;
-  for (ix=0;ix<nx;ix++){  
-    val = val + x[ix]*y[ix];
-  }
-  return(val);
 }
 
 void smooth4d(float *d, float *wd,
@@ -557,21 +440,3 @@ void mean_filter(float *trace, int nt, int ntw, int nrepeat)
   free1float(tracein);
   return;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
