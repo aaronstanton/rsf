@@ -323,6 +323,8 @@ int main(int argc, char* argv[])
 	      }
         }
       }
+      sf_fileclose(intmp);
+      sf_fileclose(intmp_ang);
     }
     
     sf_putfloat(out,"o1",oz);
@@ -343,7 +345,6 @@ int main(int argc, char* argv[])
     sf_putstring(out,"title","Migrated data");
     sf_floatwrite(m[0],nz*nmx2*npx,out);
     free2float(m);
-    sf_fileclose(intmp);
   }  
   else if (!adj && rank==0){
     sf_putfloat(out,"o1",ot);
@@ -368,8 +369,8 @@ int main(int argc, char* argv[])
       if (verbose) fprintf(stderr,"reading %s from disk.\n",tmpname); 
       sf_floatread(d1shot[0],nt*nmx,intmp);
       sf_floatwrite(d1shot[0],nt*nmx,out);
+      sf_fileclose(intmp);
     }
-    sf_fileclose(intmp);
   }  
 
   sf_fileclose(in);
