@@ -1,0 +1,105 @@
+\title[Short title]{Fooling around with zero offset wave equation migration}
+\author{Aaron Stanton}
+\institute{Signal Analysis and Imaging Group \\ Department of Physics \\ University of Alberta}
+\date{\today}
+
+\addtobeamertemplate{frametitle}{}{%
+\begin{textblock*}{100mm}(.85\textwidth,-0.9cm)
+\includegraphics[height=1cm,width=2cm]{logo}
+\end{textblock*}}
+
+\maketitle
+\inputdir{example}
+\begin{frame} \frametitle{Outline}
+    \begin{itemize}
+        \item Stolt using 500$m/s$ increments in velocity
+        \item Gazdag
+        \item PSPI
+        \item Split-Step
+    \end{itemize}
+\end{frame}
+
+\begin{frame} \frametitle{velocity model}
+    \plot{v}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{data}
+    \plot{d}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{Stolt}
+    \plot{dmig_stolt}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Gazdag}
+    \plot{dmig_gazdag}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{PSPI (nref=5)}
+    \plot{dmig_pspi}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step}
+    \plot{dmig_splitstep}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{Stolt with vel$=1000m/s$}
+    \plot{dmig_stolt1000}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Stolt with vel$=1500m/s$}
+    \plot{dmig_stolt1500}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Stolt with vel$=2000m/s$}
+    \plot{dmig_stolt2000}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Stolt with vel$=2500m/s$}
+    \plot{dmig_stolt2500}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Stolt with vel$=3000m/s$}
+    \plot{dmig_stolt3000}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Stolt with vel$=3500m/s$}
+    \plot{dmig_stolt3500}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Stolt with vel$=4000m/s$}
+    \plot{dmig_stolt4000}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Stolt with vel$=4500m/s$}
+    \plot{dmig_stolt4500}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Stolt with vel$=5000m/s$}
+    \plot{dmig_stolt5000}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{Split Step with 90$\%$vel}
+    \plot{dmig_splitstep90}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 92$\%$vel}
+    \plot{dmig_splitstep92}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 94$\%$vel}
+    \plot{dmig_splitstep94}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 96$\%$vel}
+    \plot{dmig_splitstep96}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 98$\%$vel}
+    \plot{dmig_splitstep98}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 100$\%$vel}
+    \plot{dmig_splitstep100}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 102$\%$vel}
+    \plot{dmig_splitstep102}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 104$\%$vel}
+    \plot{dmig_splitstep104}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 106$\%$vel}
+    \plot{dmig_splitstep106}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 108$\%$vel}
+    \plot{dmig_splitstep108}{width=0.75\textwidth}{}
+\end{frame}
+\begin{frame} \frametitle{Split Step with 110$\%$vel}
+    \plot{dmig_splitstep110}{width=0.75\textwidth}{}
+\end{frame}
+
+

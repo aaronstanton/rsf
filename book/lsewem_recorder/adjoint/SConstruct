@@ -1,0 +1,9 @@
+from rsf.proj import *
+
+plotpar1='color=e minval=-5e-4 maxval=5e-4 clip=5e-4 scalebar=y'
+plotpar2='color=e minval=-5e-5 maxval=5e-5 clip=5e-5 scalebar=y'
+Plot('mpp','grey %s' % plotpar1)
+Plot('mps','grey %s' % plotpar2)
+Result('m','mpp mps','OverUnderAniso')
+
+End()

@@ -1,0 +1,42 @@
+\title[Short title]{Shot profile wave equation migration}
+\author{Aaron Stanton}
+\institute{Signal Analysis and Imaging Group \\ Department of Physics \\ University of Alberta}
+\date{\today}
+
+\addtobeamertemplate{frametitle}{}{%
+\begin{textblock*}{100mm}(.85\textwidth,-0.9cm)
+\includegraphics[height=1cm,width=2cm]{logo}
+\end{textblock*}}
+
+\maketitle
+\inputdir{kevins_model}
+\begin{frame} \frametitle{Outline}
+    \begin{itemize}
+        \item Shot profile wave equation migration is applied to 50 shots generated using Acoustic Finite Difference modelling over the "Kevmousi model"
+        \item The wave equation operator used is the Split-Step method (Stoffa, 1990)
+        \item The wavelet used is a 20Hz peak frequency Ricker wavelet (the same wavelet was used for modelling and used as an auxillary input to the migration).
+        \item Individual shot gathers are migrated, muted, and added to the model
+        \item For demonstration the migration is also applied to a single shot gather to show its contribution to the image.
+    \end{itemize}
+\end{frame}
+
+\begin{frame} \frametitle{Velocity}
+    \plot{vel}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{Wavelet}
+    \plot{wav}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{One shot gather of fifty}
+    \plot{d}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{One shot gather: migrated}
+    \plot{dmig1shot}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{Migration using all fifty shots}
+    \plot{dmig}{width=0.75\textwidth}{}
+\end{frame}
+

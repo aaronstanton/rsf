@@ -1,0 +1,18 @@
+from rsf.tex import *
+
+Paper('aaron1',
+     lclass='geophysics',options='article',
+use='multicol,color,overpic,listings,amsmath,amssymb,amsbsy,comment,textpos,epstopdf,epsfig,algorithm,algpseudocode')
+
+Paper('slides_aaron',
+      lclass='cwpslides',
+      use='multicol,color,overpic,listings,amsmath,amssymb,amsbsy,framed,comment,textpos,epstopdf,epsfig,algorithm,algpseudocode',
+      color='ALL')
+     
+End(use='color')
+
+
+
+
+
+

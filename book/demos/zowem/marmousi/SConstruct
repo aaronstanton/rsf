@@ -1,0 +1,40 @@
+from rsf.proj import *
+
+Flow('marmvel.hh',None,'wget http://www.reproducibility.org/data/marm/marmvel.hh --limit-rate=0.5m -O ${TARGETS[0]}')
+Flow('vel','marmvel.hh',
+     '''
+     dd form=native | 
+     scale rscale=.001 | put d1=0.004 d2=0.004
+     label1=Depth label2=Distance unit1=km unit2=km
+     label=Velocity unit=km/s
+     ''')
+Flow('v','vel','scale dscale=1000 | put d1=4 d2=4 unit1=m unit2=m unit="m/s"') 
+
+Flow('marmexp.hh',None,'wget http://www.reproducibility.org/data/marm/marmexp.hh --limit-rate=0.5m -O ${TARGETS[0]}')
+Flow('exp','marmexp.hh','dd form=native')
+
+Flow('d','exp','put d2=4 unit2=m unit3=m') 
+Plot('v','grey color=j allpos=y title="Velocity"')
+Plot('d','grey minval=-0.01 maxval=0.01 clip=0.01 title="Exploding Reflector Data" ')
+
+Flow('dmig_pspi','d v',
+     '''
+     zowem op=3 nref=20 numthreads=20 verbose=y 
+     adj=y
+     nz=751 dz=4 oz=0 fmax=50
+     vp=${SOURCES[1]}
+     ''')
+
+Flow('dmig_ss','d v',
+     '''
+     zowem op=4 numthreads=20 verbose=y 
+     adj=y
+     nz=751 dz=4 oz=0 fmax=50
+     vp=${SOURCES[1]}
+     ''')
+
+Plot('dmig_pspi','grey minval=-0.01 maxval=0.01 clip=0.01 title="Migrated data (PSPI)" ')
+Plot('dmig_ss','grey minval=-0.01 maxval=0.01 clip=0.01 title="Migrated data (SPlit Step)"')
+Result('results','d v dmig_pspi dmig_ss','SideBySideAniso')
+
+End()

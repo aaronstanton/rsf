@@ -1,0 +1,43 @@
+import os
+os.environ['OMP_NUM_THREADS'] = '8'
+from rsf.proj import *
+
+Flow('vrms','/u1/data/GOM_data/vrms.txt',
+     '''
+     echo n1=334 o1=0 d1=0.03 n2=10 o2=1002 d2=200 data_format=ascii_float in=${SOURCES[0]} |
+     sfdd form=native |
+     window n2=4 f2=4 |
+     math output="input*0.3048" |
+     sinc o1=0 n1=1751 d1=0.004 |
+     transp |
+     sinc o1=0 n1=810 d1=26.67 |
+     transp
+     ''')
+Flow('d headers','/u1/data/GOM_data/near_offset_section.su',
+     '''
+     segyread su=y suxdr=y tape=${SOURCES[0]} tfile=${TARGETS[1]} |
+     put o2=0 d2=26.67 |
+     put o3=-68 d3=13.335 n3=1
+     ''',stdin=0)
+Flow('ddec','d','decimate mode=1 perc=50')
+Flow('m_adj','ddec vrms','pstm adj=y vp=${SOURCES[1]} ps=n aperture=3000 verbose=y')
+Flow('d_fwd','m_adj vrms','pstm adj=n vp=${SOURCES[1]} ps=n aperture=3000 verbose=y')
+Flow('m_inv misfit','ddec vrms',
+     '''
+     lspstm niter=50 
+     d=${SOURCES[0]} vp=${SOURCES[1]}
+     m=${TARGETS[0]} misfit=${TARGETS[1]} 
+     aperture=3000 verbose=y
+     ''',stdin=0,stdout=-1)
+Flow('d_fwd1','m_inv vrms','pstm adj=n vp=${SOURCES[1]} ps=n aperture=3000 verbose=y')
+
+Result('d','grey')
+Result('d_fwd','grey')
+Result('m_adj','grey')
+Result('d_fwd','grey')
+Result('m_inv','grey')
+Result('misfit','graph')
+Result('d_fwd1','grey')
+
+End()
+

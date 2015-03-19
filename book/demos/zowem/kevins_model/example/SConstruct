@@ -1,0 +1,136 @@
+from rsf.proj import *
+ 
+# get zero offset data and velocity model
+Fetch('zeroff.su',
+      server='http://ualberta.ca',
+      top='~kstanton',
+      dir='files')
+Fetch('vel.bin',
+      server='http://ualberta.ca',
+      top='~kstanton',
+      dir='files')
+
+Flow('d','zeroff.su',
+     '''
+     segyread su=y suxdr=y |
+     put d2=10 label2="x" unit2="m" o1=0 o2=10
+     ''')
+
+Flow('v','vel.bin',
+     '''
+     bin2rsf d1=5 d2=10 n1=600 n2=700 bfile=${SOURCES[0]} |
+     put o1=0 o2=10 label1="z" label2="x" unit1="m" unit2="m"
+     ''',stdin=-1)
+
+Flow('v1000','v','math output=1000')
+Flow('v1500','v','math output=1500')
+Flow('v2000','v','math output=2000')
+Flow('v2500','v','math output=2500')
+Flow('v3000','v','math output=3000')
+Flow('v3500','v','math output=3500')
+Flow('v3000','v','math output=3000')
+Flow('v3500','v','math output=3500')
+Flow('v4000','v','math output=4000')
+Flow('v4500','v','math output=4500')
+Flow('v5000','v','math output=5000')
+
+Flow('v90','v','math output="input*0.90"')
+Flow('v92','v','math output="input*0.92"')
+Flow('v94','v','math output="input*0.94"')
+Flow('v96','v','math output="input*0.96"')
+Flow('v98','v','math output="input*0.98"')
+Flow('v100','v','math output="input*1.00"')
+Flow('v102','v','math output="input*1.02"')
+Flow('v104','v','math output="input*1.04"')
+Flow('v106','v','math output="input*1.06"')
+Flow('v108','v','math output="input*1.08"')
+Flow('v110','v','math output="input*1.10"')
+
+Flow('dmig_stolt1000','d v1000','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_stolt1500','d v1500','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_stolt2000','d v2000','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_stolt2500','d v2500','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_stolt3000','d v3000','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_stolt3500','d v3500','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_stolt4000','d v4000','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_stolt4500','d v4500','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_stolt5000','d v5000','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+
+Flow('dmig_stolt','d v','zowem op=1 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_gazdag','d v','zowem op=2 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_pspi','d v','zowem nref=5 numthreads=6 op=3 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep','d v','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+
+Flow('dmig_splitstep90','d v90','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep92','d v92','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep94','d v94','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep96','d v96','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep98','d v98','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep100','d v100','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep102','d v102','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep104','d v104','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep106','d v106','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep108','d v108','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+Flow('dmig_splitstep110','d v110','zowem numthreads=6 op=4 adj=y nz=600 dz=5 oz=0 fmax=60 vp=${SOURCES[1]}')
+
+# Dot product test 
+#Flow('dot.test','d v',
+#     '''
+#     zowem dottest=y op=4 nref=5 numthreads=6 verbose=y
+#     nz=600 dz=5 oz=0 fmax=10
+#     vp=${SOURCES[1]}
+#     ''',stdout=-1)
+
+#Flow('dmig_ls misfit','d v',
+#      '''
+#      zowem op=4 nref=5 numthreads=6 verbose=y
+#      inv=y Niter=5 misfit=${TARGETS[1]}
+#      nz=600 dz=5 oz=0 fmax=40
+#      vp=${SOURCES[1]}
+#      ''')
+ 
+# create plots
+Result('d','d','grey clip=0.1 minval=-0.1 maxval=0.1 title="Zero offset data"')
+Result('v','v','grey pclip=100 color=j mean=y scalebar=n title="Velocity" barlabel="m/s"')
+Result('dmig_stolt','dmig_stolt','grey clip=0.1 minval=-0.1 maxval=0.1 title="Stolt"')
+Result('dmig_gazdag','dmig_gazdag','grey clip=0.1 minval=-0.1 maxval=0.1 title="Gazdag"')
+Result('dmig_pspi','dmig_pspi','grey clip=0.1 minval=-0.1 maxval=0.1 title="PSPI (nref=5)"')
+Result('dmig_splitstep','dmig_splitstep','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step"')
+
+Result('dmig_stolt1000','dmig_stolt1000','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 1000"')
+Result('dmig_stolt1500','dmig_stolt1500','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 1500"')
+Result('dmig_stolt2000','dmig_stolt2000','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 2000"')
+Result('dmig_stolt2500','dmig_stolt2500','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 2500"')
+Result('dmig_stolt3000','dmig_stolt3000','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 3000"')
+Result('dmig_stolt3500','dmig_stolt3500','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 3500"')
+Result('dmig_stolt4000','dmig_stolt4000','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 4000"')
+Result('dmig_stolt4500','dmig_stolt4500','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 4500"')
+Result('dmig_stolt5000','dmig_stolt5000','grey clip=0.1 minval=-0.1 maxval=0.1  title="Stolt 5000"')
+
+Result('dmig_splitstep90','dmig_splitstep90','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 0.90*vel"')
+Result('dmig_splitstep92','dmig_splitstep92','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 0.92*vel"')
+Result('dmig_splitstep94','dmig_splitstep94','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 0.94*vel"')
+Result('dmig_splitstep96','dmig_splitstep96','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 0.96*vel"')
+Result('dmig_splitstep98','dmig_splitstep98','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 0.98*vel"')
+Result('dmig_splitstep100','dmig_splitstep100','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 1.00*vel"')
+Result('dmig_splitstep102','dmig_splitstep102','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 1.02*vel"')
+Result('dmig_splitstep104','dmig_splitstep104','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 1.04*vel"')
+Result('dmig_splitstep106','dmig_splitstep106','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 1.06*vel"')
+Result('dmig_splitstep108','dmig_splitstep108','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 1.08*vel"')
+Result('dmig_splitstep110','dmig_splitstep110','grey clip=0.1 minval=-0.1 maxval=0.1 title="Split Step 1.10*vel"')
+
+#Plot('dmig','dmig',
+#        '''
+#        grey clip=0.1 minval=-0.1 maxval=0.1  title="MIG"
+#        ''')
+#Plot('dmig_ls','dmig_ls',
+#        '''
+#        grey clip=0.1 minval=-0.1 maxval=0.1  title="LS MIG"
+#        ''')
+#Plot('misfit','misfit',
+#        '''
+#        graph title="Misfit"
+#        ''')
+#Result('results','v d dmig dmig_ls misfit','SideBySideAniso')
+
+End()

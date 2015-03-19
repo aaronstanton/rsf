@@ -1,0 +1,3 @@
+uses=['sfbin2rsf', 'sfput', 'sfmath', 'sfcat', 'sftransp', 'sfspike', 'sfricker1', 'sfawefd2d', 'sfmutter', 'sfshotwem', 'sfwindow', 'sfgraph', 'sfgrey']
+data=['~kstanton/files/vel.bin']
+size= 1686891204

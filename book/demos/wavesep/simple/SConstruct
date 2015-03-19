@@ -1,0 +1,180 @@
+import os
+
+os.environ['OMP_NUM_THREADS'] = '8'
+
+from rsf.proj import *
+
+# make velocity model
+Flow('vp_upper',None,
+     '''
+     makevel n1=260 n2=700 v000=2400 dvdx1=0 dvdx2=-1 |
+     pad n1=600
+     ''') 
+Flow('vp','vp_upper',
+     '''
+     spike nsp=4
+     n1=600 n2=700 d1=5 d2=10 
+     k1=1,261,261,261 
+     k2=1,1,1,1 
+     l1=600,600,600,600 
+     l2=700,700,700,700 
+     mag=0,2700,200,200 
+     p2=0,0,0.4,0.8 |
+     put o1=0 o2=10 label1="z" label2="x" unit1="m" unit2="m" |
+     math x=${SOURCES[0]} output="input+x"
+     ''',stdin=-1)
+
+# Density
+Flow('den','vp','math output=1')
+
+# Explicit about c13 c33
+Flow('c11','vp den','math vp=${SOURCES[0]} den=${SOURCES[1]} output="den*vp^2" | smooth rect1=4 rect2=4 repeat=3')
+Flow('vs','vp','math vp=${SOURCES[0]} output="vp/sqrt(3)" ')
+Flow('c55','vs den','math vs=${SOURCES[0]} den=${SOURCES[1]} output="den*vs^2" | smooth rect1=4 rect2=4 repeat=3')
+Flow('c33','c11','cp')
+Flow('c13','c11 c55','math c11=${SOURCES[0]} c55=${SOURCES[1]} output="c11-2*c55" ')
+Flow('ccc','c11 c33 c55 c13','cat axis=3 ${SOURCES[1:4]} ')
+ 
+Flow('r_',None,'math n1=700 d1=10 o1=10 output=0')
+Flow('s_',None,'math n1=1   d1=0  o1=0  output=0')
+# receiver positions
+Flow('zr','r_','math output=10')
+Flow('xr','r_','math output="x1"')
+Flow('rec',['xr','zr'],'''cat axis=2 space=n
+     ${SOURCES[0]} ${SOURCES[1]} | transp
+     ''', stdin=0)
+
+# Wavelet
+Flow('wav',None,
+     '''
+     spike mag=0.1 n1=4000 d1=0.001 k1=200 | 
+     ricker1 frequency=20 
+     ''')
+# Elastic wavelet
+Flow('ewav','wav','sfspray axis=1 n=2 | sftransp plane=12 | sftransp plane=13')
+Flow('wav_resample',None,
+     '''
+     spike mag=0.1 n1=1000 d1=0.001 k1=50 
+     ''')
+
+# Smooth the velocity fields used for migration
+Flow('vp_smooth','vp',
+     '''
+     sfsmooth rect1=20 rect2=20
+     ''')
+Flow('vs_smooth','vs',
+     '''
+     sfsmooth rect1=20 rect2=20
+     ''')
+
+Flow('r_',None,'math n1=700 d1=10 o1=10 output=0')
+Flow('s_',None,'math n1=1   d1=0  o1=0  output=0')
+# receiver positions
+Flow('zr','r_','math output=10')
+Flow('xr','r_','math output="x1"')
+Flow('rec',['xr','zr'],'''cat axis=2 space=n
+     ${SOURCES[0]} ${SOURCES[1]} | transp
+     ''', stdin=0)
+
+shots_x = []
+shots_z = []
+nsx = 1
+dsx = 100.0
+osx = 3500.0
+for ishot in range(0,nsx):
+     sx = osx + ishot*dsx
+     shot_x = 'dx_%d' % ishot
+     shots_x.append(shot_x)
+     shot_z = 'dz_%d' % ishot
+     shots_z.append(shot_z)
+     # shot positions
+     Flow('zs_%d' % ishot,'s_','math output=50')
+     Flow('xs_%d' % ishot,'s_','math output=%d' % sx)
+     Flow('rs_%d' % ishot,'s_','math output=1')
+     Flow('src_%d' % ishot,['xs_%d' % ishot,'zs_%d' % ishot,'rs_%d' % ishot],'''
+          cat axis=2 space=n
+          ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} | transp
+          ''', stdin=0)
+     # offset
+     Flow('offset_%d' % ishot,'xr','math output="input-%g"' % sx)
+     # Isotropic Elastic Finite-difference modeling
+     Flow('d_fd_%d ' % ishot,'ewav den rec src_%d ccc' % ishot,
+          '''
+          ewefd2d
+          den=${SOURCES[1]}
+          rec=${SOURCES[2]}
+          sou=${SOURCES[3]}
+          ccc=${SOURCES[4]}
+          dabc=y snap=n verb=y jdata=4
+          ssou=y nb=250 nbell=5
+          ''')
+     Flow('dz_%d' % ishot,'d_fd_%d offset_%d' % (ishot,ishot),
+          '''
+          window n2=1 f2=0 | 
+          transp | 
+          put label1=t unit1=s label2=x unit2=m |
+          math output="(1e12)*input" |
+          mutter offset=${SOURCES[1]} v0=2200 t0=0.5 half=n |
+          taper5d lx1=100
+          ''')
+     Flow('dx_%d' % ishot,'d_fd_%d offset_%d' % (ishot,ishot),
+          '''
+          window n2=1 f2=1 | 
+          transp |
+          put label1=t unit1=s label2=x unit2=m |
+          math output="(1e12)*input" |
+          mutter offset=${SOURCES[1]} v0=2200 t0=0.5 half=n |
+          taper5d lx1=100
+          ''')
+
+Flow('ux',shots_x,
+     '''
+     cat axis=3 ${SOURCES[0:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m
+     ''' % (nsx,osx,dsx),stdin=0)
+
+Flow('uz',shots_z,
+     '''
+     cat axis=3 ${SOURCES[0:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m
+     ''' % (nsx,osx,dsx),stdin=0)
+
+Flow('dp ds','ux uz vp vs',
+     '''
+     wavsep
+     in1=${SOURCES[0]} in2=${SOURCES[1]} 
+     out1=${TARGETS[0]} out2=${TARGETS[1]} 
+     vp=${SOURCES[2]} vs=${SOURCES[3]} 
+     verbose=n H=y ss=n
+     gz=10 
+     fmin=0 fmax=50 
+     ''',stdin=0,stdout=-1)
+
+Flow('dp_ss ds_ss','ux uz vp vs',
+     '''
+     wavsep
+     in1=${SOURCES[0]} in2=${SOURCES[1]} 
+     out1=${TARGETS[0]} out2=${TARGETS[1]} 
+     vp=${SOURCES[2]} vs=${SOURCES[3]} 
+     verbose=n H=y ss=y
+     gz=10 
+     fmin=0 fmax=50 
+     ''',stdin=0,stdout=-1)
+
+plotpar1 = 'title="" label1=t label2=x color=seismic pclip=99.5'
+plotpar2 = 'title="" label1=t label2=x color=seismic pclip=99.5'
+Plot('ux','window n3=1 | grey %s' %plotpar1)
+Plot('uz','window n3=1 | grey %s' %plotpar1)
+Plot('dp','window n3=1 | grey %s' %plotpar2)
+Plot('ds','window n3=1 | grey %s' %plotpar2)
+Plot('dp_ss','window n3=1 | grey %s' %plotpar2)
+Plot('ds_ss','window n3=1 | grey %s' %plotpar2)
+Result('data','ux uz','SideBySideAniso')
+Result('potentials','dp ds','SideBySideAniso')
+Result('potentials_ss','dp_ss ds_ss','SideBySideAniso')
+
+plotpar3 = 'title="" allpos=y scalebar=y color=seismic scalebar=y color=seismic allpos=y pclip=100 bartype=h barunit="m/s" barwidth=0.2 barlabel="Velocity"'
+Result('vp','grey %s' %plotpar3)
+
+End()
+

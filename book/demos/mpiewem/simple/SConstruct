@@ -1,0 +1,240 @@
+import os
+
+os.environ['OMP_NUM_THREADS'] = '8'
+
+from rsf.proj import *
+
+# make velocity model
+Flow('vp',None,
+     '''
+     spike nsp=4 n1=600 n2=700 d1=5 d2=10 k1=1,201,201,201 k2=1,1,1,1 l1=600,600,600,600 l2=700,700,700,700 mag=2200,200,200,200 p2=0,0,0.4,0.8 |
+     put o1=0 o2=10 label1="z" label2="x" unit1="m" unit2="m"
+     ''',stdin=-1)
+#Flow('vp',None,
+#     '''
+#     spike nsp=2 n1=600 n2=700 d1=5 d2=10 k1=1,201 k2=1,1 l1=600,600 l2=700,700 mag=2200,200 p2=0,0 |
+#     put o1=0 o2=10 label1="z" label2="x" unit1="m" unit2="m"
+#     ''',stdin=-1)
+
+# Density
+Flow('den','vp','math output=1')
+
+# Explicit about c13 c33
+Flow('c11','vp den','math vp=${SOURCES[0]} den=${SOURCES[1]} output="den*vp^2" | smooth rect1=4 rect2=4 repeat=3')
+Flow('vs','vp','math vp=${SOURCES[0]} output="vp/sqrt(3)" ')
+Flow('c55','vs den','math vs=${SOURCES[0]} den=${SOURCES[1]} output="den*vs^2" | smooth rect1=4 rect2=4 repeat=3')
+Flow('c33','c11','cp')
+Flow('c13','c11 c55','math c11=${SOURCES[0]} c55=${SOURCES[1]} output="c11-2*c55" ')
+Flow('ccc','c11 c33 c55 c13','cat axis=3 ${SOURCES[1:4]} ')
+ 
+Flow('r_',None,'math n1=700 d1=10 o1=10 output=0')
+Flow('s_',None,'math n1=1   d1=0  o1=0  output=0')
+# receiver positions
+Flow('zr','r_','math output=10')
+Flow('xr','r_','math output="x1"')
+Flow('rec',['xr','zr'],'''cat axis=2 space=n
+     ${SOURCES[0]} ${SOURCES[1]} | transp
+     ''', stdin=0)
+
+# Wavelet
+Flow('wav',None,
+     '''
+     spike mag=0.1 n1=4000 d1=0.001 k1=200 | 
+     ricker1 frequency=20 
+     ''')
+# Elastic wavelet
+#Flow('ewav','wav','put n2=1 n3=1 | transp plane=13 | pad n2=2')
+Flow('ewav','wav','sfspray axis=1 n=2 | sftransp plane=12 | sftransp plane=13')
+Flow('wav_resample',None,
+     '''
+     spike mag=0.1 n1=1000 d1=0.001 k1=50 
+     ''')
+
+# Smooth the velocity fields used for migration
+Flow('vp_smooth','vp',
+     '''
+     sfsmooth rect1=20 rect2=20
+     ''')
+Flow('vs_smooth','vs',
+     '''
+     sfsmooth rect1=20 rect2=20
+     ''')
+
+Flow('r_',None,'math n1=700 d1=10 o1=10 output=0')
+Flow('s_',None,'math n1=1   d1=0  o1=0  output=0')
+# receiver positions
+Flow('zr','r_','math output=10')
+Flow('xr','r_','math output="x1"')
+Flow('rec',['xr','zr'],'''cat axis=2 space=n
+     ${SOURCES[0]} ${SOURCES[1]} | transp
+     ''', stdin=0)
+
+shots_x = []
+shots_z = []
+nsx = 1
+dsx = 100.0
+osx = 3500.0
+for ishot in range(0,nsx):
+     sx = osx + ishot*dsx
+     shot_x = 'dx_%d' % ishot
+     shots_x.append(shot_x)
+     shot_z = 'dz_%d' % ishot
+     shots_z.append(shot_z)
+     # shot positions
+     Flow('zs_%d' % ishot,'s_','math output=10')
+     Flow('xs_%d' % ishot,'s_','math output=%d' % sx)
+     Flow('rs_%d' % ishot,'s_','math output=1')
+     Flow('src_%d' % ishot,['xs_%d' % ishot,'zs_%d' % ishot,'rs_%d' % ishot],'''
+          cat axis=2 space=n
+          ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} | transp
+          ''', stdin=0)
+     # offset
+     Flow('offset_%d' % ishot,'xr','math output="input-%g"' % sx)
+     # Isotropic Elastic Finite-difference modeling
+     Flow('d_fd_%d ' % ishot,'ewav den rec src_%d ccc' % ishot,
+          '''
+          ewefd2d
+          den=${SOURCES[1]}
+          rec=${SOURCES[2]}
+          sou=${SOURCES[3]}
+          ccc=${SOURCES[4]}
+          dabc=y snap=n verb=y jdata=1
+          ssou=y nb=250 nbell=5
+          ''')
+     Flow('dz_%d' % ishot,'d_fd_%d offset_%d' % (ishot,ishot),
+          '''
+          window n2=1 f2=0 | 
+          transp | 
+          put label1=t unit1=s label2=x unit2=m |
+          window j1=4 |
+          bandpass fmax=125 |
+          math output="(1e12)*input" |
+          mutter offset=${SOURCES[1]} v0=2400 t0=0.5 half=n
+          ''')
+     Flow('dx_%d' % ishot,'d_fd_%d offset_%d' % (ishot,ishot),
+          '''
+          window n2=1 f2=1 | 
+          transp |
+          put label1=t unit1=s label2=x unit2=m |
+          window j1=4 |
+          bandpass fmax=125 |
+          math output="(1e12)*input" |
+          mutter offset=${SOURCES[1]} v0=2400 t0=0.5 half=n
+          ''')
+
+Flow('ux',shots_x,
+     '''
+     cat axis=3 ${SOURCES[0:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m
+     ''' % (nsx,osx,dsx),stdin=0)
+
+Flow('uz',shots_z,
+     '''
+     cat axis=3 ${SOURCES[0:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m
+     ''' % (nsx,osx,dsx),stdin=0)
+
+Flow('mpp mps','ux uz vp_smooth vs_smooth wav_resample',
+     '''
+     mpiewem adj=y
+     ux=${SOURCES[0]} uz=${SOURCES[1]} vp=${SOURCES[2]} vs=${SOURCES[3]} wav=${SOURCES[4]} 
+     mpp=${TARGETS[0]} mps=${TARGETS[1]}
+     verbose=y
+     nz=600 oz=0 dz=5 
+     nhx=1 dhx=1 ohx=00
+     npx=1 dpx=1 opx=0
+     gz=10 sz=10
+     fmin=3 fmax=50
+     sz=10 gz=10
+     ''',np=1,stdin=0,stdout=-1)
+
+
+Flow('ux_rand','ux','noise var=10000 rep=y')
+Flow('uz_rand','ux','noise var=10000 rep=y')
+Flow('mpp_rand','mpp','noise var=10000 rep=y')
+Flow('mps_rand','mpp','noise var=10000 rep=y')
+
+Flow('dot.test','ux_rand uz_rand mpp_rand mps_rand vp_smooth vs_smooth wav_resample',
+     '''
+     dotewem reg=n
+     ux=${SOURCES[0]} uz=${SOURCES[1]} 
+     mpp=${SOURCES[2]} mps=${SOURCES[3]} 
+     vp=${SOURCES[4]} vs=${SOURCES[5]} 
+     wav=${SOURCES[6]} 
+     verbose=y
+     nz=600 oz=0 dz=5 
+     npx=91 dpx=2 opx=-90
+     nsx=1 dsx=100 osx=3500
+     nt=1000 dt=0.004 ot=0
+     gz=10 sz=10
+     fmin=3 fmax=50
+     ''',stdin=0,stdout=-1)
+
+Flow('w','mpp mps',
+     '''
+     weights2c p=80 mpp=${SOURCES[0]} mps=${SOURCES[1]} w=${TARGETS[0]}
+     ''',stdin=0,stdout=-1)
+
+Flow('mpp_w','mpp w','math w=${SOURCES[1]} output="input*w"')
+Flow('mps_w','mps w','math w=${SOURCES[1]} output="input*w"')
+Flow('mpp_inv1 mps_inv1 misfit1','ux uz vp_smooth vs_smooth wav_resample',
+     '''
+     lsewem niter_irls=1 niter=5 
+     fkreg=n
+     misfit=${TARGETS[2]}
+     np=1 numthreads=8
+     ux=${SOURCES[0]} uz=${SOURCES[1]} vp=${SOURCES[2]} vs=${SOURCES[3]} wav=${SOURCES[4]}
+     mpp=${TARGETS[0]} mps=${TARGETS[1]}
+     verbose=y
+     nz=600 oz=0 dz=5
+     nt=1000 dt=0.004 ot=0
+     nsx=1 dsx=100 osx=3500
+     nhx=1 dhx=1 ohx=0
+     npx=1 dpx=1 opx=0
+     gz=10 sz=10
+     fmin=3 fmax=50
+     sz=10 gz=10
+     ''',stdin=0,stdout=-1)
+
+Flow('mpp_inv2 mps_inv2 misfit2','ux uz vp_smooth vs_smooth wav_resample',
+     '''
+     lsewem niter_irls=3 p=80 niter=5 
+     fkreg=n
+     misfit=${TARGETS[2]}
+     np=1 numthreads=8
+     ux=${SOURCES[0]} uz=${SOURCES[1]} vp=${SOURCES[2]} vs=${SOURCES[3]} wav=${SOURCES[4]}
+     mpp=${TARGETS[0]} mps=${TARGETS[1]}
+     verbose=y
+     nz=600 oz=0 dz=5
+     nt=1000 dt=0.004 ot=0
+     nsx=1 dsx=100 osx=3500
+     nhx=1 dhx=1 ohx=0
+     npx=1 dpx=1 opx=0
+     gz=10 sz=10
+     fmin=3 fmax=50
+     sz=10 gz=10
+     ''',stdin=0,stdout=-1)
+
+plotpard = 'color=seismic titlesz=20 labelsz=20'
+Plot('ux','ux','grey %s title="ux"' %plotpard)
+Plot('uz','uz','grey %s title="uz"' %plotpard)
+Result('d','ux uz','SideBySideAniso')
+
+plotparm = 'color=seismic titlesz=20 labelsz=20 scalebar=y'
+Plot('mpp_stack','mpp','stack axis=3 | grey %s title="mpp"' %plotparm)
+Plot('mps_stack','mps','stack axis=3 | grey %s title="mps"' %plotparm)
+Plot('w','w','grey %s title="w" allpos=y minval=0 maxval=1 clip=1 mean=0.5' %plotparm)
+Plot('mpp_w_stack','mpp_w','stack axis=3 | grey %s title="mpp*w"' %plotparm)
+Plot('mps_w_stack','mps_w','stack axis=3 | grey %s title="mps*w"' %plotparm)
+Plot('mpp_stack_inv1','mpp_inv1','stack axis=3 | grey %s minval=-1000 maxval=1000 clip=1000 title="mpp_inv"' %plotparm)
+Plot('mps_stack_inv1','mps_inv1','stack axis=3 | grey %s minval=-1000 maxval=1000 clip=1000 title="mps_inv"' %plotparm)
+Plot('mpp_stack_inv2','mpp_inv2','stack axis=3 | grey %s minval=-1000 maxval=1000 clip=1000 title="mpp_inv"' %plotparm)
+Plot('mps_stack_inv2','mps_inv2','stack axis=3 | grey %s minval=-1000 maxval=1000 clip=1000 title="mps_inv"' %plotparm)
+Result('m','mpp_stack mps_stack w','SideBySideAniso')
+Result('m_w','mpp_w_stack mps_w_stack w','SideBySideAniso')
+Result('m_inv1','mpp_stack_inv1 mps_stack_inv1','SideBySideAniso')
+Result('m_inv2','mpp_stack_inv2 mps_stack_inv2','SideBySideAniso')
+Result('misfit1','graph')
+Result('misfit2','graph')
+
+End()

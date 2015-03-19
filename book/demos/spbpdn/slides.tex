@@ -1,0 +1,236 @@
+\title[Short title]{Statics preserving basis pursuit denoising}
+\author{\small Aaron Stanton, Nasser Kazemi, and Mauricio D. Sacchi}
+\institute{\small Signal Analysis and Imaging Group \\ Department of Physics \\ University of Alberta}
+\date{\small \today \\ \vspace{0.5cm} \includegraphics[height=1cm,width=2cm]{logo}}
+
+\addtobeamertemplate{frametitle}{}{%
+\begin{textblock*}{100mm}(.85\textwidth,-0.9cm)
+\includegraphics[height=1cm,width=2cm]{logo}
+\end{textblock*}}
+
+\maketitle
+
+\begin{frame} \frametitle{Outline}
+    \begin{itemize}
+        \item Motivation
+        \item Basis pursuit denoising (BPDN)
+        \item Static-preserving BPDN
+        \item Synthetic data example
+        \item Real data example
+    \end{itemize}
+\end{frame}
+
+\begin{frame} \frametitle{Motivation}
+    \begin{itemize}
+        \item Calculation of small static shifts using idea of sparsity
+        \item Generalization of sparsity driven denoising methods ($l_1-l_2$ regression, BPD, LASSO, etc)
+    \end{itemize}
+\end{frame}
+
+\begin{frame} \frametitle{Motivation}
+\begin{columns}[c]
+\column{2in} 
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[width=2in,height=3in]{synth/Fig/data_out1} \\ 
+	\tiny Standard BPDN
+	\end{figure} 
+	\end{center}
+\column{2in}
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[width=2in,height=3in]{synth/Fig/data_out2} \\
+	\tiny Static preserving BPDN
+	\end{figure}
+	\end{center}
+\end{columns}
+\end{frame}
+
+\begin{frame} \frametitle{BPDN}
+\begin{center}
+$
+\quad{J}=\| {\bf{A}} {\bf{x}} - {\bf{d}} \|_2 + \lambda\|{\bf{x}}\|_1
+$ 
+\end{center}
+\end{frame}
+
+\begin{frame} \frametitle{SP-BPDN}
+\begin{center}
+$
+\quad{J}=\| {\bf{S}}{\bf{A}} {\bf{x}} - {\bf{d}} \|_2 + \lambda\|{\bf{x}}\|_1
+$ 
+\end{center}
+\end{frame}
+
+\begin{frame} \frametitle{SP-BPDN}
+\begin{center}
+$
+\quad{J}=\| {\bf{S}}{\bf{A}} {\bf{x}} - {\bf{d}} \|_2 + \lambda\|{\bf{x}}\|_1
+$
+
+\vspace{1cm}
+
+$\nabla_xJ=0$ FISTA
+
+\vspace{1cm}
+
+$\nabla_SJ=0$ Maximum Likelyhood Estimator
+
+\end{center}
+\end{frame}
+
+\begin{frame} \frametitle{Pseudocode: BPDN}
+\begin{algorithm}[H]
+\renewcommand{\thealgorithm}{}
+\tiny
+\caption{Basis pursuit denoising}\label{BPDN}
+\begin{algorithmic}
+\Procedure{BPDN}{d,$N_{iter},t,\alpha$}\Comment{solves $||Ax-d||^2_2 + \lambda||x||_1$}
+   \State $x=A^Td$ 
+   \State $d^{pred}=d$ 
+   \While{$iter\leq N_{iter}$}
+      \State $r=d^{pred} - d$ 
+      \State $g=A^Tr$
+      \State $x = x - 2tg$
+      \State $soft(x,\alpha)$
+      \State $d^{pred} = Ax$
+      \State $iter++$
+   \EndWhile
+   \State \textbf{return} $x$\Comment{d = Ax}
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+\end{frame}
+
+ {\color{red}}
+
+\begin{frame} \frametitle{Pseudocode: SP-BPDN}
+\begin{algorithm}[H]
+\renewcommand{\thealgorithm}{}
+\tiny
+\caption{Statics preserving basis pursuit denoising}\label{SPBPDN}
+\begin{algorithmic}
+\Procedure{{\color{red}SP-}BPDN}{d,$N_{iter},t,\alpha$}\Comment{solves $||SAx-d||^2_2 + \lambda||x||_1$}
+   \State ${\color{red}\delta=0}$ 
+   \State $x=A^T{\color{red}S(\delta)^T}d$ 
+   \State $d^{pred}=d$ 
+   \While{$iter\leq N_{iter}$}
+      \State $r={\color{red}S(\delta)}d^{pred} - d$ 
+      \State $g=A^T{\color{red}S(\delta)^T}r$
+      \State $x = x - 2tg$
+      \State $soft(x,\alpha)$
+      \State $d^{pred} = {\color{red}S(\delta)}Ax$
+      \State ${\color{red}\delta=xcorr(d,d^{pred})}$
+      \State $iter++$
+   \EndWhile
+   \State \textbf{return} $x$\Comment{$d = {\color{red}S(\delta)}Ax$}
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+\end{frame}
+
+\begin{frame} \frametitle{ }
+	\begin{center}
+        \LARGE {\bf Radon Operator}
+	\end{center}
+\end{frame}
+
+\begin{frame} \frametitle{Gather with noise \& statics}
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[height=3in]{radon_figs/original_data-eps-converted-to.pdf} \\
+	\end{figure} 
+	\end{center}
+\end{frame}
+
+\begin{frame} \frametitle{Radon Panels}
+\begin{columns}[c]
+\column{2in} 
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[height=3in]{radon_figs/high_resolution_radon_without_statics-eps-converted-to.pdf} \\ 
+	\tiny Standard Radon panel
+	\end{figure} 
+	\end{center}
+\column{2in}
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[height=3in]{radon_figs/high_resolution_radon_with_statics-eps-converted-to.pdf} \\
+	\tiny Static preserving Radon panel
+	\end{figure}
+	\end{center}
+\end{columns}
+\end{frame}
+
+\begin{frame} \frametitle{Denoised gathers}
+\begin{columns}[c]
+\column{2in} 
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[height=3in]{radon_figs/estimated_data_without_statics-eps-converted-to.pdf} \\ 
+	\tiny Standard BPD
+	\end{figure} 
+	\end{center}
+\column{2in}
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[height=3in]{radon_figs/estimated_data_with_statics-eps-converted-to.pdf} \\
+	\tiny Static preserving BPD
+	\end{figure}
+	\end{center}
+\end{columns}
+\end{frame}
+
+\begin{frame} \frametitle{ }
+	\begin{center}
+        \LARGE {\bf F-K operator:\\Synthetic gather}
+	\end{center}
+\end{frame}
+
+\inputdir{synth}
+\begin{frame} \frametitle{True data}
+    \plot{data}{width=2in,height=3in}{}
+\end{frame}
+
+\begin{frame} \frametitle{Statics (time variant +/- 5ms)}
+    \plot{data_statics}{width=2in,height=3in}{}
+\end{frame}
+
+\begin{frame} \frametitle{Statics and Noise}
+    \plot{data_statics_noise}{width=2in,height=3in}{}
+\end{frame}
+\begin{frame} \frametitle{Output: BPDN}
+    \plot{data_out1}{width=2in,height=3in}{}
+\end{frame}
+\begin{frame} \frametitle{Output: SP-BPDN}
+    \plot{data_out2}{width=2in,height=3in}{}
+\end{frame}
+
+\begin{frame} \frametitle{ }
+	\begin{center}
+        \LARGE {\bf F-K operator:\\Alaska North Slope}
+	\end{center}
+\end{frame}
+
+\inputdir{northslope}
+\begin{frame} \frametitle{True data}
+    \plot{data}{width=5in,height=3.2in}{}
+\end{frame}
+\begin{frame} \frametitle{Output: BPDN}
+    \plot{data_out1}{width=5in,height=3.2in}{}
+\end{frame}
+\begin{frame} \frametitle{Output: SP-BPDN}
+    \plot{data_out2}{width=5in,height=3.2in}{}
+\end{frame}
+
+
+\begin{frame} \frametitle{Conclusion}
+    \begin{itemize}
+        \item Static shifts reduce sparsity of the data
+        \item We can account for this in an alternating minimization scheme
+        \item Data are effectively denoised while preserving statics  
+        \item Could be an advantage in areas with complicated structure
+    \end{itemize}
+\end{frame}
+
+

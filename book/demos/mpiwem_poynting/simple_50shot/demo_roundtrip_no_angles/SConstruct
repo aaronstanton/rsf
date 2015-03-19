@@ -1,0 +1,37 @@
+import os
+env = Environment(ENV = os.environ)
+os.environ['OMP_NUM_THREADS'] = '8'
+
+from rsf.proj import *
+
+Flow('m','../d.rsf ../vel_smooth.rsf ../wav_resample.rsf',
+     '''
+     mpiwem_poynting adj=y
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=600 oz=0 dz=5 
+     npx=1 dpx=5 opx=0
+     gz=10 sz=10
+     fmin=2 fmax=50
+     ''',np=4,stdin=0,stdout=-1)
+
+Flow('d_fwd','m ../vel_smooth.rsf ../wav_resample.rsf',
+     '''
+     mpiwem_poynting adj=n
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=600 oz=0 dz=5 
+     npx=1 dpx=5 opx=0
+     nsx=50 dsx=100 osx=1000
+     nt=1000 dt=0.004 ot=0
+     gz=10 sz=10
+     fmin=2 fmax=50
+     ''',np=4,stdin=0,stdout=-1)
+
+Result('d','../d.rsf','window min3=3500 max3=3500 | grey color=seismic label2="x" unit2="m" label1="t" unit1="s" title="" titlesz=20')
+Result('d_fwd','window min3=3500 max3=3500 | grey color=seismic label2="x" unit2="m" label1="t" unit1="s"  title="" titlesz=20')
+
+End()
+

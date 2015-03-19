@@ -1,0 +1,3 @@
+uses=['sfsegyread', 'sfput', 'sfbin2rsf', 'sfmath', 'sfzowem', 'sfgrey']
+data=['~kstanton/files/zeroff.su', '~kstanton/files/vel.bin']
+size=   78122800

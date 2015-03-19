@@ -1,0 +1,34 @@
+\begin{thebibliography}{}
+\itemsep0pt
+
+\bibitem[Bale, 2006]{bale2006}
+Bale, R.,  2006, Elastic wave-equation depth migration of seismic data for
+  isotropic and azimuthally anisotropic media: PhD thesis, University of
+  Calgary.
+
+\bibitem[Chang and McMechan, 1987]{chang1987elastic}
+Chang, W.-F., and G.~A. McMechan,  1987, Elastic reverse-time migration:
+  Geophysics, {\bf 52}, 1365--1375.
+
+\bibitem[Etgen, 1988]{etgen1988}
+Etgen, J.~T.,  1988, Elastic prestack migration of two component data: Stanford
+  Exploration Project, {\bf 57}, 289--306.
+
+\bibitem[Gazdag, 1978]{gazdag1978wave}
+Gazdag, J.,  1978, Wave equation migration with the phase-shift method:
+  Geophysics, {\bf 43}, 1342--1351.
+
+\bibitem[Hokstad, 2000]{doi:10.1190/1.1444783}
+Hokstad, K.,  2000, Multicomponent kirchhoff migration: GEOPHYSICS, {\bf 65},
+  861--873.
+
+\bibitem[Rickett and Sava, 2002]{rickett2002offset}
+Rickett, J.~E., and P.~C. Sava,  2002, Offset and angle-domain common
+  image-point gathers for shot-profile migration: Geophysics, {\bf 67},
+  883--889.
+
+\bibitem[Stoffa et~al., 1990]{Stoffa01041990}
+Stoffa, P.~L., J.~T. Fokkema, R.~M. de~Luna~Freire, and W.~P. Kessinger,  1990,
+  Split-step fourier migration: Geophysics, {\bf 55}, 410--421.
+
+\end{thebibliography}

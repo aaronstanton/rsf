@@ -1,0 +1,96 @@
+from rsf.proj import *
+ 
+#
+# Make din.rsf
+#
+Flow('dtrue',None,
+     '''
+     linearevents5d
+     n1=500 n2=250 n3=1 n4=1 n5=1 
+     d1=0.004 d2=50 
+     nevent=2 amp=1,-0.2 t0=0.3,1.0 f0=20,30 v1=1200,-1500 
+     title="true data" 
+     ''') 
+
+# decimate traces by masking and random decimation
+Flow('mask',None,
+     '''
+     spike 
+     mag=1 nsp=1 
+     k1=0 k2=35 l1=500 l2=70 p1=0 p2=0 
+     n1=500 n2=250 o1=0 o2=0 d1=0.004 d2=50
+     ''',stdin=0) 
+
+Flow('ddec','dtrue mask',
+     '''
+     math x=${SOURCES[0]} y=${SOURCES[1]} output="(1-y)*x" |
+     decimate mode=1 perc=50
+     ''') 
+
+# POCS interpolation
+Flow('dpocs_hard','ddec','pocs5d fmax=80 niter=200 p=1000 alpha=1 debias=n verbose=y') 
+Flow('dpocs_soft','ddec','pocs5d fmax=80 niter=200 p=1 alpha=1 debias=n verbose=y') 
+Flow('dpocs_soft_debias','ddec','pocs5d fmax=80 niter=200 p=1 alpha=1 debias=y verbose=y') 
+#Flow('dpocs','ddec','reg5d method=2 fmax=80 niter=50 niter_ext=2') 
+
+plotpar='minval=-1 maxval=1 clip=1 color=g label1="T" label2="X" unit2="m" titlesz=20 plotfat=10 labelsz=11 labelfat=3 font=4'
+
+Plot('dtrue',
+     '''
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey %s title="True"
+     ''' %plotpar)
+Plot('ddec',
+     '''
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey %s title="Decimated"
+     ''' %plotpar)
+Plot('dpocs_hard','dpocs_hard',
+     '''
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey %s title="Hard"
+     ''' %plotpar)
+Plot('dpocs_hard_diff','dpocs_hard dtrue',
+     '''
+     math x=${SOURCES[0]} y=${SOURCES[1]} output="y-x" |
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey %s title="Hard"
+     ''' %plotpar)
+Plot('dpocs_soft','dpocs_soft',
+     '''
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey %s title="Soft"
+     ''' %plotpar)
+Plot('dpocs_soft_diff','dpocs_soft dtrue',
+     '''
+     math x=${SOURCES[0]} y=${SOURCES[1]} output="y-x" |
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey %s title="Soft"
+     ''' %plotpar)
+Plot('dpocs_soft_debias','dpocs_soft_debias',
+     '''
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey %s title="Soft + debias"
+     ''' %plotpar)
+Plot('dpocs_soft_debias_diff','dpocs_soft_debias dtrue',
+     '''
+     math x=${SOURCES[0]} y=${SOURCES[1]} output="y-x" |
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey %s title="Soft + debias"
+     ''' %plotpar)
+
+#Plot('dpocs_amp','dpocs',
+#     '''
+#     math output="input*input" | stack axis=1 norm=n |
+#     graph %s title="" label1="" label2="" unit1="" unit2="" min2=0 max2=4
+#     ''')
+#Plot('dpocs_debias_amp','dpocs_debias',
+#     '''
+#     math output="input*input" | stack axis=1 norm=n |
+#     graph %s title="" label1="" label2="" unit1="" unit2="" min2=0 max2=4
+#     ''')
+Result('data','dtrue dpocs_hard dpocs_soft dpocs_soft_debias','TwoRows')
+Result('diff','ddec dpocs_hard_diff dpocs_soft_diff dpocs_soft_debias_diff','TwoRows')
+
+End()
+

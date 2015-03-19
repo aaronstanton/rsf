@@ -1,0 +1,70 @@
+from rsf.proj import *
+
+#
+# To execute using 20 processors: scons -j 20 CLUSTER="localhost 48" 
+# (or pscons if you want to use all 48 processors on neurus)
+
+#
+# Convert to RSF
+#
+Flow('cmp_in','/home/kstanton/rsf/src/book/astanton/recon_recorder/real/dorig_patch_11_15',
+     '''
+     put d4=100 d5=50  
+     ''') 
+
+Flow('cmp_pocs','cmp_in',
+     '''
+     pocs5d method=1 tw_length=200 iter=300 alphai=0.1 alphaf=0.1 fmax=120 verbose=0        
+     ''')
+Flow('cmp_mwni','cmp_in',
+     '''
+     pocs5d method=2 tw_length=200 iter=15 iter_i=3 fmax=120 verbose=0       
+     ''')
+Flow('cmp_seqsvd','cmp_in',
+     '''
+     seqsvd5d method=3 tw_length=200 iter=50 ranki=3 rankf=8 alphai=0.5 alphaf=0.5 fmax=120 verbose=0         
+     ''')
+
+
+#
+# Plot 
+#
+Result('cmp_in',
+       '''
+       put o4=-400 o5=-1400 |
+       window f2=5 n2=1 f3=5 n3=1 |
+       byte clip=2 |
+       grey3 frame1=500 frame2=5 frame3=20 
+       point1=0.75 point2=0.25 flat=n
+       label2="Crossline Offset" unit2="m" label3="Inline Offset" unit3="m" title="Input" 
+       ''')
+Result('cmp_pocs',
+       '''
+       put o4=-400 o5=-1400 |
+       window f2=5 n2=1 f3=5 n3=1 |
+       byte clip=2 |
+       grey3 frame1=500 frame2=5 frame3=20 
+       point1=0.75 point2=0.25 flat=n
+       label2="Crossline Offset" unit2="m" label3="Inline Offset" unit3="m" title="POCS" 
+       ''')
+Result('cmp_mwni',
+       '''
+       put o4=-400 o5=-1400 |
+       window f2=5 n2=1 f3=5 n3=1 |
+       byte clip=2 |
+       grey3 frame1=500 frame2=5 frame3=20 
+       point1=0.75 point2=0.25 flat=n
+       label2="Crossline Offset" unit2="m" label3="Inline Offset" unit3="m" title="MWNI" 
+       ''')
+Result('cmp_seqsvd',
+       '''
+       put o4=-400 o5=-1400 |
+       window f2=5 n2=1 f3=5 n3=1 |
+       byte clip=2 |
+       grey3 frame1=500 frame2=5 frame3=20 
+       point1=0.75 point2=0.25 flat=n
+       label2="Crossline Offset" unit2="m" label3="Inline Offset" unit3="m" title="SEQSVD" 
+       ''')
+
+End()
+

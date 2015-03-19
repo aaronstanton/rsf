@@ -1,0 +1,150 @@
+from rsf.proj import *
+
+Flow('reflect',None,'''
+           spike n1=500 n2=500 d1=0.004 d2=10 
+           nsp=1 
+           mag=1 
+           k1=100 
+           k2=248
+           l1=100 
+           l2=252
+           p1=0 
+           p2=0 |
+           put title="Reflectivity Model" label2="Position" unit2="m" n3=1 d3=1 o3=0 | 
+           spray axis=3 n=25 d=100 o=100 label="Offset" unit="m" |
+           ricker1 frequency=30
+           ''')
+
+#Flow('reflect',None,'''
+#           sigmoid n1=500 n2=500 large=2500 d1=0.004 d2=10 |
+#           put title="Reflectivity Model" label2="Position" unit2="m" n3=1 d3=1 o3=0 | 
+#           ricker1 frequency=30 |
+#           spray axis=3 n=96 d=25 o=25 label="Offset" unit="m"
+#           ''')
+
+Result('reflect',
+       '''
+       byte bar=bar.rsf clip=1 minval=-1 maxval=1 |
+       grey3 frame1=100 frame2=250 frame3=10 scalebar=y color=e title="Model"
+       ''')
+
+Flow('vp',None,
+     '''
+     makevel n1=500 n2=500 v000=2500 dvdx1=1.5 dvdx2=0 
+     ''') 
+
+Flow('vs',None,
+     '''
+     makevel n1=500 n2=500 v000=1500 dvdx1=1.2 dvdx2=0 
+     ''') 
+
+Result('vp',
+       '''
+       grey allpos=y mean=y scalebar=y color=e
+       ''')
+
+Result('vs',
+       '''
+       grey allpos=y mean=y scalebar=y color=e
+       ''')
+
+Flow('d','reflect',
+     '''
+     pstm
+     adj=n
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=n
+     verbose=y
+     ''')
+
+Flow('d_dec','d',
+     '''
+     decimate mode=1 perc=50
+     ''')
+
+Flow('reflect_adj','d',
+     '''
+     pstm
+     adj=y
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=n
+     verbose=y
+     ''')
+
+Flow('reflect_inv','d',
+     '''
+     pstm
+     inv=y
+     itmax_internal=20
+     itmax_external=1
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=n
+     verbose=y
+     ''')
+
+Flow('d_pred_adj','reflect_adj',
+     '''
+     pstm
+     adj=n
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=n
+     verbose=y
+     ''')
+
+Flow('d_pred_inv','reflect_inv',
+     '''
+     pstm
+     adj=n
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=n
+     verbose=y
+     ''')
+
+Result('d',
+       '''
+       byte bar=bar.rsf clip=1 minval=-1 maxval=1 |
+       grey3 frame1=225 frame2=250 frame3=10 scalebar=y color=e title="pp data"
+       ''')
+
+Result('d_dec',
+       '''
+       byte bar=bar.rsf clip=1 minval=-1 maxval=1 |
+       grey3 frame1=225 frame2=250 frame3=10 scalebar=y color=e title="pp data decimated"
+       ''')
+
+Result('reflect_adj',
+       '''
+       byte bar=bar.rsf clip=1 minval=-1 maxval=1 |
+       grey3 frame1=225 frame2=250 frame3=10 scalebar=y color=e title="pp adj"
+       ''')
+
+Result('reflect_inv',
+       '''
+       byte bar=bar.rsf clip=1 minval=-1 maxval=1 |
+       grey3 frame1=225 frame2=250 frame3=10 scalebar=y color=e title="pp inv"
+       ''')
+
+Result('d_pred_adj',
+       '''
+       byte bar=bar.rsf clip=1 minval=-1 maxval=1 |
+       grey3 frame1=225 frame2=250 frame3=10 scalebar=y color=e title="pp data predicted (adjoint)"
+       ''')
+
+Result('d_pred_inv',
+       '''
+       byte bar=bar.rsf clip=1 minval=-1 maxval=1 |
+       grey3 frame1=225 frame2=250 frame3=10 scalebar=y color=e title="pp data predicted (inverse)"
+       ''')
+
+End()
+

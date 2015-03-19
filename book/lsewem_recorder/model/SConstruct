@@ -1,0 +1,37 @@
+import os
+env = Environment(ENV = os.environ)
+os.environ['OMP_NUM_THREADS'] = '8'
+from rsf.proj import *
+
+# get velocity model
+Fetch('vp.sgy',
+      server='http://ualberta.ca',
+      top='~kstanton',
+      dir='files')
+Fetch('vs.sgy',
+      server='http://ualberta.ca',
+      top='~kstanton',
+      dir='files')
+Flow('vp tfile1','vp.sgy',
+     '''
+     segyread tape=${SOURCES[0]} tfile=${TARGETS[1]} | 
+     put d1=5 o1=0 d2=10 o2=0 label2=x unit2=m label1="Depth" unit1=m title="Vp" |
+     sinc o1=0 d1=2 n1=500 |
+     transp |
+     sinc o1=0 n1=1750 d1=2 |
+     transp 
+     ''')
+Flow('vs tfile2','vs.sgy',
+     '''
+     segyread tape=${SOURCES[0]} tfile=${TARGETS[1]} | 
+     put d1=5 o1=0 d2=10 o2=0 label2=x unit2=m label1="Depth" unit1=m title="Vs" |
+     sinc o1=0 d1=2 n1=500 |
+     transp |
+     sinc o1=0 n1=1750 d1=2 |
+     transp 
+     ''')
+Plot('vp','grey color=j mean=y scalebar=y')
+Plot('vs','grey color=j mean=y scalebar=y')
+Result('v','vp vs','OverUnderAniso')
+
+End()

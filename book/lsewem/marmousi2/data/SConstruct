@@ -1,0 +1,30 @@
+from rsf.proj import *
+
+Flow('ux','ux.sgy', 
+     ''' 
+     segyread tape=$SOURCE | 
+     put 
+     n1=3500        d1=0.001       o1=0          label1="t" unit1="s" 
+     n2=5605        d2=1.249       o2=0          label2="gx" unit2="m" 
+     n3=121         d3=25          o3=2000       label3="sx" unit3="m" 
+     ''')
+Flow('uz','uz.sgy', 
+     ''' 
+     segyread tape=$SOURCE | 
+     put 
+     n1=3500        d1=0.001       o1=0          label1="t" unit1="s" 
+     n2=5605        d2=1.249       o2=0          label2="gx" unit2="m" 
+     n3=121         d3=25          o3=2000       label3="sx" unit3="m" 
+     ''')
+Flow('wav','wav.sgy', 
+     ''' 
+     segyread tape=$SOURCE | 
+     put 
+     n1=3500        d1=0.001       o1=0          label1="Time" unit1="s"
+     ''')
+
+Plot('ux','ux','window n3=1 f3=60 | grey')
+Plot('uz','uz','window n3=1 f3=60 | grey')
+Plot('wav','wav','window max1=1 | wiggle pclip=100')
+Result('u','ux uz','SideBySideAniso')
+End()

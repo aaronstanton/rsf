@@ -1,0 +1,98 @@
+import os
+os.environ['OMP_NUM_THREADS'] = '8'
+from rsf.proj import *
+
+# velocity
+Flow('vel','vel_raw',
+     '''
+     put label1=Z unit1=m label2=X unit2=m title="" unit="m/s" |
+     transp |
+     sinc n1=500 d1=45.72 o1=3329.94 |
+     transp |
+     sinc n1=600 d1=15.24 o1=0
+     ''')
+
+# Wavelet
+Flow('wav',None,
+     '''
+     spike mag=0.1 n1=1500 d1=0.008 k1=1 l1=1 |
+     ricker1 frequency=20
+     ''')
+
+Flow('d_raw headers','/home/kstanton/rsf/src/book/data/sigsbee/data2A/sigsbee2a_nfs.sgy',
+     '''
+     segyread tape=${SOURCES[0]} tfile=${TARGETS[1]}
+     ''',stdin=0)
+
+Flow('headers_binned','headers',
+     '''
+     geom5d mode=1 
+            osx=1092500 dsx=15000
+            osy=0 dsy=10
+            ogx=1092500 dgx=7500
+            ogy=0 dgy=10
+            gamma=1 ang=90 headin=${SOURCES[0]} headout=${TARGETS[0]}
+     ''',stdin=0,stdout=-1)
+
+Flow('d_binned headers_binned2','d_raw headers_binned',
+     '''
+     pad5d
+     headin=${SOURCES[1]}         
+     headout=${TARGETS[1]}        
+     max_ix1=499
+     max_ix2=0
+     max_ix3=1054
+     max_ix4=0
+     min_ix1=0
+     min_ix2=0
+     min_ix3=0
+     min_ix4=0
+     mode=1 |
+     put label2="Sx" label3="Sy" label4="Gx" label5="Gy" unit2="" unit3="" unit4="" unit5=""
+     ''')
+Flow('d','d_binned','window n3=1 | transp memsize=10000 plane=23 | put d2=22.86 o2=3329.94 d3=45.72 o3=3329.94 unit2="m" unit3="m"')
+
+Flow('d_window','d','window j3=2 n2=500 j2=2 | mutter t0=2 v0=99999999')
+
+Flow('m_adj','d_window vel wav',
+     '''
+     mpiwem_poynting adj=y aa=n
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=600 dz=15.24 oz=0
+     npx=45 dpx=2 opx=0
+     gz=7.62 sz=7.62
+     fmin=1 fmax=40
+     ''',np=4,stdin=0,stdout=-1)
+
+Flow('m_inv misfit','d_window vel wav',
+     '''
+     lswem_poynting niter=5 
+     d=${SOURCES[0]} m=${TARGETS[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} misfit=${TARGETS[1]}
+     np=4 npersocket=1 
+     reg=y nsmooth=5
+     verbose=y
+     nz=600 dz=15.24 oz=0
+     npx=45 dpx=2 opx=0
+     gz=7.62 sz=7.62
+     fmin=1 fmax=40
+     nt=1500 dt=0.008 ot=0
+     nsx=250 dsx=91.44 osx=3329.94
+     ''',stdin=0,stdout=-1)
+
+Result('m_adj_10deg','m_adj','window min3=10 max3=10 | stack axis=3 | grey label1=Z unit1=m label2=X unit2=m color=seismic title=""')
+Result('m_inv_10deg','m_inv','window min3=10 max3=10 | stack axis=3 | grey label1=Z unit1=m label2=X unit2=m color=seismic title=""')
+
+Plot('m_adj_gather1','m_adj','window n2=1 f2=90 | grey label1=Z unit1=m label2="Incidence angle" unit2="" color=seismic title=""')
+Plot('m_adj_gather2','m_adj','window n2=1 f2=190 | grey label1=Z unit1=m label2="Incidence angle" unit2="" color=seismic title=""')
+Plot('m_adj_gather3','m_adj','window n2=1 f2=290 | grey label1=Z unit1=m label2="Incidence angle" unit2="" color=seismic title=""')
+Plot('m_adj_gather4','m_adj','window n2=1 f2=390 | grey label1=Z unit1=m label2="Incidence angle" unit2="" color=seismic title=""')
+Plot('m_inv_gather1','m_inv','window n2=1 f2=90 | grey label1=Z unit1=m label2="Incidence angle" unit2="" color=seismic title=""')
+Plot('m_inv_gather2','m_inv','window n2=1 f2=190 | grey label1=Z unit1=m label2="Incidence angle" unit2="" color=seismic title=""')
+Plot('m_inv_gather3','m_inv','window n2=1 f2=290 | grey label1=Z unit1=m label2="Incidence angle" unit2="" color=seismic title=""')
+Plot('m_inv_gather4','m_inv','window n2=1 f2=390 | grey label1=Z unit1=m label2="Incidence angle" unit2="" color=seismic title=""')
+Result('m_adj_gathers','m_adj_gather1 m_adj_gather2 m_adj_gather3 m_adj_gather4','SideBySideAniso')
+Result('m_inv_gathers','m_inv_gather1 m_inv_gather2 m_inv_gather3 m_inv_gather4','SideBySideAniso')
+End()
+

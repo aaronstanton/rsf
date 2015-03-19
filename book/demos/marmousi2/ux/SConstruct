@@ -1,0 +1,39 @@
+from rsf.proj import *
+
+# Convert Files to RSF and update header
+Flow('ux_raw','/home/stanton/data/marmousi2/obc_vx.su',
+     '''
+     segyread read=d su=y suxdr=y |
+     put n2=1381 n3=480 o1=0 o2=0 o3=3000 d2=12.32 d3=25
+     ''')
+
+Flow('r_',None,'math n1=1381 d1=12.32 o1=0 output=0')
+Flow('gx','r_','math output="x1"')
+
+shots = []
+nsx = 120
+dsx = 25.0
+osx = 3000
+for ishot in range(0,nsx):
+     sx = osx + ishot*dsx
+     shot = 'shot_%d' % ishot
+     shots.append(shot)
+     Flow('shot_raw_%d' % ishot,'ux_raw',
+          '''
+          window n3=1 f3=%d 
+          ''' % ishot)
+     Flow('offset_%d' % ishot,'gx','math output="sqrt((input-%g)*(input-%g) + 450*450)"' % (sx,sx))
+     Flow('shot_%d' % ishot,'shot_raw_%d offset_%d' % (ishot,ishot),
+          '''
+          mutter offset=${SOURCES[1]} 
+                 abs=y half=n hyper=n v0=1500 t0=0.15 tp=0.1
+          ''')
+
+Flow('ux',shots,
+     '''
+     cat axis=3 ${SOURCES[0:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m |
+     window min1=0 max1=4.5 min2=2000 max2=7000
+     ''' % (nsx,osx,dsx),stdin=0)
+
+End()

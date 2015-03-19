@@ -1,0 +1,91 @@
+import os
+os.environ['OMP_NUM_THREADS'] = '8'
+from rsf.proj import *
+
+Flow('vp_smooth','../model/vp.rsf','window j1=2 j2=6 | smooth rect1=20 rect2=20')
+Flow('vs_smooth','../model/vs.rsf','window j1=2 j2=6 | smooth rect1=20 rect2=20')
+
+# make offset to be used for muting direct arrival
+Flow('r_',None,'math n1=935 d1=7.494 o1=0 output=0',stdin=0)
+Flow('xr','r_','math output="x1"')
+offsets = []
+nsx = 61
+dsx = 50.0
+osx = 2000.0
+for ishot in range(0,nsx):
+     sx = osx + ishot*dsx
+     offset = 'offset_%d.rsf' % ishot
+     offsets.append(offset)
+     Flow('offset_%d' %ishot,'xr','math output="input-%d"' %sx)
+Flow('h',offsets,
+     '''
+     cat axis=2 ${SOURCES[0:%d]} |
+     put n2=%d d2=%f o2=%f
+     ''' % (nsx,nsx,dsx,osx),stdin=0)
+
+Flow('ux','../data/ux.rsf h','window j1=4 j2=6 j3=2 | mutter offset=${SOURCES[1]} v0=1800 t0=0.25 half=n')
+Flow('uz','../data/uz.rsf h','window j1=4 j2=6 j3=2 | mutter offset=${SOURCES[1]} v0=1800 t0=0.25 half=n')
+Flow('wav',None,'spike mag=1 n1=875 d1=0.004 k1=12 | sfricker1 frequency=40',stdin=0)
+
+# run adjoint once to output the angles for each shot
+Flow('mpp mps','ux uz vp_smooth vs_smooth wav',
+     '''
+     mpiewem_poynting adj=y H=y calc_ang=y
+     ux=${SOURCES[0]} uz=${SOURCES[1]} vp=${SOURCES[2]} vs=${SOURCES[3]} wav=${SOURCES[4]}
+     mpp=${TARGETS[0]} mps=${TARGETS[1]}
+     verbose=y 
+     nz=401 oz=0 dz=2.498 
+     npx=37 dpx=5 opx=-90 
+     gz=2 sz=2 
+     fmin=0 fmax=100
+     ''',np=4,stdin=0,stdout=-1)
+
+Flow('mpp_inv mps_inv misfit','ux uz vp_smooth vs_smooth wav',
+     '''
+     lsewem_poynting
+     numthreads=8 np=4 
+     niter=5 niter_irls=1 fkreg=y pa=-1 pb=-0.5 pc=0.5 pd=1
+     ux=${SOURCES[0]} uz=${SOURCES[1]} vp=${SOURCES[2]} vs=${SOURCES[3]} wav=${SOURCES[4]}
+     mpp=${TARGETS[0]} mps=${TARGETS[1]} misfit=${TARGETS[2]}
+     verbose=y
+     nt=875 dt=0.004 ot=0
+     nsx=61 dsx=50 osx=2000
+     nz=401 oz=0 dz=2.498
+     npx=37 dpx=5 opx=-90
+     gz=2 sz=2
+     fmin=0 fmax=100
+     ''',stdin=0,stdout=-1)
+
+Result('vp','../model/vp.rsf','grey label1=z label2=x title="" color=seismic mean=y scalebar=y bartype=h barunit="m/s" barwidth=0.2 barlabel="Velocity"')
+Result('vs','../model/vs.rsf','grey label1=z label2=x title="" color=seismic mean=y scalebar=y bartype=h barunit="m/s" barwidth=0.2 barlabel="Velocity"')
+
+Plot('ux','window min3=3500 max3=3500 | grey labelsz=12 color=seismic label2="x" unit2="m" label1="t" unit1="s" title="" titlesz=20')
+Plot('uz','window min3=3500 max3=3500 | grey labelsz=12 color=seismic label2="x" unit2="m" label1="t" unit1="s" title="" titlesz=20')
+Result('shot','ux uz','SideBySideAniso')
+
+Plot('mpp_gather','mpp','window min2=3500 max2=3500 | grey  label1=z unit2="Degrees" labelsz=12 color=seismic title="PP" titlesz=20')
+Plot('mps_gather','mps','window min2=3500 max2=3500 | grey  label1=z unit2="Degrees" labelsz=12 color=seismic title="PS" titlesz=20')
+Plot('mpp_gather_inv','mpp_inv','window min2=3500 max2=3500 | grey  label1=z unit2="Degrees" labelsz=12 color=seismic title="PP" titlesz=20')
+Plot('mps_gather_inv','mps_inv','window min2=3500 max2=3500 | grey  label1=z unit2="Degrees" labelsz=12 color=seismic title="PS" titlesz=20')
+Result('gathers','mpp_gather mps_gather','SideBySideAniso')
+Result('gathers_inv','mpp_gather_inv mps_gather_inv','SideBySideAniso')
+
+Result('mpp_stack','mpp','window min3=25 max3=25 | stack axis=3 | grey label1=z label2="x" unit2="m" color=seismic title="" titlesz=20')
+Result('mps_stack','mps','window min3=25 max3=25 | stack axis=3 | grey label1=z label2="x" unit2="m" color=seismic title="" titlesz=20')
+Result('mpp_stack_inv','mpp_inv','window min3=25 max3=25 | stack axis=3 | grey label1=z label2="x" unit2="m" color=seismic title="" titlesz=20')
+Result('mps_stack_inv','mps_inv','window min3=25 max3=25 | stack axis=3 | grey label1=z label2="x" unit2="m" color=seismic title="" titlesz=20')
+
+
+
+Flow('mpp_amp','mpp','window min3=25 max3=25 | sffft1 | sfcabs | stack axis=2 | math output="input/0.003"')
+Flow('mps_amp','mps','window min3=25 max3=25 | sffft1 | sfcabs | stack axis=2 | math output="input/0.00011"')
+Flow('mpp_amp_inv','mpp_inv','window min3=25 max3=25 | sffft1 | sfcabs | stack axis=2 | math output="input/0.12"')
+Flow('mps_amp_inv','mps_inv','window min3=25 max3=25 | sffft1 | sfcabs | stack axis=2 | math output="input/0.0939"')
+
+Result('amp_mpp','mpp_amp mpp_amp_inv','cat ${SOURCES[1:2]} axis=2 | graph')
+Result('amp_mps','mps_amp mps_amp_inv','cat ${SOURCES[1:2]} axis=2 | graph')
+
+Result('misfit','graph label1="Iteration number" label2="Misfit" title=""')
+
+End()
+

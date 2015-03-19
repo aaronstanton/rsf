@@ -1,0 +1,61 @@
+from rsf.proj import *
+ 
+Fetch('checkstack.su',
+      server='http://ualberta.ca',
+      top='~kstanton',
+      dir='files')
+
+Flow('data_input','checkstack.su',
+     '''
+     segyread su=y endian=0 
+     ''')
+
+Flow('data_in','data_input',
+     '''
+     window f1=800 n1=1000 f2=2501 n2=2000 |
+     clip clip=10000
+     ''')
+
+Flow('pat3','data_in','patch w=100,100 p=14,28 | put n3=392 o3=0 d3=1 n4=1 o4=0 d4=1')
+pb3_all = []
+for nw in range(0,392):
+    pa3 = 'pa3_%d' % nw
+    pb3  = 'pb3_%d'   % nw
+    Flow(pa3,'pat3','window n3=1 f3=%d' % nw)
+    Flow(pb3,pa3,'static range=0.000001 seed=%d' % nw)
+    pb3_all.append(pb3)
+Flow('data',pb3_all,'cat ${SOURCES[1:%d]} axis=3 | put n3=14 d3=1 o3=0 n4=28 d4=1 o4=0 | patch inv=y  weight=y' % len(pb3_all))
+
+Flow('pat1','data','patch w=100,100 p=14,28 | put n3=392 o3=0 d3=1 n4=1 o4=0 d4=1')
+pb1_all = []
+for nw in range(0,392):
+    pa1 = 'pa1_%d' % nw
+    pb1  = 'pb1_%d'   % nw
+    Flow(pa1,'pat1','window n3=1 f3=%d' % nw)
+    Flow(pb1,pa1,'spbpdn iter=10 mode=0 lambda=0.2 maxlag=0.02 cost=tmp.rsf')
+    pb1_all.append(pb1)
+Flow('data_out1',pb1_all,'cat ${SOURCES[1:%d]} axis=3 | put n3=14 d3=1 o3=0 n4=28 d4=1 o4=0 | patch inv=y  weight=y' % len(pb1_all))
+
+Flow('pat2','data','patch w=100,100 p=14,28 | put n3=392 o3=0 d3=1 n4=1 o4=0 d4=1')
+pb2_all = []
+for nw in range(0,392):
+    pa2 = 'pa2_%d' % nw
+    pb2  = 'pb2_%d'   % nw
+    Flow(pa2,'pat2','window n3=1 f3=%d' % nw)
+    Flow(pb2,pa2,'spbpdn iter=10 mode=1 lambda=0.2 maxlag=0.02 cost=tmp.rsf')
+    pb2_all.append(pb2)
+Flow('data_out2',pb2_all,'cat ${SOURCES[1:%d]} axis=3 | put n3=14 d3=1 o3=0 n4=28 d4=1 o4=0 | patch inv=y  weight=y' % len(pb2_all))
+
+Flow('data_zoom','data','window f1=387 n1=350 f2=1401 n2=500')
+Flow('data_out1_zoom','data_out1','window f1=387 n1=350 f2=1401 n2=500')
+Flow('data_out2_zoom','data_out2','window f1=387 n1=350 f2=1401 n2=500')
+Plot('data_zoom','grey title=" " color=e scalebar=y minval=-1000 maxval=1000 clip=1000')
+Plot('data_out1_zoom','grey title=" " color=e scalebar=y minval=-1000 maxval=1000 clip=1000')
+Plot('data_out2_zoom','grey title=" " color=e scalebar=y minval=-1000 maxval=1000 clip=1000')
+Plot('data','grey title=" " color=e scalebar=y minval=-1000 maxval=1000 clip=1000')
+Plot('data_out1','grey title=" " color=e scalebar=y minval=-1000 maxval=1000 clip=1000')
+Plot('data_out2','grey title=" " color=e scalebar=y minval=-1000 maxval=1000 clip=1000')
+Result('results','data data_out1 data_out2','SideBySideAniso')
+Result('results_zoomed','data_zoom data_out1_zoom data_out2_zoom','SideBySideAniso')
+End()
+

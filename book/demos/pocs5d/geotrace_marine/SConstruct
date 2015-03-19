@@ -1,0 +1,153 @@
+from rsf.proj import *
+import math
+ 
+# Convert to RSF
+#
+Flow('din_2d headers','/home/kstanton/marine_data_4_pocs.su',
+     '''
+     segyread su=y suxdr=y tfile=${TARGETS[1]} |
+     bandpass fhi=200
+     ''') 
+      
+Flow('headers_binned','headers',
+     '''
+     geom5d mode=1 
+            osx=0 dsx=1
+            osy=0 dsy=1
+            ogx=0 dgx=1  
+            ogy=0 dgy=1
+            gamma=1 ang=90 headin=${SOURCES[0]} headout=${TARGETS[0]}
+     ''',stdin=0,stdout=-1)
+
+Flow('din headers_binned2','din_2d headers_binned',
+     '''
+     pad5d
+     headin=${SOURCES[1]}         
+     headout=${TARGETS[1]}        
+     max_ix1=11317
+     max_ix2=54600
+     max_ix3=0 
+     max_ix4=0
+     min_ix1=10596
+     min_ix2=54000
+     min_ix3=0
+     min_ix4=0
+     mode=1 |
+     put label2="Inline" label3="Crossline" label4="" label5="" unit2="" unit3="" unit4="" unit5=""
+     ''')
+
+# POCS interpolation on overlapping windows
+ot = 0
+dt = 0.001
+nt = 2001
+tmax = ot + dt*(nt-1)
+twindow_length = 100
+twindow_overlap = 10
+ntwindow = int(math.ceil((tmax-ot)/(dt*(twindow_length-twindow_overlap))))
+ox1 = 10596
+dx1 = 1
+nx1 = 722
+x1max = ox1 + dx1*(nx1-1)
+x1window_length = 100
+x1window_overlap = 10
+nx1window = int(math.ceil((x1max-ox1) / (dx1*(x1window_length-x1window_overlap))))
+ox2 = 54000
+dx2 = 1
+nx2 = 601
+x2max = ox2 + dx2*(nx2-1)
+x2window_length = 100
+x2window_overlap = 10
+nx2window = int(math.ceil((x2max-ox2) / (dx2*(x2window_length-x2window_overlap))))
+nwindow=ntwindow*nx1window*nx2window-1
+
+windows=[]
+windows2=[]
+for itwindow in range(0,ntwindow):
+     mint = ot + dt*itwindow*(twindow_length-twindow_overlap)
+     maxt = mint + dt*(twindow_length-1)
+     if maxt >= tmax:
+          maxt = tmax
+     for ix1window in range(0,nx1window):
+          minx1 = ox1 + dx1*ix1window*(x1window_length-x1window_overlap)
+          maxx1 = minx1 + dx1*(x1window_length-1)
+          if maxx1 >= x1max:
+               maxx1 = x1max
+          for ix2window in range(0,nx2window):               
+               minx2 = ox2 + dx2*ix2window*(x2window_length-x2window_overlap)
+               maxx2 = minx2 + dx2*(x2window_length-1)
+               if maxx2 >= x2max:
+                    maxx2 = x2max
+               Flow('d_%d_%d_%d' % (itwindow,ix1window,ix2window), 'din',
+                    '''
+                    window
+                    min1=%f  max1=%f 
+                    min2=%f  max2=%f 
+                    min3=%f  max3=%f 
+                    ''' % (mint,maxt,minx1,maxx1,minx2,maxx2))
+               Flow('d_pocs_%d_%d_%d' % (itwindow,ix1window,ix2window), 'd_%d_%d_%d' %(itwindow,ix1window,ix2window),
+                    '''
+                    pocs5d niter=100 p=1000
+                    verbose=y
+                    fmax=200
+                    ''')
+               window = 'd_pocs_%d_%d_%d' %(itwindow,ix1window,ix2window)
+               windows.append(window)
+               Flow('d_pocs2_%d_%d_%d' % (itwindow,ix1window,ix2window), 'd_%d_%d_%d' %(itwindow,ix1window,ix2window),
+                    '''
+                    pocs5d niter=100 p=1 debias=y
+                    verbose=y
+                    fmax=200
+                    ''')
+               window2 = 'd_pocs2_%d_%d_%d' %(itwindow,ix1window,ix2window)
+               windows2.append(window2)
+
+# merge the reconstructed windows together
+Flow('dpocs',windows,
+     '''
+     merge5d --readwrite=y
+     n1=2001 d1=0.001 o1=0      label1="Time"      unit1="s"    t1=%d
+     n2=722  d2=1     o2=10596  label2="Inline"    unit2=""     t2=%d
+     n3=601  d3=1     o3=54000  label3="Crossline" unit3=""     t3=%d
+     n4=1    d4=1     o4=0      label4=""          unit4=""     t4=0
+     n5=1    d5=1     o5=0      label5=""          unit5=""     t5=0 
+     outfile=${TARGETS[0]}
+     ${SOURCES[0:%d]}
+     ''' % (twindow_overlap,x1window_overlap,x2window_overlap,nwindow),stdin=0,stdout=-1)
+
+Flow('dpocs2',windows2,
+     '''
+     merge5d --readwrite=y
+     n1=2001 d1=0.001 o1=0      label1="Time"      unit1="s"    t1=%d
+     n2=722  d2=1     o2=10596  label2="Inline"    unit2=""     t2=%d
+     n3=601  d3=1     o3=54000  label3="Crossline" unit3=""     t3=%d
+     n4=1    d4=1     o4=0      label4=""          unit4=""     t4=0
+     n5=1    d5=1     o5=0      label5=""          unit5=""     t5=0 
+     outfile=${TARGETS[0]}
+     ${SOURCES[0:%d]}
+     ''' % (twindow_overlap,x1window_overlap,x2window_overlap,nwindow),stdin=0,stdout=-1)
+
+# plotting
+plotpar='title="" color=i minval=-1.5e2 maxval=1.5e2 clip=1.5e2'
+
+Flow('headers_float','headers','dd type=float')
+Flow('iline','headers_float','window n1=1 f1=21')
+Flow('xline','headers_float','window n1=1 f1=22')
+Flow('xy','iline xline','cmplx ${SOURCES[0]} ${SOURCES[1]}',stdin=0)
+Plot('xy','graph symbol="."')
+
+Plot('din_ts','din','window min1=1.6 max1=1.6 | grey %s' % plotpar)
+Plot('din_xl','din','window min1=0.85 min2=11050 max2=11050 | grey %s' % plotpar)
+Plot('din_il','din','window min1=0.85 min3=54400 max3=54400 | grey %s' % plotpar)
+Result('din','din_ts din_xl din_il','SideBySideAniso')
+
+Plot('dpocs_ts','dpocs','window min1=1.6 max1=1.6 | grey %s' % plotpar)
+Plot('dpocs_xl','dpocs','window min1=0.85 min2=11050 max2=11050 | grey %s' % plotpar)
+Plot('dpocs_il','dpocs','window min1=0.85 min3=54400 max3=54400 | grey %s' % plotpar)
+Result('dpocs','dpocs_ts dpocs_xl dpocs_il','SideBySideAniso')
+
+Plot('dpocs2_ts','dpocs2','window min1=1.6 max1=1.6 | grey %s' % plotpar)
+Plot('dpocs2_xl','dpocs2','window min1=0.85 min2=11050 max2=11050 | grey %s' % plotpar)
+Plot('dpocs2_il','dpocs2','window min1=0.85 min3=54400 max3=54400 | grey %s' % plotpar)
+Result('dpocs2','dpocs2_ts dpocs2_xl dpocs2_il','SideBySideAniso')
+
+End()

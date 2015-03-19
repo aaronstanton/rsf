@@ -1,0 +1,45 @@
+from rsf.proj import *
+
+# Convert Files to RSF and update header
+Flow('ux_raw tfile_ux','/u1/data/marmousi2/obc_vx.su',
+     '''
+     segyread read=d su=y suxdr=y tfile=${TARGETS[1]}|
+     put n2=1381 n3=480 o1=0 o2=0 o3=3000 d2=12.32 d3=25 |
+     window min3=5025 max3=10000 min2=5001.92 max2=10000
+     ''')
+
+Flow('uz_raw tfile_uz','/u1/data/marmousi2/obc_vz.su',
+     '''
+     segyread read=d su=y suxdr=y tfile=${TARGETS[1]}|
+     put n2=1381 n3=480 o1=0 o2=0 o3=3000 d2=12.32 d3=25 |
+     window min3=5025 max3=10000 min2=5001.92 max2=10000
+     ''')
+
+Flow('gx',None,'math n1=407 d1=12.32 o1=5001.92 output=0 | math output="x1"')
+
+offsets = []
+nsx = 200
+dsx = 25.0
+osx = 5025.0
+for ishot in range(0,nsx):
+     sx = osx + ishot*dsx
+     Flow('offset_%d' % ishot,'gx','math output="sqrt((input-%g)*(input-%g) + 440.0*440.0)"' % (sx,sx) )
+     offset = 'offset_%d' % ishot
+     offsets.append(offset)
+
+Flow('h',offsets,
+     '''
+     cat axis=2 ${SOURCES[0:%d]}
+     ''' % nsx,stdin=0)
+
+Flow('ux','ux_raw h',
+     '''
+     mutter offset=${SOURCES[1]} hyper=n abs=y half=n t0=0.2 tp=0.02 v0=1500
+     ''')
+
+Flow('uz','uz_raw h',
+     '''
+     mutter offset=${SOURCES[1]} hyper=n abs=y half=n t0=0.2 tp=0.02 v0=1500
+     ''')
+
+

@@ -1,0 +1,455 @@
+\title[Short title]{LS-PSTM of Converted Waves for Imaging and Reconstruction}
+\author{\small Aaron Stanton and Mauricio D. Sacchi}
+\institute{\small Signal Analysis and Imaging Group\\ University of Alberta}
+\date{\small \today \\ \vspace{0.5cm}   \includegraphics[height=1cm,width=2cm]{logo}}
+
+\addtobeamertemplate{frametitle}{}{%
+\begin{textblock*}{100mm}(.85\textwidth,-0.9cm)
+\includegraphics[height=1cm,width=2cm]{logo}
+\end{textblock*}}
+
+\maketitle
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%OUTLINE
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{frame}
+\frametitle{Outline}
+  \begin{itemize}
+  \item Motivation
+  \item PS-Kirchhoff
+  \item LS Migration
+  \item Preconditioning
+  \item Examples
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+\section[Motivation]{}
+\frametitle{Motivation: Imaging}
+\begin{columns}[c]
+\column{2in} 
+	\begin{figure} 
+	\includegraphics[width=2in,height=1.5in]{interp_random/reflect_mwni.pdf} \\ 
+	\tiny MWNI + Migration
+	\end{figure} 
+\column{2in}
+	\begin{figure} 
+	\includegraphics[width=2in,height=1.5in]{interp_random/reflect_inv.pdf} \\
+	\tiny LS-MIG
+	\end{figure}
+\end{columns}
+\end{frame}
+
+\begin{frame}
+\section[Motivation]{}
+\frametitle{Motivation: Reconstruction}
+\begin{columns}[c]
+\column{2in} 
+	\begin{figure} 
+	\includegraphics[width=2in,height=1.5in]{interp_random/d_mwni.pdf} \\ 
+	\tiny MWNI + Migration
+	\end{figure} 
+\column{2in}
+	\begin{figure} 
+	\includegraphics[width=2in,height=1.5in]{interp_random/d_pred_inv.pdf} \\
+	\tiny LS-MIG
+	\end{figure}
+\end{columns}
+\end{frame}
+
+\begin{frame}
+\frametitle{PS-PSTM: operator}
+\begin{center}
+Forward:           
+$
+\mathbf{d}(s_x,g_x,t_d)=\sum\limits_{x}\sum\limits_{t}\mathbf{m}(t_m,x,h)W
+$\\
+\vspace{1cm}
+
+Adjoint:           
+$
+\mathbf{m}(t_m,x,h)=\sum\limits_{N_{trace}}\mathbf{d}(s_x,g_x,t_d)W
+$
+\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{PS-PSTM: travel times}
+\begin{center}
+$
+t_s = \sqrt{t_{s0}^2 + (\frac{x-s_x}{v_p})^2} 
+$\\
+\vspace{1cm}
+
+$
+t_g = \sqrt{t_{g0}^2 + (\frac{x-g_x}{v_s})^2 } 
+$
+\end{center}
+\end{frame}
+
+\begin{frame}
+\begin{center}
+\frametitle{PS-PSTM: weights}
+$
+W=\frac{z(1+cos\theta)}{2v_p^3\sqrt{1+2\gamma cos\theta + \gamma^2}} (\frac{t_g}{\gamma ^2 t_s} + \frac{\gamma^2t_s}{t_g}) \sqrt{\frac{\gamma^2t_s + t_g}{t_st_g}}$\let\thefootnote\relax\footnote{(Cary and Zhang, 2011)}
+\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{Kirchhoff}
+\begin{algorithm}[H]
+\renewcommand{\thealgorithm}{}
+\tiny
+\caption{converted wave Pre-Stack Time Migration operator}\label{Kirchhoff}
+\begin{algorithmic}
+\Procedure{Kirchhoff}{$d,m,v_p,v_s,s_x,g_x,dt,N_{trace},N_{h},N_{x},N_{t}$}\Comment{fwd diffracts, adj migrates}
+   \For{$ih=1:N_{h}$}
+     \For{$itrace=1:N_{trace}$}
+       \For{$ix=1:N_{x}$}
+         \For{$itm=1:N_{t}$}
+           \State{$ t_s = f(vp,s_x,ih,ix,itm)$}
+           \State{$ t_g = f(vs,g_x,ih,ix,itm)$}
+           \State{$ it = \lfloor (t_s + t_g)/ dt \rfloor $}
+           \State{$ w = f(vp,vs,s_x,g_x,ih,ix,itm)$}
+           \State{$ b = (t - it*dt)/it*dt$}
+           \State{$ a = 1 - b$}
+           \If{fwd} 
+             \State{d(itrace,it) += a*m(itm,ix,ih)*w} 
+             \State{d(itrace,it+1) += b*m(itm,ix,ih)*w} 
+           \EndIf
+           \If{adj} 
+             \State{m(it,ix,ih) += (a*d(itrace,it) + b*d(itrace,it + 1))*w}
+           \EndIf
+         \EndFor
+       \EndFor
+     \EndFor
+   \EndFor
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+\end{frame}
+
+\begin{frame}
+\frametitle{Impulse: model space}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{impulse/reflect.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Impulse: Forward}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{impulse/d.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Impulse: Adjoint}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{impulse/reflect_adj.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Cost function}
+\begin{center}
+$J=||\mathbf{L}\mathbf{m}-\mathbf{d}||^2_2 + \lambda^2||\mathbf{m}||^2_2$
+\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{Preconditioning}
+\begin{itemize}
+\item Minimum norm solution is found via: \\$J = ||\mathbf{Lm}-\mathbf{d}||^2_2 + \lambda^2|| \mathbf{m}||^2_2$, 
+\item Emphasize bad features to be minimized:  \\$J = ||\mathbf{Lm}-\mathbf{d}||^2_2 + \lambda^2|| \mathbf{D} \mathbf{m}||^2_2$, 
+\item Can also be written via change of variables: \\$J = ||\mathbf{LD^{-1}\mathbf{z}}-\mathbf{d}||^2_2 + \lambda^2|| \mathbf{z}||^2_2$\\
+where $\mathbf{z} = \mathbf{Dm}$.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Triangle filter}
+
+$\mathbf{P} = \begin{bmatrix}1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+					     \frac{1}{4} & \frac{1}{2} & \frac{1}{4} & 0 & 0 & 0 & 0 & 0 \\
+					     \frac{1}{9} & \frac{2}{9} & \frac{1}{3} & \frac{2}{9} & \frac{1}{9} & 0 & 0 & 0 \\
+					     0 & \frac{1}{9} & \frac{2}{9} & \frac{1}{3} & \frac{2}{9} & \frac{1}{9} & 0 & 0 \\
+					     0 & 0 & \frac{1}{9} & \frac{2}{9} & \frac{1}{3} & \frac{2}{9} & \frac{1}{9} & 0 \\
+					     0 & 0 & 0 & \frac{1}{9} & \frac{2}{9} & \frac{1}{3} & \frac{2}{9} & \frac{1}{9} \\
+					     0 & 0 & 0 & 0 & 0 & \frac{1}{4} & \frac{1}{2} & \frac{1}{4} \\
+					     0 & 0 & 0 & 0 & 0 & 0 & 0 & 1\end{bmatrix},$ 
+$\mathbf{P}^T = \begin{bmatrix}1 &  \frac{1}{4} &  \frac{1}{9} & 0 & 0 & 0 & 0 & 0 \\
+					     0 &  \frac{1}{2} &  \frac{2}{9} &  \frac{1}{9} & 0 & 0 & 0 & 0 \\
+					     0 &  \frac{1}{4} &  \frac{1}{3} &  \frac{2}{9} &  \frac{1}{9} & 0 & 0 & 0 \\
+					     0 & 0 &  \frac{2}{9} &  \frac{1}{3} &  \frac{2}{9} &  \frac{1}{9} & 0 & 0 \\
+					     0 & 0 &  \frac{1}{9} &  \frac{2}{9} &  \frac{1}{3} &  \frac{2}{9} & 0 & 0 \\
+					     0 & 0 & 0 & \frac{1}{9} &  \frac{2}{9} &  \frac{1}{3} &  \frac{1}{4}  & 0 \\
+					     0 & 0 & 0 & 0 &  \frac{1}{9} &  \frac{2}{9}  &  \frac{1}{2}  & 0 \\
+					     0 & 0 & 0 & 0 & 0 &  \frac{1}{9}  &  \frac{1}{4}  & 1\end{bmatrix}$.
+					     
+\end{frame}
+
+\begin{frame}
+\frametitle{Triangle filter: replicate edge}
+
+$\mathbf{P} = \begin{bmatrix} \frac{3}{9} & \frac{4}{9} & \frac{2}{9} & 0 & 0 & 0 & 0 & 0 \\
+					        \frac{2}{9} & \frac{3}{9} & \frac{2}{9} & \frac{2}{9} & 0 & 0 & 0 & 0 \\
+					        \frac{1}{9} & \frac{2}{9} & \frac{3}{9} & \frac{2}{9} & \frac{1}{9} & 0 & 0 & 0 \\
+					        0 & \frac{1}{9}& \frac{2}{9}& \frac{3}{9}& \frac{2}{9}& \frac{1}{9}& 0 & 0 \\
+					        0 & 0 & \frac{1}{9}& \frac{2}{9}& \frac{3}{9}& \frac{2}{9}& \frac{1}{9}& 0 \\
+					        0 & 0 & 0 & \frac{1}{9}& \frac{2}{9}& \frac{3}{9}& \frac{2}{9}& \frac{1}{9}\\
+					        0 & 0 & 0 & 0 & \frac{2}{9}& \frac{2}{9}& \frac{3}{9}& \frac{2}{9}\\
+					        0 & 0 & 0 & 0 & 0 & \frac{2}{9}& \frac{4}{9}& \frac{3}{9}\end{bmatrix},$ $\mathbf{P}^T = \begin{bmatrix}\frac{3}{9}& \frac{2}{9}& \frac{1}{9}& 0 & 0 & 0 & 0 & 0 \\
+					               \frac{4}{9}& \frac{3}{9}& \frac{2}{9}& \frac{1}{9}& 0 & 0 & 0 & 0 \\
+					               \frac{2}{9}& \frac{2}{9}& \frac{3}{9}& \frac{2}{9}& \frac{1}{9}& 0 & 0 & 0 \\
+					               0 & \frac{2}{9}& \frac{2}{9}& \frac{3}{9}& \frac{2}{9}& \frac{1}{9}& 0 & 0 \\
+					               0 & 0 & \frac{1}{9}& \frac{2}{9}& \frac{3}{9}& \frac{2}{9}& \frac{2}{9}& 0 \\
+					               0 & 0 & 0 & \frac{1}{9}& \frac{2}{9}& \frac{3}{9}& \frac{2}{9}& \frac{2}{9}\\
+					               0 & 0 & 0 & 0 & \frac{1}{9}& \frac{2}{9}& \frac{3}{9}& \frac{4}{9}\\
+					               0 & 0 & 0 & 0 & 0 & \frac{1}{9}& \frac{2}{9}& \frac{3}{9}\end{bmatrix}$.
+					     
+\end{frame}
+
+\begin{frame}
+\frametitle{Before offset smoothing}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/smooth_input.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{After offset smoothing}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/smooth_output.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Modified Conjugate Gradients}
+\begin{algorithm}[H]
+\renewcommand{\thealgorithm}{}
+\tiny
+\caption{Conjugate Gradients with more than one operator}\label{CG}
+\begin{algorithmic}
+\Procedure{CG}{d,$N_{iter},p$}\Comment{solves $||Ax-d||^2_2 + \lambda||Bx||^2_2$}
+   \State $x=0$ 
+   \State $r_1=d$ 
+   \State $g=A^Tr_1 + B^Tr_2$ 
+   \State $s=g$ 
+   \State $\gamma = <g,g>$
+   \State $\gamma_{old} = \gamma$
+   \While{$k\leq N_{iter}$}
+      \State $ss_1 = As$
+      \State $ss_2 = Bs$
+      \State $\Delta = <ss_1,ss_1> + p<ss_2,ss_2>$
+      \State $\alpha = \gamma / \Delta$
+      \State $x = x + \alpha s$
+      \State $r_1 = r_1 - \alpha ss_1$
+      \State $r_2 = r_2 - \alpha ss_2$
+      \State $g = A^Tr_1 + B^Tr_2$
+      \State $\gamma = <g,g>$
+      \State $\beta = \gamma/\gamma_{old}$
+      \State $\gamma_{old} = \gamma$
+      \State $s = g + \beta s$
+      \State $k++$
+   \EndWhile\label{euclidendwhile}
+   \State \textbf{return} $x$\Comment{The solution is x}
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+\end{frame}
+
+\begin{frame} \frametitle{ }
+	\begin{center}
+        \LARGE {\bf Examples}
+	\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{True reflectivity\\}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/reflect.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Velocity model}
+\begin{columns}[c]
+\column{2in} 
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[height=1.5in]{interp_random/vp.pdf} \\ 
+	\tiny P velocity
+	\end{figure} 
+	\end{center}
+\column{2in}
+	\begin{center}
+	\begin{figure} 
+	\includegraphics[height=1.5in]{interp_random/vs.pdf} \\
+	\tiny S velocity
+	\end{figure}
+	\end{center}
+\end{columns}
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{frame} \frametitle{ }
+	\begin{center}
+        \LARGE {\bf Random decimation}
+	\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{True reflectivity\\}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/reflect.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{True data\\}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/d.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Random decimation\\}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/d_dec.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Random decimation:\\MWNI}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/d_mwni.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Random decimation:\\LS-MiG}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/d_pred_inv.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{True reflectivity\\ }
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/reflect.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Random decimation:\\Adjoint}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/reflect_adj.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Random decimation:\\MWNI + adjoint}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/reflect_mwni.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Random decimation:\\LS-MiG}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_random/reflect_inv.pdf} \\
+\end{figure} 
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\begin{frame} \frametitle{ }
+	\begin{center}
+        \LARGE {\bf Regular decimation}
+	\end{center}
+\end{frame}
+
+\begin{frame}
+\frametitle{True reflectivity\\}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/reflect.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{True data\\}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/d.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Regular decimation\\}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/d_dec.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Regular decimation:\\MWNI}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/d_mwni.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Regular decimation:\\LS-MiG}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/d_pred_inv.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{True reflectivity\\ }
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/reflect.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Regular decimation:\\Adjoint}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/reflect_adj.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Regular decimation:\\MWNI + adjoint}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/reflect_mwni.pdf} \\
+\end{figure} 
+\end{frame}
+
+\begin{frame}
+\frametitle{Regular decimation:\\LS-MiG}
+\begin{figure} 
+\includegraphics[width=4.5in,height=3in]{interp_regular/reflect_inv.pdf} \\
+\end{figure} 
+\end{frame}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Conclusions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{frame}
+\section[Conclusions]{}
+\frametitle{Conclusions}
+  \begin{itemize}
+  \item Provides a superior image compared to adjoint, especially in the case of poor spatial sampling of shots/receivers
+  \item Interesting properties: able to handle regular patterns of missing traces and does not require binning
+  \item Next steps: 
+\begin{itemize}
+\item application to a 3D dataset for comparison with 5D reconstruction
+\item depth migration operator with preconditioning using PP \& PS information 
+\end{itemize}
+  \end{itemize}
+\end{frame}
+
+
+

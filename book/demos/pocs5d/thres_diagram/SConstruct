@@ -1,0 +1,43 @@
+from rsf.proj import *
+ 
+Flow('d',None,
+     '''
+     spike 
+     mag=750 nsp=1 
+     k1=250 l1=250
+     n1=500 o1=0 d1=0.004 |
+     smooth rect1=50 |
+     smooth rect1=50
+     ''',stdin=0) 
+
+Flow('mask','d',
+     '''
+     mask min=6 max=99999 |
+     dd type=float
+     ''')
+Flow('d_hard','d mask',
+     '''
+     math m=${SOURCES[1]} output="input*m"
+     ''')
+Flow('d_stein','d mask',
+     '''
+     math m=${SOURCES[1]} output="input*(1-(6/input)^2)*m"
+     ''')
+Flow('d_soft','d mask',
+     '''
+     math m=${SOURCES[1]} output="input*(1-((6/input)^1))*m"
+     ''')
+
+all=['d','d_hard','d_soft']
+Flow('d_all',all,
+     '''
+     cat axis=2 ${SOURCES[0:3]}
+     ''',stdin=0)
+
+Plot('d_all','graph min2=0 max2=10 title="" label1="" unit1="" plotfat=18 labelsz=11 labelfat=3 font=4 plotcol=7,5,6')
+
+Plot('D_all','d_all','fft1 | cabs | window n1=50 | graph pclip=100 title="" label1="" unit1="" plotfat=18 labelsz=11 labelfat=3 font=4 plotcol=7,5,6')
+
+Result('all','d_all D_all','SideBySideIso')
+
+End()

@@ -1,0 +1,71 @@
+from rsf.proj import *
+ 
+Nt=4000
+dt=0.001
+t0=0
+
+Nx=400
+dx=0.0125
+x0=0
+
+# Make synthetic data
+Flow('vel',None,'math n1=%d d1=%g o1=%g output="(1.5+0.5*x1)" ' % (Nt,dt,t0))
+
+# From velocity to slowness
+Flow('slo','vel','math output="1/input" ')
+
+Flow('data','vel',
+     '''
+     noise seed=1999 rep=y |
+     math output="input^3" |
+     cut n1=80 | cut f1=3999 |
+     ricker1 frequency=20 |
+     spray n=%d d=%g o=%g label=Offset unit=km |
+     inmo velocity=$SOURCE half=n slowness=n |
+     put label1=Time unit1=s |
+     mutter half=n tp=0.1 v0=1.5 
+     ''' % (Nx,dx,x0))
+
+Flow('pat1','data','patch w=200,100 p=31,5 | put n3=155 o3=0 d3=1 n4=1 o4=0 d4=1')
+pb1_all = []
+for nw in range(0,155):
+    pa1 = 'pa1_%d' % nw
+    pb1  = 'pb1_%d'   % nw
+    Flow(pa1,'pat1','window n3=1 f3=%d' % nw)
+    Flow(pb1,pa1,'static seed=%d' % nw)
+    pb1_all.append(pb1)
+Flow('data_statics',pb1_all,'cat ${SOURCES[1:%d]} axis=3 | put n3=31 d3=1 o3=0 n4=5 d4=1 o4=0 | patch inv=y  weight=y' % len(pb1_all))
+
+Flow('data_statics_noise','data_statics','noise range=4')
+
+Flow('pat2','data_statics_noise','patch w=200,100 p=31,5 | put n3=155 o3=0 d3=1 n4=1 o4=0 d4=1')
+pb2_all = []
+for nw in range(0,155):
+    pa2 = 'pa2_%d' % nw
+    pb2  = 'pb2_%d'   % nw
+    Flow(pa2,'pat2','window n3=1 f3=%d' % nw)
+    Flow(pb2,pa2,'sbpd iter=20 mode=0 lambda=0.20 maxlag=0.02 cost=tmp.rsf')
+    pb2_all.append(pb2)
+Flow('data_out1',pb2_all,'cat ${SOURCES[1:%d]} axis=3 | put n3=31 d3=1 o3=0 n4=5 d4=1 o4=0 | patch inv=y  weight=y' % len(pb2_all))
+
+
+Flow('pat3','data_statics_noise','patch w=200,100 p=31,5 | put n3=155 o3=0 d3=1 n4=1 o4=0 d4=1')
+pb3_all = []
+for nw in range(0,155):
+    pa3 = 'pa3_%d' % nw
+    pb3  = 'pb3_%d'   % nw
+    Flow(pa3,'pat3','window n3=1 f3=%d' % nw)
+    Flow(pb3,pa3,'sbpd iter=20 mode=1 lambda=0.20 maxlag=0.02 cost=tmp.rsf')
+    pb3_all.append(pb3)
+Flow('data_out2',pb3_all,'cat ${SOURCES[1:%d]} axis=3 | put n3=31 d3=1 o3=0 n4=5 d4=1 o4=0 | patch inv=y  weight=y' % len(pb3_all))
+
+Result('data','grey title=" "')
+Result('data_statics','grey title=" "')
+Result('data_statics_noise','grey title=" "')
+
+Result('data_out1','grey title=" "')
+Result('data_out2','grey title=" "')
+#Result('no_statics_vs_statics','data_statics data_statics_noise data_out1 data_out2','TwoRows')
+
+End()
+

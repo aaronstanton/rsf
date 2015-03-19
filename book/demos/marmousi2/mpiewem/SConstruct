@@ -1,0 +1,52 @@
+import os
+
+os.environ['OMP_NUM_THREADS'] = '6'
+
+from rsf.proj import *
+
+# Wavelet
+Flow('wav',None,
+     '''
+     ormsby nt=2500 dt=0.002 f1=5.0 f2=10.0 f3=60.0 f4=80.0 shift=0.1 |
+     bandpass fhi=40
+     ''')
+
+Flow('vp_smooth','../model/vp.rsf',
+     '''
+     smooth rect1=20 rect2=20 
+     ''')
+
+Flow('vs_smooth','../model/vs.rsf',
+     '''
+     smooth rect1=20 rect2=20 
+     ''')
+
+Flow('mpp mps','../data/ux.rsf ../data/uz.rsf ../model/vp_smooth.rsf ../model/vs_smooth.rsf wav',
+     '''
+     mpiewem_poynting adj=y
+     ux=${SOURCES[0]} uz=${SOURCES[1]} vp=${SOURCES[2]} vs=${SOURCES[3]} wav=${SOURCES[4]} 
+     mpp=${TARGETS[0]} mps=${TARGETS[1]}
+     verbose=n
+     nz=1001 oz=0 dz=2
+     nhx=101 dhx=12.32 ohx=-616
+     npx=201 dpx=0.01 opx=-1
+     fmin=5 fmax=60
+     sz=10 gz=450
+     ''',np=1,stdin=0,stdout=-1)
+
+Plot('vp','../model/vp_sampled.rsf','grey color=j mean=y title="VP" titlesz=20')
+Plot('vs','../model/vs_sampled.rsf','grey color=j mean=y title="VS" titlesz=20')
+Plot('ux','ux_input','window n3=1 f3=0 | grey color=i title="Shot Gather: X" titlesz=20')
+Plot('uz','uz_input','window n3=1 f3=0 | grey color=i title="Shot Gather: Z" titlesz=20')
+Plot('mpp_gather','mpp','window n2=1 f2=230 | grey color=i title="MPP Gather" titlesz=20')
+Plot('mps_gather','mps','window n2=1 f2=230 | grey color=i title="MPS Gather" titlesz=20')
+Plot('mpp_stack','mpp','stack axis=3 | grey color=i title="MPP Stack" titlesz=20')
+Plot('mps_stack','mps','stack axis=3 | grey color=i title="MPS Stack" titlesz=20')
+Result('v','vp vs','SideBySideAniso')
+Result('d','ux uz','SideBySideAniso')
+Result('m_gather','mpp_gather mps_gather','SideBySideAniso')
+Result('m_stack','mpp_stack mps_stack','SideBySideAniso')
+
+End()
+
+

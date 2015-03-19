@@ -1,0 +1,39 @@
+from rsf.proj import *
+ 
+# make data with linear events
+Flow('dtrue',None,
+     '''
+     linearevents5d
+     n1=500 n2=250 n3=1 n4=1 n5=1 
+     d1=0.004 d2=50 
+     nevent=2 amp=1,-1 t0=0.3,1.0 f0=20,30 v1=1200,-1500 
+     title="true data" 
+     ''') 
+
+# decimate traces
+Flow('ddec','dtrue','decimate perc=50') 
+
+# POCS interpolation
+Flow('dpocs','ddec','reg5d method=1 iter=100 alphai=1 alphaf=1 verbose=0 fmax=100') 
+Flow('dmwni','ddec','reg5d method=2 iter=33 iter_e=3 alphai=1 alphaf=1 verbose=0 fmax=100') 
+Flow('dsoft','ddec','pocs5d niter=100 p=1 verbose=0 fmax=100') 
+
+plotpar1='color=i label1="T" unit1="s" label2="X" unit2="m" title="" labelsz=10'
+Plot('dtrue','grey %s' %plotpar1)
+Plot('ddec','grey %s' %plotpar1)
+Plot('dpocs','grey %s' %plotpar1)
+Plot('dmwni','grey %s' %plotpar1)
+Plot('dsoft','grey %s' %plotpar1)
+plotpar2='color=j allpos=y pclip=99.9 label1="Frequency" unit1="1/s" label2="Wavenumber" unit2="1/m" title="" labelsz=10'
+Plot('dtrue_fk','dtrue','fft1 | fft3 | cabs | grey %s' %plotpar2)
+Plot('ddec_fk','ddec','fft1 | fft3 | cabs | grey %s' %plotpar2)
+Plot('dpocs_fk','dpocs','fft1 | fft3 | cabs | grey %s' %plotpar2)
+Plot('dmwni_fk','dmwni','fft1 | fft3 | cabs | grey %s' %plotpar2)
+Plot('dsoft_fk','dsoft','fft1 | fft3 | cabs | grey %s' %plotpar2)
+Result('true','dtrue dtrue_fk','SideBySideAniso')
+Result('dec','ddec ddec_fk','SideBySideAniso')
+Result('pocs','dpocs dpocs_fk','SideBySideAniso')
+Result('mwni','dmwni dmwni_fk','SideBySideAniso')
+Result('soft','dsoft dsoft_fk','SideBySideAniso')
+
+End()

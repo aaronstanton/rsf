@@ -1,0 +1,85 @@
+import os
+env = Environment(ENV = os.environ)
+os.environ['OMP_NUM_THREADS'] = '8'
+
+from rsf.proj import *
+
+# make velocity model
+Flow('vel',None,
+     '''
+     spike nsp=1 n1=100 n2=500 d1=20 d2=20 k1=1 k2=1 l1=100 l2=500 mag=1500 p2=0 |
+     put o1=0 o2=0 label1="z" label2="x" unit1="m" unit2="m"
+     ''',stdin=0)
+
+# make reflectivity model
+Flow('m',None,
+     '''
+     spike nsp=1 n1=100 n2=500 d1=20 d2=20 k1=50 k2=1 l1=51 l2=500 mag=1 p2=0 |
+     put o1=0 o2=0 label1="z" label2="x" unit1="m" unit2="m" n3=1 d3=1 o3=0
+     ''',stdin=0)
+
+# Wavelet
+Flow('wav',None,
+     '''
+     spike mag=0.1 n1=1000 d1=0.004 k1=20 | 
+     ricker1 frequency=20 
+     ''')
+
+Flow('tmpang_0','m','cp')
+
+Flow('d','m vel wav',
+     '''
+     mpiwem_poynting adj=n
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=100 oz=0 dz=20 
+     npx=1 dpx=5 opx=0
+     nsx=1 dsx=100 osx=5000
+     nt=1000 dt=0.004 ot=0
+     gz=10 sz=10
+     fmin=0 fmax=60
+     ''',stdin=0,stdout=-1)
+
+Flow('m_adj','d vel wav',
+     '''
+     mpiwem_poynting adj=y
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=100 oz=0 dz=20 
+     npx=1 dpx=5 opx=0
+     gz=10 sz=10
+     fmin=0 fmax=60
+     ''',stdin=0,stdout=-1)
+
+Flow('d_fwd','m_adj vel wav',
+     '''
+     mpiwem_poynting adj=n
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=100 oz=0 dz=20 
+     npx=1 dpx=5 opx=0
+     nsx=1 dsx=100 osx=5000
+     nt=1000 dt=0.004 ot=0
+     gz=10 sz=10
+     fmin=0 fmax=60
+     ''',stdin=0,stdout=-1)
+
+
+Plot('m','grey pclip=100 title="m"')
+Plot('d','grey title="d"')
+Plot('m_adj','grey title="m_adj"')
+Plot('d_fwd','grey title="d_fwd"')
+Result('data','m d m_adj d_fwd','SideBySideAniso')
+
+Plot('m_fk','m','fft1 | fft3 | cabs | grey allpos=y pclip=100 title="m"')
+Plot('d_fk','d','fft1 | fft3 | cabs | grey allpos=y pclip=100 title="d"')
+Plot('m_adj_fk','m_adj','fft1 | fft3 | cabs | grey allpos=y pclip=100 title="m_adj"')
+Plot('d_fwd_fk','d_fwd','fft1 | fft3 | cabs | grey allpos=y pclip=100 title="d_fwd"')
+Result('data_fk','m_fk d_fk m_adj_fk d_fwd_fk','SideBySideAniso')
+
+
+End()
+

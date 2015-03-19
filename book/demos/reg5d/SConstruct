@@ -1,0 +1,43 @@
+from rsf.proj import *
+ 
+#
+# Make din.rsf
+#
+Flow('dtrue head1',None,
+     '''
+     linearevents5d
+     n1=500 n2=250 n3=1 n4=1 n5=1 
+     d1=0.004 d2=50 
+     nevent=2 amp=1,-1 t0=0.3,1.0 f0=20,30 v1=1200,-1500 
+     title="true data" 
+     ''') 
+Result('dtrue',
+     '''
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey color=seismic label2="x1" unit2="m" title="True data" labelsz=10 titlesz=20
+     ''')
+
+# decimate traces randomly
+Flow('ddec','dtrue',
+     '''
+     decimate mode=2 inc2=2
+     ''') 
+Result('ddec',
+     '''
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey color=seismic label2="x1" unit2="m" title="Decimated" labelsz=10 titlesz=20
+     ''')
+
+# POCS interpolation
+Flow('dpocs','ddec',
+     '''
+     reg5d method=1 iter=1000 alphai=1 alphaf=1 verbose=0 fmax=80
+     ''') 
+Result('dpocs',
+     '''
+     window min4=700 n4=1 min5=700 n5=1 |
+     grey color=seismic label2="x1" unit2="m" title="POCS" labelsz=10 titlesz=20
+     ''')
+
+End()
+

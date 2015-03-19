@@ -1,0 +1,22 @@
+from rsf.proj import *
+import math
+
+# plotting
+plotpar='title="" color=i minval=-4e4 maxval=4e4 clip=4e4 plotfat=10 labelsz=11 labelfat=5 font=4'
+
+Plot('din_ts','../geotrace_land/din.rsf','window min1=2.35 max1=2.35 | grey %s' % plotpar)
+Plot('din_xl','../geotrace_land/din.rsf','window min1=0.85 max1=3 min2=1000 max2=1000 | grey %s' % plotpar)
+Plot('din_il','../geotrace_land/din.rsf','window min1=0.85 max1=3 min3=1000 max3=1000 | grey %s' % plotpar)
+Result('din','din_ts din_xl din_il','SideBySideAniso')
+
+Plot('dpocs_ts','../geotrace_land/dpocs.rsf','window min1=2.35 max1=2.35 | grey %s' % plotpar)
+Plot('dpocs_xl','../geotrace_land/dpocs.rsf','window min1=0.85 max1=3 min2=1000 max2=1000 | grey %s' % plotpar)
+Plot('dpocs_il','../geotrace_land/dpocs.rsf','window min1=0.85 max1=3 min3=1000 max3=1000 | grey %s' % plotpar)
+Result('dpocs','dpocs_ts dpocs_xl dpocs_il','SideBySideAniso')
+
+Plot('dpocs2_ts','../geotrace_land/dpocs2.rsf','window min1=2.35 max1=2.35 | grey %s' % plotpar)
+Plot('dpocs2_xl','../geotrace_land/dpocs2.rsf','window min1=0.85 max1=3 min2=1000 max2=1000 | grey %s' % plotpar)
+Plot('dpocs2_il','../geotrace_land/dpocs2.rsf','window min1=0.85 max1=3 min3=1000 max3=1000 | grey %s' % plotpar)
+Result('dpocs2','dpocs2_ts dpocs2_xl dpocs2_il','SideBySideAniso')
+
+End()

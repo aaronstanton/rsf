@@ -1,0 +1,73 @@
+from rsf.proj import *
+import math 
+ 
+Flow('d',None,
+     '''
+     linearevents5d
+     n1=947 n2=463 n3=1 n4=1 n5=1 
+     d1=0.001 d2=10 
+     nevent=2 amp=1,-1 t0=0.2,0.6 f0=20,30 v1=9500,-8000 
+     title="true data" | 
+     pad end3=1 end4=1 |
+     put o2=-50
+     ''') 
+
+plotpar = 'color=e minval=-1 maxval=1 clip=1 titlesz=20'
+Plot('d','d','window n3=1 n4=1 n5=1 | grey %s title="Original"' %plotpar)
+
+ot = 0
+dt = 0.001
+tmax = ot  + dt*947
+twindow_length = 200
+twindow_overlap = 25
+ntwindow = int(math.ceil((tmax-ot) / (dt*(twindow_length-twindow_overlap))))
+
+ox = -50
+dx = 10
+xmax = ox + dx*463
+xwindow_length = 187
+xwindow_overlap = 25
+nxwindow = int(math.ceil((xmax-ox) / (dx*(xwindow_length-xwindow_overlap))))
+
+windows = []
+for itwindow in range(0,ntwindow):
+	min1 = ot + dt*itwindow*(twindow_length-twindow_overlap)
+        max1 = min1 + dt*(twindow_length-1)
+        if max1 >= tmax:
+        	max1 = tmax - dt
+	for ixwindow in range(0,nxwindow):
+        	window = 'd_%d_%d' % (itwindow,ixwindow)
+        	windows.append(window)
+		min2 = ox + dx*ixwindow*(xwindow_length-xwindow_overlap)
+        	max2 = min2 + dx*(xwindow_length-1)
+        	if max2 >= xmax:
+        		max2 = xmax - dx
+        	Flow('d_%d_%d' % (itwindow,ixwindow), 'd',
+             	     '''
+             	     window min1=%f max1=%f min2=%f max2=%f
+             	     ''' % (min1,max1,min2,max2))
+        
+Flow('d_merged',windows,
+     '''
+     merge5d --readwrite=y
+     n1=947  d1=0.001 o1=0   label1="Time" unit1="s"      t1=%d
+     n2=463  d2=10    o2=-50 label2="ix1"  unit2="index"  t2=%d
+     n3=2    d3=1     o3=0   label3="ix2"  unit3="index"  t3=0
+     n4=2    d4=1     o4=0   label4="ix3"  unit4="index"  t4=0
+     n5=1    d5=1     o5=0   label5="ix4"  unit5="index"  t5=0 
+     outfile=${TARGETS[0]}
+     ${SOURCES[0:%d]}
+     ''' % (twindow_overlap,xwindow_overlap,ntwindow*nxwindow),stdin=0,stdout=-1)
+
+Plot('d_merged','d_merged','window n3=1 n4=1 n5=1 | grey %s title="Merged" ' %plotpar)
+
+Flow('d_diff','d d_merged',
+     '''
+     math x=${SOURCES[0]} y=${SOURCES[1]} output="x-y"
+     ''')
+
+Plot('d_diff','d_diff','window n3=1 n4=1 n5=1 | grey %s title="Difference" ' %plotpar)
+
+Result('compare','d d_merged d_diff','SideBySideAniso')
+
+End()

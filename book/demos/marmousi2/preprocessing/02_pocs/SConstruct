@@ -1,0 +1,97 @@
+from rsf.proj import *
+import math
+
+# Within each shot interpolate a trace between each existing trace
+shots_x = []
+shots_z = []
+nsx = 200
+dsx = 25.0
+osx = 5025.0
+
+ot = 0
+dt = 0.002
+nt = 2500
+tmax = ot + dt*(nt-1)
+twindow_length = 100
+twindow_overlap = 10
+ntwindow = int(math.ceil((tmax-ot)/(dt*(twindow_length-twindow_overlap))))
+ox1 = 0
+dx1 = 1
+nx1 = 814
+x1max = ox1 + dx1*(nx1-1)
+x1window_length = 100
+x1window_overlap = 10
+nx1window = int(math.ceil((x1max-ox1) / (dx1*(x1window_length-x1window_overlap))))
+nwindow=nsx*ntwindow*nx1window-1
+
+ux_windows=[]
+uz_windows=[]
+for ishot in range(0,nsx):
+  for itwindow in range(0,ntwindow):
+    mint = ot + dt*itwindow*(twindow_length-twindow_overlap)
+    maxt = mint + dt*(twindow_length-1)
+    if maxt >= tmax:
+      maxt = tmax
+    for ix1window in range(0,nx1window):
+      minx1 = ox1 + dx1*ix1window*(x1window_length-x1window_overlap)
+      maxx1 = minx1 + dx1*(x1window_length-1)
+      if maxx1 >= x1max:
+        maxx1 = x1max
+      Flow('ux_%d_%d_%d' % (itwindow,ix1window,ishot), '../01_interleave/ux_dec.rsf',
+           '''
+           window
+           min1=%f  max1=%f 
+           min2=%f  max2=%f 
+           n3=1 f3=%d
+           ''' % (mint,maxt,minx1,maxx1,ishot))
+      Flow('uz_%d_%d_%d' % (itwindow,ix1window,ishot), '../01_interleave/uz_dec.rsf',
+           '''
+           window
+           min1=%f  max1=%f 
+           min2=%f  max2=%f 
+           n3=1 f3=%d
+           ''' % (mint,maxt,minx1,maxx1,ishot))
+      Flow('ux_pocs_%d_%d_%d' % (itwindow,ix1window,ishot), 'ux_%d_%d_%d' %(itwindow,ix1window,ishot),
+           '''
+           pocs5d niter=500 soft=n
+           smooth1=0 smooth2=21
+           verbose=y
+           fmax=70
+           ''')
+      Flow('uz_pocs_%d_%d_%d' % (itwindow,ix1window,ishot), 'uz_%d_%d_%d' %(itwindow,ix1window,ishot),
+           '''
+           pocs5d niter=500 soft=n
+           smooth1=0 smooth2=21
+           verbose=y
+           fmax=70
+           ''')
+      ux_window = 'ux_pocs_%d_%d_%d' %(itwindow,ix1window,ishot)
+      ux_windows.append(ux_window)
+      uz_window = 'uz_pocs_%d_%d_%d' %(itwindow,ix1window,ishot)
+      uz_windows.append(uz_window)
+
+# merge the reconstructed windows together
+Flow('ux_pocs',ux_windows,
+     '''
+     merge5d --readwrite=y
+     n1=2500 d1=0.002 o1=0    label1="Time"  unit1="s"    t1=%d
+     n2=814  d2=1     o2=0    label2="X1"    unit2=""     t2=%d
+     n3=200  d3=1     o3=0    label3="X2"    unit3=""     t3=0
+     n4=1    d4=1     o4=0    label4="X3"    unit4=""     t4=0
+     n5=1    d5=1     o5=0    label5="X4"    unit5=""     t5=0 
+     outfile=${TARGETS[0]}
+     ${SOURCES[0:%d]}
+     ''' % (twindow_overlap,x1window_overlap,nwindow),stdin=0,stdout=-1)
+Flow('uz_pocs',uz_windows,
+     '''
+     merge5d --readwrite=y
+     n1=2500 d1=0.002 o1=0    label1="Time"  unit1="s"    t1=%d
+     n2=814  d2=1     o2=0    label2="X1"    unit2=""     t2=%d
+     n3=200  d3=1     o3=0    label3="X2"    unit3=""     t3=0
+     n4=1    d4=1     o4=0    label4="X3"    unit4=""     t4=0
+     n5=1    d5=1     o5=0    label5="X4"    unit5=""     t5=0 
+     outfile=${TARGETS[0]}
+     ${SOURCES[0:%d]}
+     ''' % (twindow_overlap,x1window_overlap,nwindow),stdin=0,stdout=-1)
+
+End()

@@ -1,0 +1,342 @@
+from rsf.proj import *
+ 
+#
+# Make din.rsf
+#
+Flow('dtrue head1',None,
+     '''
+     syn5d
+     tfile=${TARGETS[1]} 
+     n1=1000 n2=100 n3=100 n4=1 n5=1 
+     d1=0.001 d2=10 d3=10 d4=10 d5=10 
+     o2=250 o3=250 o4=700 o5=700 
+     nevent=4 amp=1,-1,1,-2 t0=0.2,0.4,0.6,0.8 f0=10,20,30,40 vx=1100,1100,1100,1100 vy=800,800,800,800 
+     title="1 receiver gather" 
+     ''') 
+Flow('dtrue_fx','dtrue',
+     '''
+     fft1 | cabs
+     ''') 
+Flow('dtrue_fk','dtrue',
+     '''
+     fft1 | fft3 axis=2 | fft3 axis=3 | cabs
+     ''') 
+Result('dtrue',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=51 frame3=51 color=E
+       screenratio=1 flat=n  point1=0.7 point2=0.7  label2="x1" unit2="m" label3="x2" unit3="m" title="TX"
+       ''')
+Result('dtrue_fx',
+       '''
+       window min1=0 n1=80 min4=500 n4=1 min5=500 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=30 frame2=51 frame3=51 color=j
+       screenratio=1 pclip=90 flat=n  point1=0.7 point2=0.7  label2="x1" unit2="m" label3="x2" unit3="m" title="FX"
+       ''')
+Result('dtrue_fk',
+       '''
+       window min1=0 n1=80 min4=500 n4=1 min5=500 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=30 frame2=100 frame3=100 color=j
+       screenratio=1 pclip=90 flat=n  point1=0.7 point2=0.7  label2="K1" unit2="1/m" label3="K2" unit3="1/m" title="FK"
+       ''')
+
+#
+# decimate traces randomly
+#
+Flow('ddec_rand','dtrue',
+     '''
+     decimate mode=1 perc=50
+     ''') 
+Flow('ddec_rand_fx','ddec_rand',
+     '''
+     fft1 | cabs
+     ''') 
+Flow('ddec_rand_fk','ddec_rand',
+     '''
+     fft1 | fft3 axis=2 | fft3 axis=3 | cabs
+     ''') 
+Result('ddec_rand',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=51 frame3=51 color=E
+       screenratio=1 flat=n  point1=0.7 point2=0.7  label2="x1" unit2="m" label3="x2" unit3="m" title="TX"
+       ''')
+Result('ddec_rand_fx',
+       '''
+       window min1=0 n1=80 min4=500 n4=1 min5=500 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=30 frame2=51 frame3=51 color=j
+       screenratio=1 pclip=90 flat=n  point1=0.7 point2=0.7  label2="x1" unit2="m" label3="x2" unit3="m" title="FX"
+       ''')
+Result('ddec_rand_fk',
+       '''
+       window min1=0 n1=80 min4=500 n4=1 min5=500 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=30 frame2=100 frame3=100 color=j
+       screenratio=1 pclip=90 flat=n  point1=0.7 point2=0.7  label2="K1" unit2="1/m" label3="K2" unit3="1/m" title="FK"
+       ''')
+
+#
+# decimate traces regularly
+#
+Flow('ddec_reg','dtrue',
+     '''
+     decimate mode=3 inc2=2 inc3=2
+     ''') 
+Flow('ddec_reg_fx','ddec_reg',
+     '''
+     fft1 | cabs
+     ''') 
+Flow('ddec_reg_fk','ddec_reg',
+     '''
+     fft1 | fft3 axis=2 | fft3 axis=3 | cabs
+     ''') 
+Result('ddec_reg',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=51 frame3=51 color=E
+       screenratio=1 flat=n  point1=0.7 point2=0.7  label2="x1" unit2="m" label3="x2" unit3="m" title="TX"
+       ''')
+Result('ddec_reg_fx',
+       '''
+       window min1=0 n1=80 min4=500 n4=1 min5=500 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=30 frame2=51 frame3=51 color=j
+       screenratio=1 pclip=90 flat=n  point1=0.7 point2=0.7  label2="x1" unit2="m" label3="x2" unit3="m" title="FX"
+       ''')
+Result('ddec_reg_fk',
+       '''
+       window min1=0 n1=80 min4=500 n4=1 min5=500 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=30 frame2=100 frame3=100 color=j
+       screenratio=1 pclip=90 flat=n  point1=0.7 point2=0.7  label2="K1" unit2="1/m" label3="K2" unit3="1/m" title="FK"
+       ''')
+
+#
+# perform svd on dtrue, ddec_rand and ddec_reg 
+#
+Flow('dtrue_singular dtrue_left dtrue_right','dtrue',
+     'fft1 | window n1=1 f1=30 | transp plane=12 | svd_complex vectors=y left=${TARGETS[1]} right=${TARGETS[2]}')
+Flow('ddec_rand_singular ddec_rand_left ddec_rand_right','ddec_rand',
+     'fft1 | window n1=1 f1=30 | transp plane=12 | svd_complex vectors=y left=${TARGETS[1]} right=${TARGETS[2]}')
+Flow('ddec_reg_singular ddec_reg_left ddec_reg_right','ddec_reg',
+     'fft1 | window n1=1 f1=30 | transp plane=12 | svd_complex vectors=y left=${TARGETS[1]} right=${TARGETS[2]}')
+
+Flow('dtrue_singular_block dtrue_left_block dtrue_right_block','dtrue',
+     'fft1 | svd_complexblk vectors=y left=${TARGETS[1]} right=${TARGETS[2]}')
+
+Flow('ddec_rand_singular_block ddec_rand_left_block ddec_rand_right_block','ddec_rand',
+     'fft1 | svd_complexblk vectors=y left=${TARGETS[1]} right=${TARGETS[2]}')
+
+Flow('ddec_reg_singular_block ddec_reg_left_block ddec_reg_right_block','ddec_reg',
+     'fft1 | svd_complexblk vectors=y left=${TARGETS[1]} right=${TARGETS[2]}')
+
+Result('dtrue_singular_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y clip=0.01 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Singular values"
+       ''')
+
+Result('dtrue_left_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y pclip=95 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Left Singular Vectors"
+       ''')
+
+Result('dtrue_right_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y pclip=95 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Right Singular Vectors"
+       ''')
+
+Result('ddec_rand_singular_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y clip=0.01 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Singular values"
+       ''')
+
+Result('ddec_rand_left_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y pclip=95 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Left Singular Vectors"
+       ''')
+
+Result('ddec_rand_right_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y pclip=95 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Right Singular Vectors"
+       ''')
+
+Result('ddec_reg_singular_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y clip=0.01 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Singular values"
+       ''')
+
+Result('ddec_reg_left_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y pclip=95 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Left Singular Vectors"
+       ''')
+
+Result('ddec_reg_right_block',
+       '''
+       window min1=0 n1=1 f1=30 n4=1 n5=1 |
+       cabs| byte gainpanel=all allpos=y pclip=95 |
+       grey
+       screenratio=1 color=I label1="i" unit1="" label2="j" unit2="" 
+       title="Right Singular Vectors"
+       ''')
+
+#
+# make headers needed for interpolation
+#
+# binning of headers to enable binning the data (isx/isy/igx/igy)
+Flow('head2','head1',
+     '''
+     geom5d headin=${SOURCES[0]} headout=${TARGETS[0]} mode=1 dsx=10 dsy=10 dgx=1 dgy=1
+     ''') 
+# bin the data (zero traces at missing trace locations)
+Flow('ddec_rand_preinterp head3','ddec_rand head2',
+     '''
+     pad5d headin=${SOURCES[1]} headout=${TARGETS[1]} mode=1
+     ''') 
+
+#
+# interpolate randomly decimated data using POCS
+#
+
+Flow('ddec_rand_pocs','ddec_rand_preinterp',
+     '''
+     reg5d method=1 tw_length=200 fmax=80 iter=20 verbose=1
+     ''') 
+
+Result('ddec_rand_preinterp',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=50 frame3=50 color=E
+       screenratio=1 flat=n point1=0.7 point2=0.7 title="pre-interp data"
+       ''')
+
+
+
+Result('ddec_rand_pocs',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=50 frame3=50 color=E
+       screenratio=1 flat=n point1=0.7 point2=0.7 title="POCS"
+       ''')
+#
+# interpolate randomly decimated data using MWNI
+#
+Flow('ddec_rand_mwni','ddec_rand_preinterp',
+     '''
+     reg5d method=2 tw_length=200 fmax=80 iter=10 iter_i=20 verbose=1
+     ''') 
+Result('ddec_rand_mwni',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=50 frame3=50 color=E
+       screenratio=1 flat=n point1=0.7 point2=0.7 title="MWNI"
+       ''')
+#
+# interpolate randomly decimated data using SEQSVD
+#
+Flow('ddec_rand_seqsvd','ddec_rand_preinterp',
+     '''
+     reg5d method=3 tw_length=200 fmax=80 iter=20 verbose=1
+     ''') 
+Result('ddec_rand_seqsvd',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=50 frame3=50 color=E
+       screenratio=1 flat=n point1=0.7 point2=0.7 title="SEQSVD"
+       ''')
+
+
+# bin the data (zero traces at missing trace locations)
+Flow('ddec_reg_preinterp head3b','ddec_reg head2',
+     '''
+     pad5d headin=${SOURCES[1]} headout=${TARGETS[1]} mode=1
+     ''') 
+
+#
+# interpolate regularly decimated data using POCS
+#
+Flow('ddec_reg_pocs','ddec_reg_preinterp',
+     '''
+     reg5d method=1 tw_length=200 fmax=80 iter=0 verbose=1
+     ''') 
+Result('ddec_reg_pocs',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=51 frame3=51 color=E
+       screenratio=1 flat=n point1=0.7 point2=0.7 title="POCS"
+       ''')
+#
+# interpolate regularly decimated data using MWNI
+#
+Flow('ddec_reg_mwni','ddec_reg_preinterp',
+     '''
+     reg5d method=2 tw_length=200 fmax=80 iter=10 iter_i=20 verbose=1
+     ''') 
+Result('ddec_reg_mwni',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=51 frame3=51 color=E
+       screenratio=1 flat=n point1=0.7 point2=0.7 title="MWNI"
+       ''')
+#
+# interpolate regularly decimated data using SEQSVD
+#
+Flow('ddec_reg_seqsvd','ddec_reg_preinterp',
+     '''
+     reg5d method=3 tw_length=200 fmax=80 iter=20 verbose=1
+     ''') 
+Result('ddec_reg_seqsvd',
+       '''
+       window min4=700 n4=1 min5=700 n5=1 |
+       byte gainpanel=all |
+       grey3 frame1=650 frame2=51 frame3=51 color=E
+       screenratio=1 flat=n point1=0.7 point2=0.7 title="SEQSVD"
+       ''')
+
+
+
+End()
+

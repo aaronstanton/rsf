@@ -1,0 +1,335 @@
+This is pdfTeX, Version 3.1415926-2.5-1.40.14 (TeX Live 2013) (format=pdflatex 2013.10.23)  11 SEP 2014 17:11
+entering extended mode
+ restricted \write18 enabled.
+ %&-line parsing enabled.
+**paper.ltx
+(./paper.ltx
+LaTeX2e <2011/06/27>
+Babel <3.9g> and hyphenation patterns for 78 languages loaded.
+(/home/kstanton/texmf/tex/latex/seg/geophysics.cls
+Document Class: geophysics 2007/02/14 v3.0 Geophysics paper
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/base/ifthen.sty
+Package: ifthen 2001/05/26 v1.1c Standard LaTeX ifthen package (DPC)
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2007/10/19 v1.4h Standard LaTeX document class
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/base/size12.clo
+File: size12.clo 2007/10/19 v1.4h Standard LaTeX file (size option)
+)
+\c@part=\count79
+\c@section=\count80
+\c@subsection=\count81
+\c@subsubsection=\count82
+\c@paragraph=\count83
+\c@subparagraph=\count84
+\c@figure=\count85
+\c@table=\count86
+\abovecaptionskip=\skip41
+\belowcaptionskip=\skip42
+\bibindent=\dimen102
+)
+(/home/kstanton/texmf/tex/latex/seg/seg.sty
+(/home/kstanton/texlive/2013/texmf-dist/tex/generic/oberdiek/ifpdf.sty
+Package: ifpdf 2011/01/30 v2.3 Provides the ifpdf switch (HO)
+Package ifpdf Info: pdfTeX in PDF mode is detected.
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/graphics/graphicx.sty
+Package: graphicx 1999/02/16 v1.0f Enhanced LaTeX Graphics (DPC,SPQR)
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/graphics/keyval.sty
+Package: keyval 1999/03/16 v1.13 key=value parser (DPC)
+\KV@toks@=\toks14
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/graphics/graphics.sty
+Package: graphics 2009/02/05 v1.0o Standard LaTeX Graphics (DPC,SPQR)
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/graphics/trig.sty
+Package: trig 1999/03/16 v1.09 sin cos tan (DPC)
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/latexconfig/graphics.cfg
+File: graphics.cfg 2010/04/23 v1.9 graphics configuration of TeX Live
+)
+Package graphics Info: Driver file: pdftex.def on input line 91.
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/pdftex-def/pdftex.def
+File: pdftex.def 2011/05/27 v0.06d Graphics/color for pdfTeX
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/generic/oberdiek/infwarerr.sty
+Package: infwarerr 2010/04/08 v1.3 Providing info/warning/error messages (HO)
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/generic/oberdiek/ltxcmds.sty
+Package: ltxcmds 2011/11/09 v1.22 LaTeX kernel commands for general use (HO)
+)
+\Gread@gobject=\count87
+))
+\Gin@req@height=\dimen103
+\Gin@req@width=\dimen104
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/tools/verbatim.sty
+Package: verbatim 2003/08/22 v1.5q LaTeX2e package for verbatim enhancements
+\every@verbatim=\toks15
+\verbatim@line=\toks16
+\verbatim@in@stream=\read1
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/moreverb/moreverb.sty
+Package: moreverb 2008/06/03 v2.3a `more' verbatim facilities
+\tab@position=\count88
+\tab@size=\count89
+\listing@line=\count90
+))
+\c@@plots=\count91
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/subfigure/subfigure.sty
+Package: subfigure 2002/03/15 v2.1.5 subfigure package
+\subfigtopskip=\skip43
+\subfigcapskip=\skip44
+\subfigcaptopadj=\dimen105
+\subfigbottomskip=\skip45
+\subfigcapmargin=\dimen106
+\subfiglabelskip=\skip46
+\c@subfigure=\count92
+\c@lofdepth=\count93
+\c@subtable=\count94
+\c@lotdepth=\count95
+
+****************************************
+* Local config file subfigure.cfg used *
+****************************************
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/subfigure/subfigure.cfg)
+\subfig@top=\skip47
+\subfig@bottom=\skip48
+)
+\c@sub@fig=\count96
+\c@@tabls=\count97
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/natbib/natbib.sty
+Package: natbib 2010/09/13 8.31b (PWD, AO)
+\bibhang=\skip49
+\bibsep=\skip50
+LaTeX Info: Redefining \cite on input line 694.
+\c@NAT@ctr=\count98
+)
+LaTeX Info: Redefining \refname on input line 274.
+\seg@abstract=\box26
+\c@@append=\count99
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/amsmath/amsmath.sty
+Package: amsmath 2013/01/14 v2.14 AMS math features
+\@mathmargin=\skip51
+
+For additional information on amsmath, use the `?' option.
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/amsmath/amstext.sty
+Package: amstext 2000/06/29 v2.01
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/amsmath/amsgen.sty
+File: amsgen.sty 1999/11/30 v2.0
+\@emptytoks=\toks17
+\ex@=\dimen107
+))
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/amsmath/amsbsy.sty
+Package: amsbsy 1999/11/29 v1.2d
+\pmbraise@=\dimen108
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/amsmath/amsopn.sty
+Package: amsopn 1999/12/14 v2.01 operator names
+)
+\inf@bad=\count100
+LaTeX Info: Redefining \frac on input line 210.
+\uproot@=\count101
+\leftroot@=\count102
+LaTeX Info: Redefining \overline on input line 306.
+\classnum@=\count103
+\DOTSCASE@=\count104
+LaTeX Info: Redefining \ldots on input line 378.
+LaTeX Info: Redefining \dots on input line 381.
+LaTeX Info: Redefining \cdots on input line 466.
+\Mathstrutbox@=\box27
+\strutbox@=\box28
+\big@size=\dimen109
+LaTeX Font Info:    Redeclaring font encoding OML on input line 566.
+LaTeX Font Info:    Redeclaring font encoding OMS on input line 567.
+\macc@depth=\count105
+\c@MaxMatrixCols=\count106
+\dotsspace@=\muskip10
+\c@parentequation=\count107
+\dspbrk@lvl=\count108
+\tag@help=\toks18
+\row@=\count109
+\column@=\count110
+\maxfields@=\count111
+\andhelp@=\toks19
+\eqnshift@=\dimen110
+\alignsep@=\dimen111
+\tagshift@=\dimen112
+\tagwidth@=\dimen113
+\totwidth@=\dimen114
+\lineht@=\dimen115
+\@envbody=\toks20
+\multlinegap=\skip52
+\multlinetaggap=\skip53
+\mathdisplay@stack=\toks21
+LaTeX Info: Redefining \[ on input line 2665.
+LaTeX Info: Redefining \] on input line 2666.
+)
+(./paper.aux
+
+LaTeX Warning: Label `fig:m_gather_simple' multiply defined.
+
+)
+\openout1 = `paper.aux'.
+
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 8.
+LaTeX Font Info:    ... okay on input line 8.
+ (/home/kstanton/texlive/2013/texmf-dist/tex/context/base/supp-pdf.mkii
+[Loading MPS to PDF converter (version 2006.09.02).]
+\scratchcounter=\count112
+\scratchdimen=\dimen116
+\scratchbox=\box29
+\nofMPsegments=\count113
+\nofMParguments=\count114
+\everyMPshowfont=\toks22
+\MPscratchCnt=\count115
+\MPscratchDim=\dimen117
+\MPnumerator=\count116
+\makeMPintoPDFobject=\count117
+\everyMPtoPDFconversion=\toks23
+) (/home/kstanton/texlive/2013/texmf-dist/tex/generic/oberdiek/pdftexcmds.sty
+Package: pdftexcmds 2011/11/29 v0.20 Utility functions of pdfTeX for LuaTeX (HO
+)
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/generic/oberdiek/ifluatex.sty
+Package: ifluatex 2010/03/01 v1.3 Provides the ifluatex switch (HO)
+Package ifluatex Info: LuaTeX not detected.
+)
+Package pdftexcmds Info: LuaTeX not detected.
+Package pdftexcmds Info: \pdf@primitive is available.
+Package pdftexcmds Info: \pdf@ifprimitive is available.
+Package pdftexcmds Info: \pdfdraftmode found.
+)
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/oberdiek/epstopdf-base.sty
+Package: epstopdf-base 2010/02/09 v2.5 Base part for package epstopdf
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/oberdiek/grfext.sty
+Package: grfext 2010/08/19 v1.1 Manage graphics extensions (HO)
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/generic/oberdiek/kvdefinekeys.sty
+Package: kvdefinekeys 2011/04/07 v1.3 Define keys (HO)
+)) (/home/kstanton/texlive/2013/texmf-dist/tex/latex/oberdiek/kvoptions.sty
+Package: kvoptions 2011/06/30 v3.11 Key value format for package options (HO)
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/generic/oberdiek/kvsetkeys.sty
+Package: kvsetkeys 2012/04/25 v1.16 Key value parser (HO)
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/generic/oberdiek/etexcmds.sty
+Package: etexcmds 2011/02/16 v1.5 Avoid name clashes with e-TeX commands (HO)
+Package etexcmds Info: Could not find \expanded.
+(etexcmds)             That can mean that you are not using pdfTeX 1.50 or
+(etexcmds)             that some package has redefined \expanded.
+(etexcmds)             In the latter case, load this package earlier.
+)))
+Package grfext Info: Graphics extension search list:
+(grfext)             [.pdf,.png,.eps]
+(grfext)             \AppendGraphicsExtensions on input line 452.
+
+(/home/kstanton/texlive/2013/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
+e
+)) [1
+
+{/home/kstanton/texlive/2013/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2]
+ [3] <simple/model/Fig/v.pdf, id=22, 814.04124pt x 721.69624pt>
+File: simple/model/Fig/v.pdf Graphic file (type pdf)
+
+<use simple/model/Fig/v.pdf>
+Package pdftex.def Info: simple/model/Fig/v.pdf used on input line 199.
+(pdftex.def)             Requested size: 433.62pt x 384.42432pt.
+
+<simple/fdmod/Fig/d.pdf, id=23, 929.4725pt x 653.44125pt>
+File: simple/fdmod/Fig/d.pdf Graphic file (type pdf)
+
+<use simple/fdmod/Fig/d.pdf>
+Package pdftex.def Info: simple/fdmod/Fig/d.pdf used on input line 206.
+(pdftex.def)             Requested size: 433.62pt x 304.8441pt.
+
+<simple/adjoint/Fig/m_gather.pdf, id=24, 915.42pt x 655.44875pt>
+File: simple/adjoint/Fig/m_gather.pdf Graphic file (type pdf)
+
+<use simple/adjoint/Fig/m_gather.pdf>
+Package pdftex.def Info: simple/adjoint/Fig/m_gather.pdf used on input line 213
+.
+(pdftex.def)             Requested size: 433.62pt x 310.47127pt.
+
+<simple/adjoint/Fig/m_angle.pdf, id=25, 827.09pt x 721.69624pt>
+File: simple/adjoint/Fig/m_angle.pdf Graphic file (type pdf)
+
+<use simple/adjoint/Fig/m_angle.pdf>
+Package pdftex.def Info: simple/adjoint/Fig/m_angle.pdf used on input line 220.
+
+(pdftex.def)             Requested size: 433.62pt x 378.36761pt.
+
+<simple/fkfilter/Fig/m_gather_filter.pdf, id=26, 915.42pt x 655.44875pt>
+File: simple/fkfilter/Fig/m_gather_filter.pdf Graphic file (type pdf)
+
+<use simple/fkfilter/Fig/m_gather_filter.pdf>
+Package pdftex.def Info: simple/fkfilter/Fig/m_gather_filter.pdf used on input 
+line 228.
+(pdftex.def)             Requested size: 433.62pt x 310.47127pt.
+
+<marmousi2/model/Fig/v.pdf, id=27, 814.04124pt x 721.69624pt>
+File: marmousi2/model/Fig/v.pdf Graphic file (type pdf)
+
+<use marmousi2/model/Fig/v.pdf>
+Package pdftex.def Info: marmousi2/model/Fig/v.pdf used on input line 238.
+(pdftex.def)             Requested size: 433.62pt x 384.42432pt.
+
+<marmousi2/data/Fig/u.pdf, id=28, 930.47626pt x 653.44125pt>
+File: marmousi2/data/Fig/u.pdf Graphic file (type pdf)
+
+<use marmousi2/data/Fig/u.pdf>
+Package pdftex.def Info: marmousi2/data/Fig/u.pdf used on input line 245.
+(pdftex.def)             Requested size: 433.62pt x 304.51508pt.
+ [4] [5 <./simple/model/Fig/v.pdf>] [6 <./simple/fdmod/Fig/d.pdf>] [7 <./simple
+/adjoint/Fig/m_gather.pdf>] [8 <./simple/adjoint/Fig/m_angle.pdf>] [9 <./simple
+/fkfilter/Fig/m_gather_filter.pdf>] [10 <./marmousi2/model/Fig/v.pdf>] [11 <./m
+armousi2/data/Fig/u.pdf>] (./paper.bbl) [12]
+(./paper.aux)
+
+LaTeX Warning: There were multiply-defined labels.
+
+ ) 
+Here is how much of TeX's memory you used:
+ 2892 strings out of 493308
+ 39487 string characters out of 6136045
+ 104820 words of memory out of 5000000
+ 6304 multiletter control sequences out of 15000+600000
+ 9237 words of font info for 33 fonts, out of 8000000 for 9000
+ 957 hyphenation exceptions out of 8191
+ 41i,8n,28p,471b,229s stack positions out of 5000i,500n,10000p,200000b,80000s
+</home/kstanton/texlive/2013/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12
+.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/public/amsfonts/cm/cmb
+x8.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/public/amsfonts/cm/c
+mex10.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/public/amsfonts/c
+m/cmmi12.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/public/amsfont
+s/cm/cmmi8.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/public/amsfo
+nts/cm/cmr12.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/public/ams
+fonts/cm/cmr8.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/public/am
+sfonts/cm/cmsy10.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/public
+/amsfonts/cm/cmsy8.pfb></home/kstanton/texlive/2013/texmf-dist/fonts/type1/publ
+ic/amsfonts/cm/cmti12.pfb>
+Output written on paper.pdf (12 pages, 5157053 bytes).
+PDF statistics:
+ 117 PDF objects out of 1000 (max. 8388607)
+ 72 compressed objects within 1 object stream
+ 0 named destinations out of 1000 (max. 500000)
+ 36 words of extra memory for PDF output out of 10000 (max. 10000000)
+

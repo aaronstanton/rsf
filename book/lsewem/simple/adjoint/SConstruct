@@ -1,0 +1,54 @@
+import os
+
+os.environ['OMP_NUM_THREADS'] = '8'
+
+from rsf.proj import *
+
+Flow('wav_resample','../fdmod/wav.rsf',
+     '''
+     window j1=4 
+     ''')
+
+# Smooth the velocity fields used for migration
+Flow('vp_smooth','../model/vp.rsf',
+     '''
+     sfsmooth rect1=20 rect2=20
+     ''')
+Flow('vs_smooth','../model/vs.rsf',
+     '''
+     sfsmooth rect1=20 rect2=20
+     ''')
+
+# generate a sampling operator for the receivers
+Flow('T',None,
+     '''
+     spike n1=700 | 
+     noise var=1 rep=y | 
+     mask min=0 max=9999 | 
+     dd type=float | 
+     spray axis=2 n=1000 d=0.004 o=0 | 
+     transp
+     ''',stdin=0)
+
+Flow('mpp mps','../fdmod/ux.rsf ../fdmod/uz.rsf vp_smooth vs_smooth wav_resample',
+     '''
+     mpiewem adj=y H=y
+     ux=${SOURCES[0]} uz=${SOURCES[1]} vp=${SOURCES[2]} vs=${SOURCES[3]} wav=${SOURCES[4]} 
+     mpp=${TARGETS[0]} mps=${TARGETS[1]}
+     verbose=y
+     nz=600 oz=0 dz=5 
+     nhx=101 dhx=10 ohx=-500
+     npx=201 dpx=0.01 opx=-1
+     gz=10 sz=10
+     fmin=3 fmax=50
+     sz=10 gz=10
+     ''',np=2,stdin=0,stdout=-1)
+
+Plot('mpp_gather','mpp','window n2=1 f2=350 | grey')
+Plot('mps_gather','mps','window n2=1 f2=350 | grey')
+Plot('mpp_angle','mpp','window n3=1 f3=150 | grey')
+Plot('mps_angle','mps','window n3=1 f3=150 | grey')
+Result('m_gather','mpp_gather mps_gather','SideBySideAniso')
+Result('m_angle','mpp_angle mps_angle','OverUnderAniso')
+
+End()

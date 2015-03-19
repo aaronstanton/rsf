@@ -1,0 +1,18 @@
+from rsf.proj import *
+import math
+ 
+# plotting
+plotpar='title="" color=i minval=-1.0e2 maxval=1.0e2 clip=1.0e2'
+plotpar2='title="" color=i minval=-1.5e2 maxval=1.5e2 clip=1.5e2'
+
+Plot('din_ts','../geotrace_marine/din.rsf','window min1=1.6 max1=1.6 min2=10950 min3=54050 max3=54417 | grey %s' % plotpar)
+Plot('dpocs_ts','../geotrace_marine/dpocs.rsf','window min1=1.6 max1=1.6 min2=10950 min3=54050 max3=54417 | grey %s' % plotpar)
+Plot('dpocs2_ts','../geotrace_marine/dpocs2.rsf','window min1=1.6 max1=1.6 min2=10950 min3=54050 max3=54417 | grey %s' % plotpar)
+Result('ts','din_ts dpocs_ts dpocs2_ts','OverUnderIso')
+
+Plot('din_xl','../geotrace_marine/din.rsf','window min1=1.0 max1=1.5 min2=11150 min3=54400 max3=54400 | grey %s' % plotpar2)
+Plot('dpocs_xl','../geotrace_marine/dpocs.rsf','window min1=1.0 max1=1.5 min2=11150 min3=54400 max3=54400 | grey %s' % plotpar2)
+Plot('dpocs2_xl','../geotrace_marine/dpocs2.rsf','window min1=1.0 max1=1.5 min2=11150 min3=54400 max3=54400 | grey %s' % plotpar2)
+Result('xl','din_xl dpocs_xl dpocs2_xl','OverUnderIso')
+
+End()

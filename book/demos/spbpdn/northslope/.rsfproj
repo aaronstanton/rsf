@@ -1,0 +1,3 @@
+uses=['sfsegyread', 'sfwindow', 'sfclip', 'sfpatch', 'sfput', 'sfstatic', 'sfcat', 'sfsbpd', 'sfgrey']
+data=[]
+size=  303956040

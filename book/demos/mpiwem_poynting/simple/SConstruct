@@ -1,0 +1,187 @@
+import os
+env = Environment(ENV = os.environ)
+os.environ['OMP_NUM_THREADS'] = '8'
+
+from rsf.proj import *
+
+# make velocity model
+Flow('vel',None,
+     '''
+     spike nsp=4 n1=600 n2=700 d1=5 d2=10 k1=1,201,201,201 k2=1,1,1,1 l1=600,600,600,600 l2=700,700,700,700 mag=1500,200,200,200 p2=0,0,0.4,0.8 |
+     put o1=0 o2=10 label1="z" label2="x" unit1="m" unit2="m"
+     ''',stdin=-1)
+
+#Flow('vel',None,
+#     '''
+#     spike nsp=2 n1=600 n2=700 d1=5 d2=10 k1=1,201 k2=1,1 l1=600,600 l2=700,700 mag=1500,200 p2=0,0 |
+#     put o1=0 o2=10 label1="z" label2="x" unit1="m" unit2="m"
+#     ''',stdin=-1)
+
+
+# Smooth the velocity field used for migration
+Flow('vel_smooth','vel',
+     '''
+     sfsmooth rect1=10 rect2=10
+     ''')
+
+# Density
+Flow('den','vel','math output=1')
+ 
+Flow('r_',None,'math n1=700 d1=10 o1=10 output=0')
+Flow('s_',None,'math n1=1   d1=0  o1=0  output=0')
+# receiver positions
+Flow('zr','r_','math output=10')
+Flow('xr','r_','math output="x1"')
+Flow('rec',['xr','zr'],'''cat axis=2 space=n
+     ${SOURCES[0]} ${SOURCES[1]} | transp
+     ''', stdin=0)
+
+# Wavelet
+Flow('wav',None,
+     '''
+     spike mag=0.1 n1=4000 d1=0.001 k1=200 | 
+     ricker1 frequency=20 
+     ''')
+
+Flow('wav_resample',None,
+     '''
+     spike mag=0.1 n1=1000 d1=0.004 k1=50 
+     ''')
+
+shots = []
+nsx = 1
+dsx = 1000.0
+osx = 3500.0
+for ishot in range(0,nsx):
+     sx = osx + ishot*dsx
+     shot = 'd_%d' % ishot
+     shots.append(shot)
+     # shot positions
+     Flow('zs_%d' % ishot,'s_','math output=10')
+     Flow('xs_%d' % ishot,'s_','math output=%d' % sx)
+     Flow('rs_%d' % ishot,'s_','math output=1')
+     Flow('src_%d' % ishot,['xs_%d' % ishot,'zs_%d' % ishot,'rs_%d' % ishot],'''
+          cat axis=2 space=n
+          ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} | transp
+          ''', stdin=0)
+     # offset
+     Flow('offset_%d' % ishot,'xr','math output="input-%g"' % sx)
+     # Finite-difference modeling
+     Flow('d_fd_%d' % ishot,'wav vel den src_%d rec' % ishot,
+          '''
+          transp | 
+          awefd2d 
+          vel=${SOURCES[1]} den=${SOURCES[2]} 
+          sou=${SOURCES[3]} rec=${SOURCES[4]} wfl=${TARGETS[1]} 
+          verb=y free=n snap=n dabc=y jdata=1 nb=250 ompnth=8
+          ''')
+     Flow('d_%d' % ishot,'d_fd_%d offset_%d' % (ishot,ishot),
+          '''
+          transp |
+          mutter offset=${SOURCES[1]} v0=1500 t0=0.35 half=n
+          ''')
+
+Flow('d',shots,
+     '''
+     cat axis=3 ${SOURCES[0:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m |
+     math output=input*10e5 |
+     window j1=4 |
+     bandpass fmax=125 |
+     envelope hilb=y phase=90
+     ''' % (nsx,osx,dsx),stdin=0)
+
+
+Flow('d_dec','d','window j2=2')
+Flow('vel_dec','vel_smooth','window j2=2')
+
+Flow('m','d_dec vel_dec wav_resample',
+     '''
+     mpiwem_poynting adj=y
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=600 oz=0 dz=5 
+     npx=1 dpx=5 opx=0
+     gz=10 sz=10
+     fmin=2 fmax=50
+     aa=y
+     ''',stdin=0,stdout=-1)
+
+Flow('d_fwd','m vel_smooth wav_resample',
+     '''
+     mpiwem_poynting adj=n
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=600 oz=0 dz=5 
+     npx=37 dpx=5 opx=-90
+     nsx=1 dsx=100 osx=3500
+     nt=1000 dt=0.004 ot=0
+     gz=10 sz=10
+     fmin=0 fmax=50
+     ''',stdin=0,stdout=-1)
+
+Flow('d_fwd2','m_inv vel_smooth wav_resample',
+     '''
+     mpiwem_poynting adj=n
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=600 oz=0 dz=5 
+     npx=37 dpx=5 opx=-90
+     nsx=1 dsx=100 osx=3500
+     nt=1000 dt=0.004 ot=0
+     gz=10 sz=10
+     fmin=0 fmax=50
+     ''',stdin=0,stdout=-1)
+      
+Flow('d_rand','d','noise var=10000 rep=y')
+Flow('m_rand','m','noise var=10000 rep=y')
+
+Flow('dot.test','d_rand m_rand vel_smooth wav_resample',
+     '''
+     dotwem_poynting reg=n
+     d=${SOURCES[0]} m=${SOURCES[1]} v=${SOURCES[2]} wav=${SOURCES[3]} 
+     verbose=y
+     nz=600 oz=0 dz=5 
+     npx=37 dpx=5 opx=-90
+     nsx=1 dsx=100 osx=3500
+     nt=1000 dt=0.004 ot=0
+     gz=10 sz=10
+     fmin=2 fmax=50
+     ''',stdin=0,stdout=-1)
+
+Flow('m_inv misfit','d vel_smooth wav_resample',
+     '''
+     lswem_poynting
+     d=${SOURCES[0]} 
+     vp=${SOURCES[1]} 
+     wav=${SOURCES[2]} 
+     m=${TARGETS[0]} 
+     misfit=${TARGETS[1]} 
+     np=1 npersocket=8 
+     niter=10
+     sz=10 gz=10 
+     nz=600 dz=5 oz=0 
+     nt=1000 dt=0.004 ot=0 
+     npx=37 dpx=5 opx=-90 
+     nsx=1 dsx=100 osx=3500 
+     fmin=2 fmax=50 
+     reg=n
+     pa=-4 pb=-2 pc=2 pd=4
+     ''',np=4,stdin=0,stdout=-1)
+
+Result('vel','grey color=j mean=y scalebar=y title="Smoothed Velocity" titlesz=20')
+Plot('d','window n3=1 f3=1 | grey minval=-1000 maxval=1000 clip=1000 color=seismic title="Data" titlesz=20')
+#Result('m','window min3=-20 max3=20 | stack axis=3 | grey color=seismic title="Adjoint" titlesz=20')
+#Result('m_inv','window min3=-20 max3=20 | stack axis=3 | grey color=seismic title="Inverse" titlesz=20')
+Result('m','window n2=1 f2=350 | grey color=seismic title="Adjoint" titlesz=20')
+Result('m_inv','window n2=1 f2=350 | grey color=seismic title="Inverse" titlesz=20')
+Plot('d_fwd','window n3=1 f3=1 | grey minval=-1000 maxval=1000 clip=1000 color=seismic title="Data" titlesz=20')
+Plot('d_fwd2','window n3=1 f3=1 | grey minval=-1000 maxval=1000 clip=1000 color=seismic title="Data" titlesz=20')
+Plot('d_fwd2_diff','d d_fwd2','math x=${SOURCES[0]} y=${SOURCES[1]} output="x-y" | window n3=1 f3=1 | grey minval=-1000 maxval=1000 clip=1000 color=seismic title="Data" titlesz=20')
+Result('data','d d_fwd2 d_fwd2_diff','SideBySideAniso')
+
+End()
+

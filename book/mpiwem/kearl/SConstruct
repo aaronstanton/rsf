@@ -1,0 +1,127 @@
+import os
+
+os.environ['OMP_NUM_THREADS'] = '6'
+
+from rsf.proj import *
+
+#read segy
+Flow('d_raw headers','/u3/data/xom/kearl/kearl_2dline.su',
+     '''
+     segyread su=y suxdr=y tape=${SOURCES[0]} tfile=${TARGETS[1]}
+     ''',stdin=0)
+
+Flow('d0_raw','d_raw',
+     '''
+     window f2=0 j2=3
+     ''')
+
+Flow('headers0','headers',
+     '''
+     window f2=0 j2=3
+     ''')
+
+Flow('headers0_binned','headers0',
+     '''
+     geom5d mode=1 
+     osx=491389  dsx=4 
+     osy=6360834 dsy=4 
+     ogx=491387  dgx=2
+     ogy=6360833 dgy=2 
+     gamma=1 ang=90 
+     headin=${SOURCES[0]} headout=${TARGETS[0]}
+     ''',stdin=0,stdout=-1)
+
+Flow('d0_raw_binned headers0_binned2','d0_raw headers0_binned',
+     '''
+     pad5d mode=1 
+     min_ix1=0 max_ix1=0 
+     min_ix2=0 max_ix2=249 
+     min_ix3=0 max_ix3=0 
+     min_ix4=0 max_ix4=500 
+     headin=${SOURCES[1]} headout=${TARGETS[1]}
+     ''')
+
+Flow('r_',None,'math n1=501 d1=2 o1=3 output=0')
+Flow('gx','r_','math output="x1"')
+
+shots = []
+nsx = 250
+dsx = 4.0
+osx = 4.0
+for ishot in range(0,nsx):
+     sx = osx + ishot*dsx
+     shot = 'd_shot_%d' % ishot
+     shots.append(shot)
+     Flow('d_raw_shot_%d' % ishot,'d0_raw_binned',
+          '''
+          window n3=1 f3=%d 
+          ''' % ishot)
+     Flow('mask_%d' % ishot,'d_raw_shot_%d' % ishot,'math output="abs(input)" | stack axis=1 | mask min=0 max=1e4')
+     Flow('d_shot_%d' % ishot,'d_raw_shot_%d mask_%d' % (ishot,ishot),
+          '''
+          headercut mask=${SOURCES[1]} |
+          fkfilter pa=-0.002 pb=-0.001 pc=0.001 pd=0.002 |
+          headercut mask=${SOURCES[1]} |
+          shift del1=0.02 |
+          bandpass flo=3 fhi=400 |
+          headercut mask=${SOURCES[1]}
+          ''')
+
+Flow('d_shots',shots,
+     '''
+     cat axis=3 ${SOURCES[1:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m |
+     put label2="Gx" unit2="m" label3="Sx" unit3="m" o2=3 d2=2 o3=4 d3=4
+     ''' % (nsx,osx,dsx))
+
+Flow('d_cmps','d_shots',
+     '''
+     gxsxtomxhx 
+     omx=3 dmx=2 nmx=500
+     ohx=-500 dhx=4 nhx=251
+     verbose=n |
+     transp plane=23
+     ''')
+
+# 
+# make velocity model
+# Flow('v',None,
+#     '''
+#     spike nsp=1 
+#     n1=500 n2=501 d1=0.5 d2=2 k1=1 k2=1 l1=500 l2=501 mag=2200 p2=0 |
+#     put o1=0 o2=10 label1="z" label2="x" unit1="m" unit2="m"
+#     ''',stdin=-1)
+Flow('v','p_sonic.txt',
+     '''
+     csv2rsf | 
+     transp plane=12 |
+     put o1=0 d1=5 label1="Depth" unit1="m" |
+     sinc o1=0 n1=500 d1=0.5 | 
+     sfspray axis=2 n=501 d=2 o=0 label="x" unit="m" |
+     sfsmooth rect1=50
+     ''')
+
+# Wavelet
+Flow('wav',None,
+     '''
+     spike mag=1 n1=1000 d1=0.0005 k1=40 | 
+     ricker1 frequency=300 
+     ''')
+
+Flow('m','d_shots v wav',
+     '''
+     mpiwem adj=y
+     infile=${SOURCES[0]} vp=${SOURCES[1]} wav=${SOURCES[2]} 
+     outfile=${TARGETS[0]}
+     verbose=y
+     nz=500 oz=0 dz=0.5
+     nhx=101 dhx=10 ohx=-500
+     npx=201 dpx=0.01 opx=-1
+     fmin=3 fmax=400
+     ''',np=5,stdin=0,stdout=-1)
+
+Plot('d','d_shots','window n3=1 f3=125 | grey scalebar=y color=e title="Shot Gather" titlesz=20')
+Plot('m_gather','m','window n2=1 f2=250 | grey minval=-100 maxval=100 clip=100 scalebar=y color=e title="Angle Gather" titlesz=20')
+Plot('m_stack','m','stack axis=3 | grey minval=-1000 maxval=1000 clip=1000 scalebar=y color=e title="Stack" titlesz=20')
+Result('all','d m_gather m_stack','SideBySideAniso')
+End()

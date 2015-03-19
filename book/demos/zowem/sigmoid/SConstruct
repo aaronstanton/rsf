@@ -1,0 +1,61 @@
+from rsf.proj import *
+
+Flow('reflect',None,'''
+           sigmoid n1=250 n2=100 large=2500 d1=0.004 d2=25 |
+           put title="" label2="x" unit2="m" | 
+           ricker1 frequency=30 |
+           put d1=5 label1="Depth" unit1="m" title="Model"
+           ''')
+
+Plot('reflect','reflect',
+       '''
+       grey scalebar=y
+       ''')
+
+Flow('vp',None,
+     '''
+     makevel n1=250 n2=100 v000=2500 dvdx1=0.1 dvdx2=0.1
+     ''') 
+
+Plot('vp','vp',
+       '''
+       grey scalebar=y allpos=y mean=y color=j title="velocity"
+       ''')
+
+Flow('d','reflect vp',
+     '''
+     zowem op=1 numthreads=2
+     adj=n
+     nt=200 dt=0.004 ot=0 fmax=100
+     vp=${SOURCES[1]}
+     ''')
+
+Plot('d','d',
+       '''
+       grey scalebar=y title="Forward"
+       ''')
+
+Flow('dmig','d',
+     '''
+     zowem op=1 numthreads=2
+     adj=y
+     nz=250 dz=5 oz=0 fmax=100
+     vp=vp.rsf
+     ''')
+
+Plot('dmig','dmig',
+       '''
+       grey scalebar=y title="Adjoint"
+       ''')
+
+Result('plots','vp reflect d dmig','TwoRows')
+
+# Dot product test 
+Flow('dot.test','d vp',
+     '''
+     zowem dottest=y op=4 nref=5 numthreads=2 fmax=100
+     nz=200 dz=5 oz=0
+     vp=${SOURCES[1]}
+     ''',stdout=-1)
+
+End()

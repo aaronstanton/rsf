@@ -1,0 +1,147 @@
+\title[Short title]{sparsity and rank examples for upcoming Recorder article}
+\author{ }
+\institute{ }
+\date{\today \\ \vspace{3cm}   \includegraphics[height=1cm,width=2cm]{logo}}
+
+\addtobeamertemplate{frametitle}{}{%
+\begin{textblock*}{100mm}(.85\textwidth,7.5cm)
+\includegraphics[height=1cm,width=2cm]{logo}
+\end{textblock*}}
+
+\maketitle
+
+\inputdir{synth}
+
+\begin{frame} \frametitle{Original}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.3\textwidth]{synth/Fig/dtrue}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/dtrue_fx}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/dtrue_fk}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{Randomly Decimated}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand_fx}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand_fk}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{Regularly Decimated}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg_fx}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg_fk}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{SVD: Original}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.3\textwidth]{synth/Fig/dtrue_left_block}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/dtrue_singular_block}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/dtrue_right_block}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{SVD: Randomly Decimated}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand_left_block}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand_singular_block}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand_right_block}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{SVD: Regularly Decimated}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg_left_block}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg_singular_block}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg_right_block}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{Interpolation: Randomly Decimated}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand_pocs}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand_mwni}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_rand_seqsvd}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{Interpolation: Regularly Decimated}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg_pocs}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg_mwni}\quad
+    \includegraphics[width=.3\textwidth]{synth/Fig/ddec_reg_seqsvd}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{Input}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.5\textwidth]{real/Fig/dorig_ovt}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{POCS}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.5\textwidth]{real/Fig/dpocs_ovt}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{SEQSVD}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.5\textwidth]{real/Fig/dseqsvd_ovt}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{MWNI}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.5\textwidth]{real/Fig/dmwni_ovt}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{Input}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.5\textwidth]{real/Fig/dorig_stack}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{POCS}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.5\textwidth]{real/Fig/dpocs_stack}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{SEQSVD}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.5\textwidth]{real/Fig/dseqsvd_stack}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{MWNI}
+    \begin{figure}[ht]
+    \centering
+    \includegraphics[width=.5\textwidth]{real/Fig/dmwni_stack}
+    \end{figure}
+\end{frame}
+
+\begin{frame} \frametitle{end}
+
+\end{frame}
+
+

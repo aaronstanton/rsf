@@ -1,0 +1,46 @@
+This is BibTeX, Version 0.99c (Web2C 7.5.6)
+The top-level auxiliary file: paper.aux
+The style file: seg.bst
+Database file #1: SEG.bib
+Database file #2: lsewem.bib
+You've used 7 entries,
+            2639 wiz_defined-function locations,
+            749 strings with 7044 characters,
+and the built_in function-call counts, 2661 in all, are:
+= -- 294
+> -- 77
+< -- 6
++ -- 24
+- -- 24
+* -- 228
+:= -- 465
+add.period$ -- 7
+call.type$ -- 7
+change.case$ -- 47
+chr.to.int$ -- 7
+cite$ -- 7
+duplicate$ -- 95
+empty$ -- 203
+format.name$ -- 35
+if$ -- 542
+int.to.chr$ -- 1
+int.to.str$ -- 0
+missing$ -- 6
+newline$ -- 25
+num.names$ -- 21
+pop$ -- 28
+preamble$ -- 1
+purify$ -- 47
+quote$ -- 0
+skip$ -- 74
+stack$ -- 0
+substring$ -- 238
+swap$ -- 6
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 42
+warning$ -- 0
+while$ -- 24
+width$ -- 0
+write$ -- 80

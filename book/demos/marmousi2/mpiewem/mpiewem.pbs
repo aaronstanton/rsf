@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -S /bin/bash
+#PBS -m bea 
+#PBS -M aaron.stanton@ualberta.ca
+
+source ~/.bashrc
+cd $PBS_O_WORKDIR
+echo "Current working directory is `pwd`"
+
+echo "Node file: $PBS_NODEFILE :"
+echo "---------------------"
+cat $PBS_NODEFILE
+echo "---------------------"
+
+CORES=`/bin/awk 'END {print NR}' $PBS_NODEFILE`
+echo "Running on $CORES cores."
+
+# Set the number of threads that OpenMP can use
+export OMP_NUM_THREADS=${PBS_NUM_PPN}
+
+echo "Starting run at: `date`"
+
+mpiexec -np ${PBS_NUM_NODES} sfmpiewem adj=y H=y ux=ux_input.rsf uz=uz_input.rsf vp=vp_smooth.rsf vs=vs_smooth.rsf wav=wav.rsf mpp=mpp.rsf mps=mps.rsf verbose=n nz=1001 oz=0 dz=2 nhx=101 dhx=12.32 ohx=-616 npx=201 dpx=0.01 opx=-1 fmin=5 fmax=60 sz=10 gz=450
+
+echo "Program sfmpiewem finished with exit code $? at: `date`"
+

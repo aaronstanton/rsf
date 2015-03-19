@@ -1,0 +1,303 @@
+\author{Aaron Stanton\footnote{Email: \tt{aaron.stanton@ualberta.ca}}
+and Mauricio D. Sacchi }
+\title
+{Least Squares PSTM of Converted Wave Seismic Data}
+
+\maketitle
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ABSTRACT
+\begin{abstract}
+Converted waves suffer from a low signal to noise ratio and stronger aliasing than P-waves. These characteristics are problematic when an adjoint migration operator is applied to the data. In this article we apply preconditioned least squares migration using a pre-stack Kirchhoff time migration operator to converted wave data. To precondition the inversion we apply a five-point triangle smoothing operator on the offset dimension. We show two synthetic data examples in which the input data have been decimated. We find several advantages to our approach when compared with Fourier regularization plus migration.    
+\end{abstract}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% INTRODUCTION
+\section{Introduction}
+Migration is an important step in the processing of converted waves. Asymmetric source and receiver side raypaths make binning and stacking these data particularly inapt. Kirchhoff migration, using the adjoint operator, aims to solve the migration problem by integration. Because we record discrete data with a finite aperture and aim to solve for a discrete earth model integration is replaced with finite discrete summation. Another problem with Kirchhoff methods relates to the artifacts created by spreading amplitudes over travel time curves. While typically the bulk of the energy constructively sums in place of true reflectors, a great deal of energy persists in the form of "smiles" or migration artifacts. Least squares migration attempts to deal with these problems. Instead of simply using the adjoint operator, the inverse is sought by attempting to match the data predicted by the model with the observed data. Significant work has been done in the field of least squares migration. \cite{nemeth1999least} use a Kirchhoff operator to perform least squares migration of incomplete surface seismic and Vertical Seismic Profile (VSP) data. They find that the migration results are more focussed and suffer less from acquisition footprint compared with the adjoint operation. \cite{Kuehl01012003} use least squares migration with a Double Square Root (DSR) operator to express reflectivity as a function of subsurface position and ray parameter to be used for further Amplitude Versus reflection Angle (AVA) inversion. \cite{ricardo2010} use a Kirchhoff time migration operator with dip-oriented filtering to attenuate artifacts, while \cite{doi:10.1190/1.2399367} use least squares migration to attenuate low frequency Reverse Time Migration (RTM) artifacts due to crosscorrelation of diving-waves, head-waves, or backscattered waves. The attenuation of artifacts is achieved via preconditioning using prediction-error filters. 
+
+While prior efforts have focussed primarily on P-wave seismic data, this article considers the application of least squares migration to converted waves. Converted waves suffer from some additional complications compared to P-waves. The signal to noise ratio can be significantly lower, and the lower velocity receiver side ray path makes the aliasing frequency of converted waves lower than their P-wave counterpart. One way to deal with these issues is to regularize the data prior to imaging \citep{caryps5d}. In this contribution we try to deal with these issues in the imaging step via preconditioned least squares migration. We show that the method can be used to either regularize the data, or to migrate the data. For regularization, the algorithm has some unique advantages over other methods, namely, it can handle irregular trace spacing (binning is not required), it can reconstruct weak diffraction energy accurately, and it can reconstruct regular or irregularly missing traces equally well. To illustrate these advantages we compare the least squares migration approach with Minimum Weighted Norm Interpolation (MWNI) for two synthetic data examples.  
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Theory}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%THEORY: Converted wave PSTM
+\subsection{Pre-Stack Time Migration of converted waves}
+
+The Kirchhoff operator is currently the most widely used migration operator. One of the main reasons for the algorithm's popularity lies in its simplicity. Kirchhoff migration involves integrating trace amplitudes over a reflectivity model. After travel times and Kirchhoff weights have been calculated, the migration process can be written as a trace by trace process \citep{sep80}. This means that a small amount of memory is required for this process, and perhaps more importantly the task is highly parallelizable. The speed of this algorithm also makes it possible to perform iterative velocity analysis.
+
+In the case of least squares migration the forward and adjoint migration operators are required. Given the simplicity of the Kirchhoff adjoint operator, the forward operator is straightforward to define. 
+
+In addition to its simplicity, the Kirchhoff operator also suffers from artifacts that could benefit from LS migration. Preconditioning that aims to mitigate these artifacts will be shown later in this paper.
+
+The basis of Kirchhoff migration is the Huygen-Fresnel principle which states when a disturbance reaches a point this point behaves as a secondary source and that summing the waves from this source can be used to determine the form of the wave at a later time.
+
+The forward Kirchhoff operator can be written
+\begin{equation}
+\mathbf{d}(s_x,g_x,t_d)=\sum\limits_{x}\sum\limits_{t}\mathbf{m}(t_m,x,h)W
+\end{equation}
+
+where $\mathbf{d}(t_d,s_x,g_x)$ are the data, $\mathbf{m}(t_m,x,h)$ is the model, and $W$ are the 2D converted wave Kirchhoff PSTM weights. Here $t_m$ is the time from zero offset to the reflector in the model space, and $t_d$ is the corresponding travel time that is the sum of two terms: $t_s$, the time a ray takes to travel from the source to the scanned model position (using the P-wave velocity), and $t_g$, the time a ray takes to travel back to the receiver (using the S-wave velocity). The adjoint, or migration operator can be written
+
+\begin{equation}
+\mathbf{m}(t_m,x,h)=\sum\limits_{N_{trace}}\mathbf{d}(s_x,g_x,t_d)W.
+\end{equation}
+
+To calculate $t_d = t_s + t_g$, we use 
+
+\begin{equation}
+t_s = \sqrt{t_{s0}^2 + (\frac{x-s_x}{v_p})^2} 
+\end{equation}
+
+and 
+
+\begin{equation}
+t_g = \sqrt{t_{g0}^2 + (\frac{x-g_x}{v_s})^2 } 
+\end{equation}
+
+Where $t_{s0} = \frac{t_m}{(1+\gamma)}$, $t_{g0} = \frac{t_m\gamma}{(1+\gamma)}$, and $\gamma$ is the $v_p/v_s$ ratio. In the case of anisotropic wave propogation higher order terms are added to these equations \citep{shaowu2013}, but here we assume isotropy.
+
+The 2.5D converted wave Kirchhoff weights are calculated via
+
+\begin{equation}
+W=\frac{z(1+cos\theta)}{2v_p^3\sqrt{1+2\gamma cos\theta + \gamma^2}} (\frac{t_g}{\gamma ^2 t_s} + \frac{\gamma^2t_s}{t_g}) \sqrt{\frac{\gamma^2t_s + t_g}{t_st_g}}
+\end{equation}
+
+\citep{cary2011}, where $z$ is the image depth (estimated using $v_p$ and $t_{s0}$), and $\theta$ is the opening angle of the downgoing P-wave and upgoing S-wave raypaths. The cosine of the opening angle, $\theta$, can be calculated using the sum of the angle of the source-side ray with the vertical, $\theta_s$, and the angle of the receiver side raypath path with the vertical, $\theta_g$ as follows:
+
+\begin{equation}
+cos(\theta_s + \theta_g)=cos\theta_s cos\theta_g - sin\theta_s sin\theta_g
+\end{equation}
+
+where $cos\theta_s = \frac{z}{v_p t_s}$, $cos\theta_g = \frac{z}{v_s t_g}$, $sin\theta_s = \frac{x-s_x}{v_p t_s}$, and $sin\theta_g = \frac{g_x-x}{v_s t_g}$.
+
+If $v_s$ is replaced with the P-wave velocity these equations break down to the conventional P-wave Kirchhoff migration equations.
+
+Algorithm \ref{Kirchhoff} shows an implementation of the Kirchhoff operator that was used for the examples in this paper. We implement parallelization over offsets classes using a cluster with shared memory architecture. 
+
+\begin{algorithm}
+\small
+\caption{converted wave Pre-Stack Time Migration operator}\label{Kirchhoff}
+\begin{algorithmic}
+\Procedure{Kirchhoff}{$d,m,v_p,v_s,s_x,g_x,dt,N_{trace},N_{h},N_{x},N_{t}$}\Comment{fwd diffracts, adj migrates}
+   \For{$ih=1:N_{h}$}
+     \For{$itrace=1:N_{trace}$}
+       \For{$ix=1:N_{x}$}
+         \For{$itm=1:N_{t}$}
+           \State{$ t_s = f(vp,s_x,ih,ix,itm)$}
+           \State{$ t_g = f(vs,g_x,ih,ix,itm)$}
+           \State{$ it = \lfloor (t_s + t_g)/ dt \rfloor $}
+           \State{$ w = f(vp,vs,s_x,g_x,ih,ix,itm)$}
+           \State{$ b = (t - it*dt)/it*dt$}
+           \State{$ a = 1 - b$}
+           \If{fwd} 
+             \State{d(itrace,it) += a*m(itm,ix,ih)*w} 
+             \State{d(itrace,it+1) += b*m(itm,ix,ih)*w} 
+           \EndIf
+           \If{adj} 
+             \State{m(it,ix,ih) += (a*d(itrace,it) + b*d(itrace,it + 1))*w}
+           \EndIf
+         \EndFor
+       \EndFor
+     \EndFor
+   \EndFor
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+In figure~\ref{fig:impulse} the forward operator, $\mathbf{L}$  is applied to an impulse in model space (a). The forward operator diffracts the model into data space (b), while the adjoint collapses the diffractions back into model space. It is apparent that result of the adjoint operation (c) is not equivalent to the original reflectivity (a). This is because the Kirchhoff operator is not orthogonal ($L^T\neq L^{-1}$). 
+
+\begin{figure}[h] % figure placement: here,top,bottom,or page
+	\centering
+	\includegraphics[width=1\textwidth]{impulse/Fig/impulse.pdf}
+	\caption{An impulse in model space (a), the effect of spraying the model into the data domain using the forward operator (b), and migration of the data using the adjoint operator (c). Notice that the adjoint operation does not recover the original impulse. This is because the Kirchhoff operator is not orthogonal.}
+	\label{fig:impulse}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%THEORY: least squares migration
+\subsection{Least squares migration}
+Given the forward Kirchhoff operator, $\mathbf{L}$, data can be generated from a reflectivity model. In seismic migration the goal is to collapse diffractions to the position where reflection occurred in the subsurface. To do this we should use the inverse of the forward operator, $\mathbf{L}^{-1}$. Typically for imaging the inverse is approximated by the adjoint operator, $\mathbf{L}^T$. While the adjoint can produce reasonable structural images, the recovered model is not true amplitude in the sense that applying the forward operator will not recover the recorded data to a reasonable degree, especially if the acquisition geometry contains significant holes, or irregular geometry \citep{nemeth1999least}. Least squares migration aims to recover the model, $\mathbf{m}$, such that the application of the forward operator reproduces the recorded data. The system of equations for least squares migration are
+
+\begin{equation}
+\mathbf{Lm}=\mathbf{d} + \mathbf{n}
+\end{equation}
+
+where $\mathbf{d}$ are the observed data and $\mathbf{n}$ is noise. The minimum norm solution comes from minimizing the cost function
+
+\begin{equation}
+J = ||\mathbf{Lm}-\mathbf{d}||^2_2 + \lambda^2|| \mathbf{m}||^2_2, 
+\end{equation}
+
+where m is the reflectivity model to be recovered, and $\lambda$ is a trade-off parameter which controls the under-fitting or over-fitting to the observed data, $\mathbf{d}$. 
+
+The minimum norm solution to this cost function is 
+
+\begin{equation}
+\hat{\mathbf{m}} = (\mathbf{L}^T\mathbf{L} + \lambda^2\mathbf{I})^{-1}\mathbf{L}^T\mathbf{d}.
+\end{equation}
+
+Typically the size of the model is greater than the size of the data which makes this an underdetermined problem. The next section discusses methods to precondition the problem in order to narrow down the range of solutions. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%THEORY: Preconditioning
+\subsection{Preconditioning}
+To obtain a smooth solution a derivative operator can be applied to the model. Sharp changes in the model are then penalized in the cost function resulting in a smoother set of solutions. This is written:
+
+\begin{equation}
+J = ||\mathbf{Lm}-\mathbf{d}||^2_2 + \lambda^2|| \mathbf{D} \mathbf{m}||^2_2,
+\end{equation}
+ 
+where $\mathbf{D}$ can be referred to as a "bad pass" operator, such as a derivative across the offset dimension of the migrated gathers.
+
+An alternative way to write this is via a change of variables:
+
+\begin{equation}
+\mathbf{z} = \mathbf{Dm}
+\end{equation}
+
+giving
+\begin{equation}
+J = ||\mathbf{LD^{-1}\mathbf{z}}-\mathbf{d}||^2_2 + \lambda^2|| \mathbf{z}||^2_2.
+\end{equation}
+
+If the derivative operator, $\mathbf{D}$, acts as a high-pass operator then its inverse, $\mathbf{D}^{-1}$ acts as a low-pass operator \citep{juefu}. It becomes clear that operators placed into the right hand side (model-space part) of the cost function are "bad-pass" operators that emphasize parts of the model we wish to penalize, while terms on the left hand side (data-space) are "good-pass" operators that emphasize parts of the model we wish to reinforce.
+
+This cost function can be incorporated into a Conjugate Gradients framework such as given by \citep{scales1987tomographic}, by simply concatenating the preconditioning operator, $\mathbf{D}$, with the migration operator, $\mathbf{L}$, to form the new operator $\widetilde{\mathbf{L}} = \mathbf{L}\mathbf{D^{-1}}$, with adjoint $\widetilde{\mathbf{L}}^T = (\mathbf{D^{-1}})^T\mathbf{L}^T$. 
+
+An alternative formulation is to incorporate one or more regularization operators directly into the Conjugate Gradients algorithm. Algorithm \ref{CG} shows a typical implementation of Conjugate Gradients, but with two operators, $\mathbf{A}$, and $\mathbf{B}$. A clear advantage to writing the algorithm in this way is that the contribution of each operator to the model update step $\Delta = <\mathbf{As},\mathbf{As}> + \mu<\mathbf{Bs},\mathbf{Bs}>$ can be controlled by the hyper-parameter $\mu$. Considering B to be a "good-pass" operator such as a smoothing operator, setting $\mu=0$ provides the minimum-norm solution, while setting $\mu$ to a value that makes the contribution of the two inner products of comparable magnitude provides a regularized solution. Finally, setting $\mu$ to be a very large value makes the contribution of $<\mathbf{Bs},\mathbf{Bs}>$ larger than $<\mathbf{As},\mathbf{As}>$, restricting the update to be mainly controlled by the smoothness of the model.
+
+The good pass operator used in this study is a five-point triangle filter, $\mathbf{P}$, which is applied across offsets within each migrated gather. Unlike a rectangular filter, a triangle filter gives higher weight to the central point on the filter compared to the edges. When smoothing a signal of length 8 the forward and adjoint operators can be written in matrix form as
+
+$\mathbf{P} = \frac{1}{9} \cdot \begin{bmatrix} 3 & 4 & 2 & 0 & 0 & 0 & 0 & 0 \\
+					        2 & 3 & 2 & 2 & 0 & 0 & 0 & 0 \\
+					        1 & 2 & 3 & 2 & 1 & 0 & 0 & 0 \\
+					        0 & 1 & 2 & 3 & 2 & 1 & 0 & 0 \\
+					        0 & 0 & 1 & 2 & 3 & 2 & 1 & 0 \\
+					        0 & 0 & 0 & 1 & 2 & 3 & 2 & 1 \\
+					        0 & 0 & 0 & 0 & 2 & 2 & 3 & 2 \\
+					        0 & 0 & 0 & 0 & 0 & 2 & 4 & 3 \end{bmatrix},
+$ and $\mathbf{P}^T = \frac{1}{9} \cdot \begin{bmatrix}3 & 2 & 1 & 0 & 0 & 0 & 0 & 0 \\
+					               4 & 3 & 2 & 1 & 0 & 0 & 0 & 0 \\
+					               2 & 2 & 3 & 2 & 1 & 0 & 0 & 0 \\
+					               0 & 2 & 2 & 3 & 2 & 1 & 0 & 0 \\
+					               0 & 0 & 1 & 2 & 3 & 2 & 2 & 0 \\
+					               0 & 0 & 0 & 1 & 2 & 3 & 2 & 2 \\
+					               0 & 0 & 0 & 0 & 1 & 2 & 3 & 4 \\
+					               0 & 0 & 0 & 0 & 0 & 1 & 2 & 3 \end{bmatrix}$.
+					     
+Note the action of the forward operator on the edges of the gather (low and high offsets). At the edge of the gather the offsets on the missing side are replicated before smoothing to minimize edge effects. This operator has very few non-zero entries making it computationally inexpensive to implement in operator form. To ensure that the forward adjoint pair are written correctly, the dot product test is performed. Two vectors of random numbers are created, one with the dimension of the data, $\mathbf{d}_1$, and one with the dimension of the model, $\mathbf{m}_1$. $\mathbf{d}_1$ is passed through the concatenation of adjoint operators, $\mathbf{P^TL^T}$, to generate $\mathbf{m}_2$, while $\mathbf{m}_1$ is passed through the concatenation of forward operators, $\mathbf{LP}$, to generate $\mathbf{d}_2$. The inner products $<\mathbf{d}_1,\mathbf{d}_2>$ and $<\mathbf{m}_1,\mathbf{m}_2>$ are compared and found to agree within machine precision. 
+				     
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Examples}
+
+In this article we consider two synthetic data examples. Both examples are generated using the "sigmoid" model \citep{claerbout1992earth} shown in figure \ref{fig:model} and the forward converted wave PSTM operator, $\mathbf{L}$. Data are generated with a 4ms sample rate, and a 10m Asymptotic Conversion Point (ACP) increment. The data contain offsets from 100-2500m with a 100m offset increment. Note that all figures show the data at a constant offset of 1000m. 
+
+In figure \ref{fig:interp_random} the input data (a) are randomly decimated by 50\% on the ACP and offset axes (b). The data are then reconstructed using a Fourier reconstruction method (Minimum Weighted Norm Interpolation (MWNI)) (c). Some diffracted energy and conflicting dips appear to be poorly reconstructed by the application of Fourier reconstruction. The diffractions and conflicting dips appear to be better reconstructed by synthesizing the data after least squares migration (d). 
+
+Figure \ref{fig:reflect_random} shows the reflectivities corresponding to the data shown in figure \ref{fig:interp_random}. Applying migration directly to the decimated data (b), or to the interpolated data (c) does not properly resolve the structure, while least squares migration (figure \ref{fig:reflect_random}(d)) does a better job of recovering the true reflectivity. Figure \ref{fig:misfit_random} shows the misfit as a function of the iteration number. The inversion converges after approximately 14 iterations.
+
+\begin{figure}[h] % figure placement: here,top,bottom,or page
+	\centering
+	\includegraphics[width=1\textwidth]{interp_random/Fig/model.pdf}
+	\caption{Model used to generate the data used in the synthetic data examples. P-wave velocity (a), S-wave velocity (b), reflectivity (c).}
+	\label{fig:model}
+\end{figure}
+
+\begin{figure}[h] % figure placement: here,top,bottom,or page
+	\centering
+	\includegraphics[width=1\textwidth]{interp_random/Fig/interp_random.pdf}
+	\caption{Reconstruction of randomly decimated data. True data (a), randomly decimated data (b), reconstructed data using MWNI (c), and data reconstructed using least squares migration (d).}
+	\label{fig:interp_random}
+\end{figure}
+
+\begin{figure}[h] % figure placement: here,top,bottom,or page
+	\centering
+	\includegraphics[width=1\textwidth]{interp_random/Fig/reflect_random.pdf}
+	\caption{Migration of randomly decimated data. True reflectivity model (a), migration of randomly decimated data (b), migration of data that has been reconstructed using MWNI (c), and least squares migration (d).}
+	\label{fig:reflect_random}
+\end{figure}
+
+\begin{figure}[h] % figure placement: here,top,bottom,or page
+	\centering
+	\includegraphics[width=0.5\textwidth]{interp_random/Fig/misfit.pdf}
+	\caption{Misfit vs. iteration number for the least squares migration of the randomly decimated data shown in figures \ref{fig:interp_random} and \ref{fig:reflect_random}.}
+	\label{fig:misfit_random}
+\end{figure}
+
+In our second example the original data are decimated regularly in the ACP dimension by zeroing three traces between every live trace (shown in figure \ref{fig:interp_regular}(b)). In this case Fourier reconstruction (c) struggles as the aliasing created by the zeroing pattern has stronger energy than desired signal, while least squares migration (d) is able to reconstruct the signal accurately. 
+
+Figure \ref{fig:reflect_regular}(b) shows the recovered reflectivities in the case of regular decimation. Applying migration directly to the decimated data (b) does not properly recover the reflectivity. After Fourier reconstruction the migrated image has a characteristic pattern corresponding to the alias while least squares migration (d) does a better job of recovering the true reflectivity. Figure \ref{fig:misfit_regular} shows the misfit as a function of the iteration number for this example.  
+ 
+\begin{figure}[h] % figure placement: here,top,bottom,or page
+	\centering
+	\includegraphics[width=1\textwidth]{interp_regular/Fig/interp_regular.pdf}
+	\caption{Reconstruction of regularly decimated data. True data (a), regularly decimated data (b), reconstructed data using MWNI (c), and data reconstructed using least squares migration (d).}
+	\label{fig:interp_regular}
+\end{figure}
+
+\begin{figure}[h] % figure placement: here,top,bottom,or page
+	\centering
+	\includegraphics[width=1\textwidth]{interp_regular/Fig/reflect_regular.pdf}
+	\caption{Migration of regularly decimated data. True reflectivity model (a), migration of regularly decimated data (b), migration of data that has been reconstructed using MWNI (c), and least squares migration (d).}
+	\label{fig:reflect_regular}
+\end{figure}
+
+\begin{figure}[h] % figure placement: here,top,bottom,or page
+	\centering
+	\includegraphics[width=0.5\textwidth]{interp_regular/Fig/misfit.pdf}
+	\caption{Misfit vs. iteration number for the least squares migration of the regularly decimated data shown in figures \ref{fig:interp_regular} and \ref{fig:reflect_regular}.}
+	\label{fig:misfit_regular}
+\end{figure}
+
+
+\begin{algorithm}
+\small
+\caption{Conjugate Gradients with more than one operator}\label{CG}
+\begin{algorithmic}
+\Procedure{CG}{d,$N_{iter},p$}\Comment{solves $||Ax-d||^2_2 + \mu||Bx||^2_2$}
+   \State $x=0$ 
+   \State $r_1=d$ 
+   \State $g=A^Tr_1 + B^Tr_2$ 
+   \State $s=g$ 
+   \State $\gamma = <g,g>$
+   \State $\gamma_{old} = \gamma$
+   \While{$k\leq N_{iter}$}
+      \State $ss_1 = As$
+      \State $ss_2 = Bs$
+      \State $\Delta = <ss_1,ss_1> + \mu<ss_2,ss_2>$
+      \State $\alpha = \gamma / \Delta$
+      \State $x = x + \alpha s$
+      \State $r_1 = r_1 - \alpha ss_1$
+      \State $r_2 = r_2 - \alpha ss_2$
+      \State $g = A^Tr_1 + B^Tr_2$
+      \State $\gamma = <g,g>$
+      \State $\beta = \gamma/\gamma_{old}$
+      \State $\gamma_{old} = \gamma$
+      \State $s = g + \beta s$
+      \State $k++$
+   \EndWhile\label{euclidendwhile}
+   \State \textbf{return} $x$\Comment{The solution is x}
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% CONCLUSIONS
+\section{Conclusions}
+
+In this article we apply least squares migration to converted wave seismic data. We use a converted wave pre-stack time demigration operator and its adjoint in a Conjugate Gradients algorithm to solve for the reflectivity that best fits the data, while minimizing a norm on the model (migrated gathers). We precondition the problem by including a five-point triangle smoothing operator which acts on the offset dimension of the migrated gathers. We also introduce a modification to the Conjugate Gradients algorithm that allows the user to control the relative contribution of each operator to the model update. We consider two synthetic data examples: random and regular decimation of traces in data space. In both examples we find an advantage both in the reconstruction of data and the migration of the data when using the least squares migration algorithm compared with Fourier reconstruction plus migration using the adjoint operator. Following the advice of \cite{Gray01seismicmigration}, namely, that a more accurate forward modelling operator should be used compared to the migration operator being tested, we plan to test this algorithm on data generated using elastic finite differences to further evaluate its merit.
+
+ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ACKNOWLEDGMENTS
+\section{ACKNOWLEDGMENTS}
+The authors thank the sponsors of the Signal Analysis and Imaging Group (SAIG) at the University of Alberta.
+
+\bibliographystyle{seg}  % style file is seg.bst
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%BIBLIOGRAPHY
+\bibliography{aaron1}
+
+
+

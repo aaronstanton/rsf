@@ -1,0 +1,127 @@
+\title[Short title]{Madagascar in 20 minutes}
+\author{Aaron Stanton}
+\institute{Signal Analysis and Imaging Group \\ Department of Physics \\ University of Alberta}
+\date{\today}
+
+\addtobeamertemplate{frametitle}{}{%
+\begin{textblock*}{100mm}(.85\textwidth,-0.9cm)
+\includegraphics[height=1cm,width=2cm]{logo}
+\end{textblock*}}
+
+\maketitle
+
+\begin{frame} \frametitle{Outline}
+    \begin{itemize}
+        \item general framework of madagascar
+        \item RSF data format: headers and data separate
+        \item getting started adding your own codes
+        \item parallel computing
+        \item writing a paper or presentation
+    \end{itemize}
+\end{frame}
+
+\begin{frame} \frametitle{general framework}
+    \begin{itemize}
+        \item inherited ideas from SU and SEPLIB, but written from scratch $\rightarrow$ modern!
+        \item used a lot at CWP, SEP, and UT Austin
+        \item mostly written in C, but can use many different laguages together: C, C++, Fortran-90, Python
+        \item hundreds of codes you can apply to your data
+        \item dozens of example scripts and latex documents you can run
+        \item hundreds of libraries/functions you can use to develop your own codes (the API's).
+        \item can use command line or bash for scripting but main idea is to use scons 
+    \end{itemize}
+\end{frame}
+
+\begin{frame} \frametitle{general framework: SCONS}
+    \begin{itemize}
+        \item a python-based scripting language
+        \item 2 commands:
+        \begin{itemize}
+        	\item Flow('out','in','processing function and parameters')
+        	\item Result('out','in','plotting function and parameters')
+        \end{itemize}
+        \item scons checks for dependencies
+    \end{itemize}
+\end{frame}
+
+
+\begin{frame} \frametitle{RSF format}
+    \begin{itemize}
+        \item just a text file with a bunch of info:
+        \item size and increments for each dimension
+        \item labels for plotting the data
+        \item processing history
+        \item \textcolor{red}{path to data} 
+        \item \textcolor{red}{path to headers}
+    \end{itemize}
+\end{frame}
+
+\inputdir{rsf_format}
+\begin{frame} \frametitle{RSF format}
+    \plot{terminal1}{width=0.55\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{RSF format}
+    \plot{terminal2}{width=0.55\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{RSF format}
+    \plot{terminal3}{width=0.55\textwidth}{}
+\end{frame}
+
+
+\begin{frame} \frametitle{getting started}
+    \begin{itemize}
+        \item create a directory in \$RSFSRC/user to put your codes 
+        \item create a directory in \$RSFSRC/book to put your documents and scripts
+        \item see other users codes and scripts for examples
+    \end{itemize}
+\end{frame}
+
+\inputdir{python_api}
+
+\begin{frame} \frametitle{using the python API}
+    \plot{screengrab1}{width=0.55\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{using the python API}
+    \plot{screengrab2}{width=0.55\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{using the python API}
+    \plot{testimageout}{width=0.75\textwidth}{}
+\end{frame}
+
+\begin{frame} \frametitle{parallel computing}
+    \begin{itemize}
+        \item OpenMP for shared memory systems 
+        \item MPI for distributed memory systems
+        \item scons: \\Flow('out','inp','radon np=100 p0=0 dp=0.01') becomes \\Flow('out','inp','radon np=100 p0=0 dp=0.01',split=[3,256]) \\then executed using \\"scons -j 8 CLUSTER='localhost 4 neurus.physics.ualberta.ca 2' out.rsf"
+    \end{itemize}
+
+\end{frame}
+
+\begin{frame} \frametitle{writing a paper or presentation}
+    \begin{itemize}
+        \item latex file(s) for paper, presentation, abstract, report, thesis, etc.
+        \item subdirectory 1 with synthetic example scripts and figures
+        \item subdirectory 2 with real data example scripts and figures
+        \item ...
+    \end{itemize}
+    \pause
+    \begin{itemize}
+        \item all of your stuff is organized and together
+            \pause
+        \item use svn or git to back up and control versions
+            \pause
+        \item share svn or git repository and you can collaborate on ideas AND examples AND paper! 
+    \end{itemize} 
+\end{frame}
+
+\begin{frame} \frametitle{Conclusion}
+    \begin{itemize}
+        \item Madagascar is cool.
+    \end{itemize}
+\end{frame}
+
+

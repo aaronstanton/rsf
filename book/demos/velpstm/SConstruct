@@ -1,0 +1,16 @@
+import os
+os.environ['OMP_NUM_THREADS'] = '4'
+from rsf.proj import *
+
+Flow('m',None,'sigmoid n1=500 n2=500 large=2500 d1=0.004 d2=10 | put title="m" label2="x" unit2="m" n3=1 d3=1 o3=0 | ricker1 frequency=40',stdin=0)
+Plot('m','grey')
+Flow('vp',None,'makevel n1=500 n2=500 v000=2500 dvdx1=1.5 dvdx2=0',stdin=0)
+Flow('w','m','math output=1')
+Plot('vp','grey mean=y color=j scalebar=y')
+Flow('d','m vp w','velpstm adj=n vel=${SOURCES[1]} w=${SOURCES[2]} aperture=4000 verbose=y')
+Flow('m_adj','d vp w','velpstm adj=y vel=${SOURCES[1]} w=${SOURCES[2]} aperture=4000 verbose=y')
+Plot('d','grey')
+Plot('m_adj','grey')
+Result('all','vp m d m_adj','SideBySideAniso')
+End()
+

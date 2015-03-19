@@ -1,0 +1,77 @@
+import os
+
+os.environ['OMP_NUM_THREADS'] = '6'
+
+from rsf.proj import *
+
+Flow('marmvel.hh',None,'wget http://www.reproducibility.org/data/marm/marmvel.hh --limit-rate=0.5m -O ${TARGETS[0]}')
+Flow('vel','marmvel.hh',
+     '''
+     dd form=native | 
+     scale rscale=.001 | put d1=0.004 d2=0.004
+     label1=Depth label2=Distance unit1=km unit2=km
+     label=Velocity unit=km/s
+     ''')
+Flow('v','vel','scale dscale=1000 | put d1=4 d2=4 unit1=m unit2=m unit="m/s"') 
+
+Flow('v_smooth','v','smooth rect1=50 rect2=50') 
+
+Flow('marmexp.hh',None,'wget http://www.reproducibility.org/data/marm/marmexp.hh --limit-rate=0.5m -O ${TARGETS[0]}')
+Flow('exp','marmexp.hh','dd form=native')
+
+Flow('d','exp','put d2=4 unit2=m unit3=m') 
+Plot('v','grey color=j allpos=y title="V" titlesz=20 ')
+Plot('v_smooth','grey color=j allpos=y title="V smoothed" titlesz=20 ')
+Plot('d','grey minval=-0.01 maxval=0.01 clip=0.01 title="Exploding Reflector Data"  titlesz=20 ')
+
+Flow('dmig_pspi','d v_smooth',
+     '''
+     zowem op=3 nref=2 numthreads=6 verbose=y 
+     adj=y
+     nz=751 dz=4 oz=0 fmax=50
+     vp=${SOURCES[1]}
+     ''')
+
+Flow('vmin','v_smooth',
+     '''
+     stack axis=2 | 
+     spray axis=2 n=2301 d=4 o=0 |
+     math output="input*0.8"
+     ''')
+Flow('vmax','v_smooth',
+     '''
+     stack axis=2 | 
+     spray axis=2 n=2301 d=4 o=0 |
+     math output="input*1.2"
+     ''')
+Flow('w','v_smooth vmin vmax',
+     '''
+     math v=${SOURCES[0]} 
+          vmin=${SOURCES[1]} 
+          vmax=${SOURCES[2]} 
+          output="(v-vmin)/(vmax-vmin)" |
+     clip2 lower=0 upper=1
+     ''')
+
+#Flow('w','v_smooth vmin vmax',
+#     '''
+#     math output=0.5
+#     ''')
+
+Plot('vmin','grey color=j allpos=y title="Vmin" titlesz=20 ')
+Plot('vmax','grey color=j allpos=y title="Vmax" titlesz=20 ')
+Plot('w','grey color=j allpos=y title="w: theoretical" titlesz=20 ')
+
+Flow('dmig_velwem','d vmin vmax w',
+     '''
+     velwem verbose=y adj=y
+     nz=751 dz=4 oz=0 fmax=50
+     vmin=${SOURCES[1]} vmax=${SOURCES[2]} w=${SOURCES[3]}
+     ''')
+
+Plot('dmig_pspi','grey title="PSPI" titlesz=20 ')
+Plot('dmig_velwem','grey title="VELWEM"  titlesz=20 ')
+Result('results','d dmig_pspi dmig_velwem','SideBySideAniso')
+Result('v','v v_smooth vmin vmax w','SideBySideAniso')
+
+End()

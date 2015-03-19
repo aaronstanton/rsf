@@ -1,0 +1,3 @@
+uses=['sfsyn5d', 'sffft1', 'sfcabs', 'sffft3', 'sfwindow', 'sfbyte', 'sfgrey3', 'sfdecimate', 'sftransp', 'sfsvd_complex', 'sfsvd_complexblk', 'sfgeom5d', 'sfpad5d', 'sfpocs5d']
+data=[]
+size= 1118282400

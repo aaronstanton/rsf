@@ -1,0 +1,566 @@
+from rsf.proj import *
+
+#
+# To execute using 20 processors: scons -j 20 CLUSTER="localhost 48" 
+# (or pscons if you want to use all 48 processors on neurus)
+
+#
+# Convert to RSF
+#
+Flow('din tdin','/u1/data/Petrobank/Whitesands_2009_PS/su/v.su',
+     '''
+     segyread su=y suxdr=y tfile=${TARGETS[1]} 
+     ''') 
+
+#
+# Make headers needed for interpolation
+# 
+Flow('head_geom','tdin',
+     '''
+     geom5d headin=${SOURCES[0]} headout=${TARGETS[0]} 
+            mode=2
+            omx=480000 omy=6160000  
+            dmx=10 dmy=5 dhx=100 dhy=50
+            ang=127.752 
+     ''') 
+
+#
+# Bin the data (zero traces at missing trace locations)
+#
+Flow('din_pad head_pad','din head_geom',
+     '''
+     pad5d headin=${SOURCES[1]} headout=${TARGETS[1]} mode=2
+     ''') 
+
+#
+# apply agc
+#
+Flow('din_prep','din_pad',
+     '''
+     agc
+     ''') 
+
+#
+# Patch midpoints in the x and y directions
+#
+Flow('din_patch','din_prep',
+     '''
+     patch5d w=1000,10,10,9,57 p=1,20,35,1,1 verb=y 
+     ''')
+
+#
+# Process 700 patches of data
+#
+for imx in range(20):
+    for imy in range(35):
+        Flow('dorig_patch_%d_%d' % (imx,imy),'din_patch',
+             '''
+             window f7=%d n7=1 f8=%d n8=1         
+             ''' % (imx,imy))
+        Flow('dpocs_patch_%d_%d' % (imx,imy),'din_patch',
+             '''
+             window f7=%d n7=1 f8=%d n8=1 |
+             pocs5d method=1 tw_length=200 iter=30 fmax=120 verbose=0        
+             ''' % (imx,imy))
+        Flow('dmwni_patch_%d_%d' % (imx,imy),'din_patch',
+             '''
+             window f7=%d n7=1 f8=%d n8=1 |
+             pocs5d method=2 tw_length=200 iter=15 iter_i=3 fmax=120 verbose=0         
+             ''' % (imx,imy))
+        Flow('dseqsvd_patch_%d_%d' % (imx,imy),'din_patch',
+             '''
+             window f7=%d n7=1 f8=%d n8=1 |
+             seqsvd5d method=3 tw_length=200 iter=30 ranki=8 rankf=8 fmax=120 verbose=0         
+             ''' % (imx,imy))
+
+#
+# merge the patches
+#
+Flow('dorig_patch_imx0','dorig_patch_0_0 dorig_patch_0_1 dorig_patch_0_2 dorig_patch_0_3 dorig_patch_0_4 dorig_patch_0_5 dorig_patch_0_6 dorig_patch_0_7 dorig_patch_0_8 dorig_patch_0_9 dorig_patch_0_10 dorig_patch_0_11 dorig_patch_0_12 dorig_patch_0_13 dorig_patch_0_14 dorig_patch_0_15 dorig_patch_0_16 dorig_patch_0_17 dorig_patch_0_18 dorig_patch_0_19 dorig_patch_0_20 dorig_patch_0_21 dorig_patch_0_22 dorig_patch_0_23 dorig_patch_0_24 dorig_patch_0_25 dorig_patch_0_26 dorig_patch_0_27 dorig_patch_0_28 dorig_patch_0_29 dorig_patch_0_30 dorig_patch_0_31 dorig_patch_0_32 dorig_patch_0_33 dorig_patch_0_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx1','dorig_patch_1_0 dorig_patch_1_1 dorig_patch_1_2 dorig_patch_1_3 dorig_patch_1_4 dorig_patch_1_5 dorig_patch_1_6 dorig_patch_1_7 dorig_patch_1_8 dorig_patch_1_9 dorig_patch_1_10 dorig_patch_1_11 dorig_patch_1_12 dorig_patch_1_13 dorig_patch_1_14 dorig_patch_1_15 dorig_patch_1_16 dorig_patch_1_17 dorig_patch_1_18 dorig_patch_1_19 dorig_patch_1_20 dorig_patch_1_21 dorig_patch_1_22 dorig_patch_1_23 dorig_patch_1_24 dorig_patch_1_25 dorig_patch_1_26 dorig_patch_1_27 dorig_patch_1_28 dorig_patch_1_29 dorig_patch_1_30 dorig_patch_1_31 dorig_patch_1_32 dorig_patch_1_33 dorig_patch_1_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx2','dorig_patch_2_0 dorig_patch_2_1 dorig_patch_2_2 dorig_patch_2_3 dorig_patch_2_4 dorig_patch_2_5 dorig_patch_2_6 dorig_patch_2_7 dorig_patch_2_8 dorig_patch_2_9 dorig_patch_2_10 dorig_patch_2_11 dorig_patch_2_12 dorig_patch_2_13 dorig_patch_2_14 dorig_patch_2_15 dorig_patch_2_16 dorig_patch_2_17 dorig_patch_2_18 dorig_patch_2_19 dorig_patch_2_20 dorig_patch_2_21 dorig_patch_2_22 dorig_patch_2_23 dorig_patch_2_24 dorig_patch_2_25 dorig_patch_2_26 dorig_patch_2_27 dorig_patch_2_28 dorig_patch_2_29 dorig_patch_2_30 dorig_patch_2_31 dorig_patch_2_32 dorig_patch_2_33 dorig_patch_2_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx3','dorig_patch_3_0 dorig_patch_3_1 dorig_patch_3_2 dorig_patch_3_3 dorig_patch_3_4 dorig_patch_3_5 dorig_patch_3_6 dorig_patch_3_7 dorig_patch_3_8 dorig_patch_3_9 dorig_patch_3_10 dorig_patch_3_11 dorig_patch_3_12 dorig_patch_3_13 dorig_patch_3_14 dorig_patch_3_15 dorig_patch_3_16 dorig_patch_3_17 dorig_patch_3_18 dorig_patch_3_19 dorig_patch_3_20 dorig_patch_3_21 dorig_patch_3_22 dorig_patch_3_23 dorig_patch_3_24 dorig_patch_3_25 dorig_patch_3_26 dorig_patch_3_27 dorig_patch_3_28 dorig_patch_3_29 dorig_patch_3_30 dorig_patch_3_31 dorig_patch_3_32 dorig_patch_3_33 dorig_patch_3_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx4','dorig_patch_4_0 dorig_patch_4_1 dorig_patch_4_2 dorig_patch_4_3 dorig_patch_4_4 dorig_patch_4_5 dorig_patch_4_6 dorig_patch_4_7 dorig_patch_4_8 dorig_patch_4_9 dorig_patch_4_10 dorig_patch_4_11 dorig_patch_4_12 dorig_patch_4_13 dorig_patch_4_14 dorig_patch_4_15 dorig_patch_4_16 dorig_patch_4_17 dorig_patch_4_18 dorig_patch_4_19 dorig_patch_4_20 dorig_patch_4_21 dorig_patch_4_22 dorig_patch_4_23 dorig_patch_4_24 dorig_patch_4_25 dorig_patch_4_26 dorig_patch_4_27 dorig_patch_4_28 dorig_patch_4_29 dorig_patch_4_30 dorig_patch_4_31 dorig_patch_4_32 dorig_patch_4_33 dorig_patch_4_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx5','dorig_patch_5_0 dorig_patch_5_1 dorig_patch_5_2 dorig_patch_5_3 dorig_patch_5_4 dorig_patch_5_5 dorig_patch_5_6 dorig_patch_5_7 dorig_patch_5_8 dorig_patch_5_9 dorig_patch_5_10 dorig_patch_5_11 dorig_patch_5_12 dorig_patch_5_13 dorig_patch_5_14 dorig_patch_5_15 dorig_patch_5_16 dorig_patch_5_17 dorig_patch_5_18 dorig_patch_5_19 dorig_patch_5_20 dorig_patch_5_21 dorig_patch_5_22 dorig_patch_5_23 dorig_patch_5_24 dorig_patch_5_25 dorig_patch_5_26 dorig_patch_5_27 dorig_patch_5_28 dorig_patch_5_29 dorig_patch_5_30 dorig_patch_5_31 dorig_patch_5_32 dorig_patch_5_33 dorig_patch_5_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx6','dorig_patch_6_0 dorig_patch_6_1 dorig_patch_6_2 dorig_patch_6_3 dorig_patch_6_4 dorig_patch_6_5 dorig_patch_6_6 dorig_patch_6_7 dorig_patch_6_8 dorig_patch_6_9 dorig_patch_6_10 dorig_patch_6_11 dorig_patch_6_12 dorig_patch_6_13 dorig_patch_6_14 dorig_patch_6_15 dorig_patch_6_16 dorig_patch_6_17 dorig_patch_6_18 dorig_patch_6_19 dorig_patch_6_20 dorig_patch_6_21 dorig_patch_6_22 dorig_patch_6_23 dorig_patch_6_24 dorig_patch_6_25 dorig_patch_6_26 dorig_patch_6_27 dorig_patch_6_28 dorig_patch_6_29 dorig_patch_6_30 dorig_patch_6_31 dorig_patch_6_32 dorig_patch_6_33 dorig_patch_6_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx7','dorig_patch_7_0 dorig_patch_7_1 dorig_patch_7_2 dorig_patch_7_3 dorig_patch_7_4 dorig_patch_7_5 dorig_patch_7_6 dorig_patch_7_7 dorig_patch_7_8 dorig_patch_7_9 dorig_patch_7_10 dorig_patch_7_11 dorig_patch_7_12 dorig_patch_7_13 dorig_patch_7_14 dorig_patch_7_15 dorig_patch_7_16 dorig_patch_7_17 dorig_patch_7_18 dorig_patch_7_19 dorig_patch_7_20 dorig_patch_7_21 dorig_patch_7_22 dorig_patch_7_23 dorig_patch_7_24 dorig_patch_7_25 dorig_patch_7_26 dorig_patch_7_27 dorig_patch_7_28 dorig_patch_7_29 dorig_patch_7_30 dorig_patch_7_31 dorig_patch_7_32 dorig_patch_7_33 dorig_patch_7_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx8','dorig_patch_8_0 dorig_patch_8_1 dorig_patch_8_2 dorig_patch_8_3 dorig_patch_8_4 dorig_patch_8_5 dorig_patch_8_6 dorig_patch_8_7 dorig_patch_8_8 dorig_patch_8_9 dorig_patch_8_10 dorig_patch_8_11 dorig_patch_8_12 dorig_patch_8_13 dorig_patch_8_14 dorig_patch_8_15 dorig_patch_8_16 dorig_patch_8_17 dorig_patch_8_18 dorig_patch_8_19 dorig_patch_8_20 dorig_patch_8_21 dorig_patch_8_22 dorig_patch_8_23 dorig_patch_8_24 dorig_patch_8_25 dorig_patch_8_26 dorig_patch_8_27 dorig_patch_8_28 dorig_patch_8_29 dorig_patch_8_30 dorig_patch_8_31 dorig_patch_8_32 dorig_patch_8_33 dorig_patch_8_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx9','dorig_patch_9_0 dorig_patch_9_1 dorig_patch_9_2 dorig_patch_9_3 dorig_patch_9_4 dorig_patch_9_5 dorig_patch_9_6 dorig_patch_9_7 dorig_patch_9_8 dorig_patch_9_9 dorig_patch_9_10 dorig_patch_9_11 dorig_patch_9_12 dorig_patch_9_13 dorig_patch_9_14 dorig_patch_9_15 dorig_patch_9_16 dorig_patch_9_17 dorig_patch_9_18 dorig_patch_9_19 dorig_patch_9_20 dorig_patch_9_21 dorig_patch_9_22 dorig_patch_9_23 dorig_patch_9_24 dorig_patch_9_25 dorig_patch_9_26 dorig_patch_9_27 dorig_patch_9_28 dorig_patch_9_29 dorig_patch_9_30 dorig_patch_9_31 dorig_patch_9_32 dorig_patch_9_33 dorig_patch_9_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx10','dorig_patch_10_0 dorig_patch_10_1 dorig_patch_10_2 dorig_patch_10_3 dorig_patch_10_4 dorig_patch_10_5 dorig_patch_10_6 dorig_patch_10_7 dorig_patch_10_8 dorig_patch_10_9 dorig_patch_10_10 dorig_patch_10_11 dorig_patch_10_12 dorig_patch_10_13 dorig_patch_10_14 dorig_patch_10_15 dorig_patch_10_16 dorig_patch_10_17 dorig_patch_10_18 dorig_patch_10_19 dorig_patch_10_20 dorig_patch_10_21 dorig_patch_10_22 dorig_patch_10_23 dorig_patch_10_24 dorig_patch_10_25 dorig_patch_10_26 dorig_patch_10_27 dorig_patch_10_28 dorig_patch_10_29 dorig_patch_10_30 dorig_patch_10_31 dorig_patch_10_32 dorig_patch_10_33 dorig_patch_10_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx11','dorig_patch_11_0 dorig_patch_11_1 dorig_patch_11_2 dorig_patch_11_3 dorig_patch_11_4 dorig_patch_11_5 dorig_patch_11_6 dorig_patch_11_7 dorig_patch_11_8 dorig_patch_11_9 dorig_patch_11_10 dorig_patch_11_11 dorig_patch_11_12 dorig_patch_11_13 dorig_patch_11_14 dorig_patch_11_15 dorig_patch_11_16 dorig_patch_11_17 dorig_patch_11_18 dorig_patch_11_19 dorig_patch_11_20 dorig_patch_11_21 dorig_patch_11_22 dorig_patch_11_23 dorig_patch_11_24 dorig_patch_11_25 dorig_patch_11_26 dorig_patch_11_27 dorig_patch_11_28 dorig_patch_11_29 dorig_patch_11_30 dorig_patch_11_31 dorig_patch_11_32 dorig_patch_11_33 dorig_patch_11_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx12','dorig_patch_12_0 dorig_patch_12_1 dorig_patch_12_2 dorig_patch_12_3 dorig_patch_12_4 dorig_patch_12_5 dorig_patch_12_6 dorig_patch_12_7 dorig_patch_12_8 dorig_patch_12_9 dorig_patch_12_10 dorig_patch_12_11 dorig_patch_12_12 dorig_patch_12_13 dorig_patch_12_14 dorig_patch_12_15 dorig_patch_12_16 dorig_patch_12_17 dorig_patch_12_18 dorig_patch_12_19 dorig_patch_12_20 dorig_patch_12_21 dorig_patch_12_22 dorig_patch_12_23 dorig_patch_12_24 dorig_patch_12_25 dorig_patch_12_26 dorig_patch_12_27 dorig_patch_12_28 dorig_patch_12_29 dorig_patch_12_30 dorig_patch_12_31 dorig_patch_12_32 dorig_patch_12_33 dorig_patch_12_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx13','dorig_patch_13_0 dorig_patch_13_1 dorig_patch_13_2 dorig_patch_13_3 dorig_patch_13_4 dorig_patch_13_5 dorig_patch_13_6 dorig_patch_13_7 dorig_patch_13_8 dorig_patch_13_9 dorig_patch_13_10 dorig_patch_13_11 dorig_patch_13_12 dorig_patch_13_13 dorig_patch_13_14 dorig_patch_13_15 dorig_patch_13_16 dorig_patch_13_17 dorig_patch_13_18 dorig_patch_13_19 dorig_patch_13_20 dorig_patch_13_21 dorig_patch_13_22 dorig_patch_13_23 dorig_patch_13_24 dorig_patch_13_25 dorig_patch_13_26 dorig_patch_13_27 dorig_patch_13_28 dorig_patch_13_29 dorig_patch_13_30 dorig_patch_13_31 dorig_patch_13_32 dorig_patch_13_33 dorig_patch_13_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx14','dorig_patch_14_0 dorig_patch_14_1 dorig_patch_14_2 dorig_patch_14_3 dorig_patch_14_4 dorig_patch_14_5 dorig_patch_14_6 dorig_patch_14_7 dorig_patch_14_8 dorig_patch_14_9 dorig_patch_14_10 dorig_patch_14_11 dorig_patch_14_12 dorig_patch_14_13 dorig_patch_14_14 dorig_patch_14_15 dorig_patch_14_16 dorig_patch_14_17 dorig_patch_14_18 dorig_patch_14_19 dorig_patch_14_20 dorig_patch_14_21 dorig_patch_14_22 dorig_patch_14_23 dorig_patch_14_24 dorig_patch_14_25 dorig_patch_14_26 dorig_patch_14_27 dorig_patch_14_28 dorig_patch_14_29 dorig_patch_14_30 dorig_patch_14_31 dorig_patch_14_32 dorig_patch_14_33 dorig_patch_14_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx15','dorig_patch_15_0 dorig_patch_15_1 dorig_patch_15_2 dorig_patch_15_3 dorig_patch_15_4 dorig_patch_15_5 dorig_patch_15_6 dorig_patch_15_7 dorig_patch_15_8 dorig_patch_15_9 dorig_patch_15_10 dorig_patch_15_11 dorig_patch_15_12 dorig_patch_15_13 dorig_patch_15_14 dorig_patch_15_15 dorig_patch_15_16 dorig_patch_15_17 dorig_patch_15_18 dorig_patch_15_19 dorig_patch_15_20 dorig_patch_15_21 dorig_patch_15_22 dorig_patch_15_23 dorig_patch_15_24 dorig_patch_15_25 dorig_patch_15_26 dorig_patch_15_27 dorig_patch_15_28 dorig_patch_15_29 dorig_patch_15_30 dorig_patch_15_31 dorig_patch_15_32 dorig_patch_15_33 dorig_patch_15_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx16','dorig_patch_16_0 dorig_patch_16_1 dorig_patch_16_2 dorig_patch_16_3 dorig_patch_16_4 dorig_patch_16_5 dorig_patch_16_6 dorig_patch_16_7 dorig_patch_16_8 dorig_patch_16_9 dorig_patch_16_10 dorig_patch_16_11 dorig_patch_16_12 dorig_patch_16_13 dorig_patch_16_14 dorig_patch_16_15 dorig_patch_16_16 dorig_patch_16_17 dorig_patch_16_18 dorig_patch_16_19 dorig_patch_16_20 dorig_patch_16_21 dorig_patch_16_22 dorig_patch_16_23 dorig_patch_16_24 dorig_patch_16_25 dorig_patch_16_26 dorig_patch_16_27 dorig_patch_16_28 dorig_patch_16_29 dorig_patch_16_30 dorig_patch_16_31 dorig_patch_16_32 dorig_patch_16_33 dorig_patch_16_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx17','dorig_patch_17_0 dorig_patch_17_1 dorig_patch_17_2 dorig_patch_17_3 dorig_patch_17_4 dorig_patch_17_5 dorig_patch_17_6 dorig_patch_17_7 dorig_patch_17_8 dorig_patch_17_9 dorig_patch_17_10 dorig_patch_17_11 dorig_patch_17_12 dorig_patch_17_13 dorig_patch_17_14 dorig_patch_17_15 dorig_patch_17_16 dorig_patch_17_17 dorig_patch_17_18 dorig_patch_17_19 dorig_patch_17_20 dorig_patch_17_21 dorig_patch_17_22 dorig_patch_17_23 dorig_patch_17_24 dorig_patch_17_25 dorig_patch_17_26 dorig_patch_17_27 dorig_patch_17_28 dorig_patch_17_29 dorig_patch_17_30 dorig_patch_17_31 dorig_patch_17_32 dorig_patch_17_33 dorig_patch_17_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx18','dorig_patch_18_0 dorig_patch_18_1 dorig_patch_18_2 dorig_patch_18_3 dorig_patch_18_4 dorig_patch_18_5 dorig_patch_18_6 dorig_patch_18_7 dorig_patch_18_8 dorig_patch_18_9 dorig_patch_18_10 dorig_patch_18_11 dorig_patch_18_12 dorig_patch_18_13 dorig_patch_18_14 dorig_patch_18_15 dorig_patch_18_16 dorig_patch_18_17 dorig_patch_18_18 dorig_patch_18_19 dorig_patch_18_20 dorig_patch_18_21 dorig_patch_18_22 dorig_patch_18_23 dorig_patch_18_24 dorig_patch_18_25 dorig_patch_18_26 dorig_patch_18_27 dorig_patch_18_28 dorig_patch_18_29 dorig_patch_18_30 dorig_patch_18_31 dorig_patch_18_32 dorig_patch_18_33 dorig_patch_18_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dorig_patch_imx19','dorig_patch_19_0 dorig_patch_19_1 dorig_patch_19_2 dorig_patch_19_3 dorig_patch_19_4 dorig_patch_19_5 dorig_patch_19_6 dorig_patch_19_7 dorig_patch_19_8 dorig_patch_19_9 dorig_patch_19_10 dorig_patch_19_11 dorig_patch_19_12 dorig_patch_19_13 dorig_patch_19_14 dorig_patch_19_15 dorig_patch_19_16 dorig_patch_19_17 dorig_patch_19_18 dorig_patch_19_19 dorig_patch_19_20 dorig_patch_19_21 dorig_patch_19_22 dorig_patch_19_23 dorig_patch_19_24 dorig_patch_19_25 dorig_patch_19_26 dorig_patch_19_27 dorig_patch_19_28 dorig_patch_19_29 dorig_patch_19_30 dorig_patch_19_31 dorig_patch_19_32 dorig_patch_19_33 dorig_patch_19_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+
+Flow('dorig_patch','dorig_patch_imx0 dorig_patch_imx1 dorig_patch_imx2 dorig_patch_imx3 dorig_patch_imx4 dorig_patch_imx5 dorig_patch_imx6 dorig_patch_imx7 dorig_patch_imx8 dorig_patch_imx9 dorig_patch_imx10 dorig_patch_imx11 dorig_patch_imx12 dorig_patch_imx13 dorig_patch_imx14 dorig_patch_imx15 dorig_patch_imx16 dorig_patch_imx17 dorig_patch_imx18 dorig_patch_imx19',
+     '''
+     cat ${SOURCES[0:19]} axis=7
+     ''')
+
+Flow('dorig','dorig_patch',
+     '''
+     put n6=1 n7=20 n8=35 n9=1 | 
+     patch5d inv=y weight=y verb=y
+     ''')
+
+#
+# merge the patches of pocs interpolated data
+#
+Flow('dpocs_patch_imx0','dpocs_patch_0_0 dpocs_patch_0_1 dpocs_patch_0_2 dpocs_patch_0_3 dpocs_patch_0_4 dpocs_patch_0_5 dpocs_patch_0_6 dpocs_patch_0_7 dpocs_patch_0_8 dpocs_patch_0_9 dpocs_patch_0_10 dpocs_patch_0_11 dpocs_patch_0_12 dpocs_patch_0_13 dpocs_patch_0_14 dpocs_patch_0_15 dpocs_patch_0_16 dpocs_patch_0_17 dpocs_patch_0_18 dpocs_patch_0_19 dpocs_patch_0_20 dpocs_patch_0_21 dpocs_patch_0_22 dpocs_patch_0_23 dpocs_patch_0_24 dpocs_patch_0_25 dpocs_patch_0_26 dpocs_patch_0_27 dpocs_patch_0_28 dpocs_patch_0_29 dpocs_patch_0_30 dpocs_patch_0_31 dpocs_patch_0_32 dpocs_patch_0_33 dpocs_patch_0_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx1','dpocs_patch_1_0 dpocs_patch_1_1 dpocs_patch_1_2 dpocs_patch_1_3 dpocs_patch_1_4 dpocs_patch_1_5 dpocs_patch_1_6 dpocs_patch_1_7 dpocs_patch_1_8 dpocs_patch_1_9 dpocs_patch_1_10 dpocs_patch_1_11 dpocs_patch_1_12 dpocs_patch_1_13 dpocs_patch_1_14 dpocs_patch_1_15 dpocs_patch_1_16 dpocs_patch_1_17 dpocs_patch_1_18 dpocs_patch_1_19 dpocs_patch_1_20 dpocs_patch_1_21 dpocs_patch_1_22 dpocs_patch_1_23 dpocs_patch_1_24 dpocs_patch_1_25 dpocs_patch_1_26 dpocs_patch_1_27 dpocs_patch_1_28 dpocs_patch_1_29 dpocs_patch_1_30 dpocs_patch_1_31 dpocs_patch_1_32 dpocs_patch_1_33 dpocs_patch_1_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx2','dpocs_patch_2_0 dpocs_patch_2_1 dpocs_patch_2_2 dpocs_patch_2_3 dpocs_patch_2_4 dpocs_patch_2_5 dpocs_patch_2_6 dpocs_patch_2_7 dpocs_patch_2_8 dpocs_patch_2_9 dpocs_patch_2_10 dpocs_patch_2_11 dpocs_patch_2_12 dpocs_patch_2_13 dpocs_patch_2_14 dpocs_patch_2_15 dpocs_patch_2_16 dpocs_patch_2_17 dpocs_patch_2_18 dpocs_patch_2_19 dpocs_patch_2_20 dpocs_patch_2_21 dpocs_patch_2_22 dpocs_patch_2_23 dpocs_patch_2_24 dpocs_patch_2_25 dpocs_patch_2_26 dpocs_patch_2_27 dpocs_patch_2_28 dpocs_patch_2_29 dpocs_patch_2_30 dpocs_patch_2_31 dpocs_patch_2_32 dpocs_patch_2_33 dpocs_patch_2_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx3','dpocs_patch_3_0 dpocs_patch_3_1 dpocs_patch_3_2 dpocs_patch_3_3 dpocs_patch_3_4 dpocs_patch_3_5 dpocs_patch_3_6 dpocs_patch_3_7 dpocs_patch_3_8 dpocs_patch_3_9 dpocs_patch_3_10 dpocs_patch_3_11 dpocs_patch_3_12 dpocs_patch_3_13 dpocs_patch_3_14 dpocs_patch_3_15 dpocs_patch_3_16 dpocs_patch_3_17 dpocs_patch_3_18 dpocs_patch_3_19 dpocs_patch_3_20 dpocs_patch_3_21 dpocs_patch_3_22 dpocs_patch_3_23 dpocs_patch_3_24 dpocs_patch_3_25 dpocs_patch_3_26 dpocs_patch_3_27 dpocs_patch_3_28 dpocs_patch_3_29 dpocs_patch_3_30 dpocs_patch_3_31 dpocs_patch_3_32 dpocs_patch_3_33 dpocs_patch_3_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx4','dpocs_patch_4_0 dpocs_patch_4_1 dpocs_patch_4_2 dpocs_patch_4_3 dpocs_patch_4_4 dpocs_patch_4_5 dpocs_patch_4_6 dpocs_patch_4_7 dpocs_patch_4_8 dpocs_patch_4_9 dpocs_patch_4_10 dpocs_patch_4_11 dpocs_patch_4_12 dpocs_patch_4_13 dpocs_patch_4_14 dpocs_patch_4_15 dpocs_patch_4_16 dpocs_patch_4_17 dpocs_patch_4_18 dpocs_patch_4_19 dpocs_patch_4_20 dpocs_patch_4_21 dpocs_patch_4_22 dpocs_patch_4_23 dpocs_patch_4_24 dpocs_patch_4_25 dpocs_patch_4_26 dpocs_patch_4_27 dpocs_patch_4_28 dpocs_patch_4_29 dpocs_patch_4_30 dpocs_patch_4_31 dpocs_patch_4_32 dpocs_patch_4_33 dpocs_patch_4_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx5','dpocs_patch_5_0 dpocs_patch_5_1 dpocs_patch_5_2 dpocs_patch_5_3 dpocs_patch_5_4 dpocs_patch_5_5 dpocs_patch_5_6 dpocs_patch_5_7 dpocs_patch_5_8 dpocs_patch_5_9 dpocs_patch_5_10 dpocs_patch_5_11 dpocs_patch_5_12 dpocs_patch_5_13 dpocs_patch_5_14 dpocs_patch_5_15 dpocs_patch_5_16 dpocs_patch_5_17 dpocs_patch_5_18 dpocs_patch_5_19 dpocs_patch_5_20 dpocs_patch_5_21 dpocs_patch_5_22 dpocs_patch_5_23 dpocs_patch_5_24 dpocs_patch_5_25 dpocs_patch_5_26 dpocs_patch_5_27 dpocs_patch_5_28 dpocs_patch_5_29 dpocs_patch_5_30 dpocs_patch_5_31 dpocs_patch_5_32 dpocs_patch_5_33 dpocs_patch_5_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx6','dpocs_patch_6_0 dpocs_patch_6_1 dpocs_patch_6_2 dpocs_patch_6_3 dpocs_patch_6_4 dpocs_patch_6_5 dpocs_patch_6_6 dpocs_patch_6_7 dpocs_patch_6_8 dpocs_patch_6_9 dpocs_patch_6_10 dpocs_patch_6_11 dpocs_patch_6_12 dpocs_patch_6_13 dpocs_patch_6_14 dpocs_patch_6_15 dpocs_patch_6_16 dpocs_patch_6_17 dpocs_patch_6_18 dpocs_patch_6_19 dpocs_patch_6_20 dpocs_patch_6_21 dpocs_patch_6_22 dpocs_patch_6_23 dpocs_patch_6_24 dpocs_patch_6_25 dpocs_patch_6_26 dpocs_patch_6_27 dpocs_patch_6_28 dpocs_patch_6_29 dpocs_patch_6_30 dpocs_patch_6_31 dpocs_patch_6_32 dpocs_patch_6_33 dpocs_patch_6_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx7','dpocs_patch_7_0 dpocs_patch_7_1 dpocs_patch_7_2 dpocs_patch_7_3 dpocs_patch_7_4 dpocs_patch_7_5 dpocs_patch_7_6 dpocs_patch_7_7 dpocs_patch_7_8 dpocs_patch_7_9 dpocs_patch_7_10 dpocs_patch_7_11 dpocs_patch_7_12 dpocs_patch_7_13 dpocs_patch_7_14 dpocs_patch_7_15 dpocs_patch_7_16 dpocs_patch_7_17 dpocs_patch_7_18 dpocs_patch_7_19 dpocs_patch_7_20 dpocs_patch_7_21 dpocs_patch_7_22 dpocs_patch_7_23 dpocs_patch_7_24 dpocs_patch_7_25 dpocs_patch_7_26 dpocs_patch_7_27 dpocs_patch_7_28 dpocs_patch_7_29 dpocs_patch_7_30 dpocs_patch_7_31 dpocs_patch_7_32 dpocs_patch_7_33 dpocs_patch_7_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx8','dpocs_patch_8_0 dpocs_patch_8_1 dpocs_patch_8_2 dpocs_patch_8_3 dpocs_patch_8_4 dpocs_patch_8_5 dpocs_patch_8_6 dpocs_patch_8_7 dpocs_patch_8_8 dpocs_patch_8_9 dpocs_patch_8_10 dpocs_patch_8_11 dpocs_patch_8_12 dpocs_patch_8_13 dpocs_patch_8_14 dpocs_patch_8_15 dpocs_patch_8_16 dpocs_patch_8_17 dpocs_patch_8_18 dpocs_patch_8_19 dpocs_patch_8_20 dpocs_patch_8_21 dpocs_patch_8_22 dpocs_patch_8_23 dpocs_patch_8_24 dpocs_patch_8_25 dpocs_patch_8_26 dpocs_patch_8_27 dpocs_patch_8_28 dpocs_patch_8_29 dpocs_patch_8_30 dpocs_patch_8_31 dpocs_patch_8_32 dpocs_patch_8_33 dpocs_patch_8_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx9','dpocs_patch_9_0 dpocs_patch_9_1 dpocs_patch_9_2 dpocs_patch_9_3 dpocs_patch_9_4 dpocs_patch_9_5 dpocs_patch_9_6 dpocs_patch_9_7 dpocs_patch_9_8 dpocs_patch_9_9 dpocs_patch_9_10 dpocs_patch_9_11 dpocs_patch_9_12 dpocs_patch_9_13 dpocs_patch_9_14 dpocs_patch_9_15 dpocs_patch_9_16 dpocs_patch_9_17 dpocs_patch_9_18 dpocs_patch_9_19 dpocs_patch_9_20 dpocs_patch_9_21 dpocs_patch_9_22 dpocs_patch_9_23 dpocs_patch_9_24 dpocs_patch_9_25 dpocs_patch_9_26 dpocs_patch_9_27 dpocs_patch_9_28 dpocs_patch_9_29 dpocs_patch_9_30 dpocs_patch_9_31 dpocs_patch_9_32 dpocs_patch_9_33 dpocs_patch_9_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx10','dpocs_patch_10_0 dpocs_patch_10_1 dpocs_patch_10_2 dpocs_patch_10_3 dpocs_patch_10_4 dpocs_patch_10_5 dpocs_patch_10_6 dpocs_patch_10_7 dpocs_patch_10_8 dpocs_patch_10_9 dpocs_patch_10_10 dpocs_patch_10_11 dpocs_patch_10_12 dpocs_patch_10_13 dpocs_patch_10_14 dpocs_patch_10_15 dpocs_patch_10_16 dpocs_patch_10_17 dpocs_patch_10_18 dpocs_patch_10_19 dpocs_patch_10_20 dpocs_patch_10_21 dpocs_patch_10_22 dpocs_patch_10_23 dpocs_patch_10_24 dpocs_patch_10_25 dpocs_patch_10_26 dpocs_patch_10_27 dpocs_patch_10_28 dpocs_patch_10_29 dpocs_patch_10_30 dpocs_patch_10_31 dpocs_patch_10_32 dpocs_patch_10_33 dpocs_patch_10_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx11','dpocs_patch_11_0 dpocs_patch_11_1 dpocs_patch_11_2 dpocs_patch_11_3 dpocs_patch_11_4 dpocs_patch_11_5 dpocs_patch_11_6 dpocs_patch_11_7 dpocs_patch_11_8 dpocs_patch_11_9 dpocs_patch_11_10 dpocs_patch_11_11 dpocs_patch_11_12 dpocs_patch_11_13 dpocs_patch_11_14 dpocs_patch_11_15 dpocs_patch_11_16 dpocs_patch_11_17 dpocs_patch_11_18 dpocs_patch_11_19 dpocs_patch_11_20 dpocs_patch_11_21 dpocs_patch_11_22 dpocs_patch_11_23 dpocs_patch_11_24 dpocs_patch_11_25 dpocs_patch_11_26 dpocs_patch_11_27 dpocs_patch_11_28 dpocs_patch_11_29 dpocs_patch_11_30 dpocs_patch_11_31 dpocs_patch_11_32 dpocs_patch_11_33 dpocs_patch_11_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx12','dpocs_patch_12_0 dpocs_patch_12_1 dpocs_patch_12_2 dpocs_patch_12_3 dpocs_patch_12_4 dpocs_patch_12_5 dpocs_patch_12_6 dpocs_patch_12_7 dpocs_patch_12_8 dpocs_patch_12_9 dpocs_patch_12_10 dpocs_patch_12_11 dpocs_patch_12_12 dpocs_patch_12_13 dpocs_patch_12_14 dpocs_patch_12_15 dpocs_patch_12_16 dpocs_patch_12_17 dpocs_patch_12_18 dpocs_patch_12_19 dpocs_patch_12_20 dpocs_patch_12_21 dpocs_patch_12_22 dpocs_patch_12_23 dpocs_patch_12_24 dpocs_patch_12_25 dpocs_patch_12_26 dpocs_patch_12_27 dpocs_patch_12_28 dpocs_patch_12_29 dpocs_patch_12_30 dpocs_patch_12_31 dpocs_patch_12_32 dpocs_patch_12_33 dpocs_patch_12_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx13','dpocs_patch_13_0 dpocs_patch_13_1 dpocs_patch_13_2 dpocs_patch_13_3 dpocs_patch_13_4 dpocs_patch_13_5 dpocs_patch_13_6 dpocs_patch_13_7 dpocs_patch_13_8 dpocs_patch_13_9 dpocs_patch_13_10 dpocs_patch_13_11 dpocs_patch_13_12 dpocs_patch_13_13 dpocs_patch_13_14 dpocs_patch_13_15 dpocs_patch_13_16 dpocs_patch_13_17 dpocs_patch_13_18 dpocs_patch_13_19 dpocs_patch_13_20 dpocs_patch_13_21 dpocs_patch_13_22 dpocs_patch_13_23 dpocs_patch_13_24 dpocs_patch_13_25 dpocs_patch_13_26 dpocs_patch_13_27 dpocs_patch_13_28 dpocs_patch_13_29 dpocs_patch_13_30 dpocs_patch_13_31 dpocs_patch_13_32 dpocs_patch_13_33 dpocs_patch_13_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx14','dpocs_patch_14_0 dpocs_patch_14_1 dpocs_patch_14_2 dpocs_patch_14_3 dpocs_patch_14_4 dpocs_patch_14_5 dpocs_patch_14_6 dpocs_patch_14_7 dpocs_patch_14_8 dpocs_patch_14_9 dpocs_patch_14_10 dpocs_patch_14_11 dpocs_patch_14_12 dpocs_patch_14_13 dpocs_patch_14_14 dpocs_patch_14_15 dpocs_patch_14_16 dpocs_patch_14_17 dpocs_patch_14_18 dpocs_patch_14_19 dpocs_patch_14_20 dpocs_patch_14_21 dpocs_patch_14_22 dpocs_patch_14_23 dpocs_patch_14_24 dpocs_patch_14_25 dpocs_patch_14_26 dpocs_patch_14_27 dpocs_patch_14_28 dpocs_patch_14_29 dpocs_patch_14_30 dpocs_patch_14_31 dpocs_patch_14_32 dpocs_patch_14_33 dpocs_patch_14_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx15','dpocs_patch_15_0 dpocs_patch_15_1 dpocs_patch_15_2 dpocs_patch_15_3 dpocs_patch_15_4 dpocs_patch_15_5 dpocs_patch_15_6 dpocs_patch_15_7 dpocs_patch_15_8 dpocs_patch_15_9 dpocs_patch_15_10 dpocs_patch_15_11 dpocs_patch_15_12 dpocs_patch_15_13 dpocs_patch_15_14 dpocs_patch_15_15 dpocs_patch_15_16 dpocs_patch_15_17 dpocs_patch_15_18 dpocs_patch_15_19 dpocs_patch_15_20 dpocs_patch_15_21 dpocs_patch_15_22 dpocs_patch_15_23 dpocs_patch_15_24 dpocs_patch_15_25 dpocs_patch_15_26 dpocs_patch_15_27 dpocs_patch_15_28 dpocs_patch_15_29 dpocs_patch_15_30 dpocs_patch_15_31 dpocs_patch_15_32 dpocs_patch_15_33 dpocs_patch_15_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx16','dpocs_patch_16_0 dpocs_patch_16_1 dpocs_patch_16_2 dpocs_patch_16_3 dpocs_patch_16_4 dpocs_patch_16_5 dpocs_patch_16_6 dpocs_patch_16_7 dpocs_patch_16_8 dpocs_patch_16_9 dpocs_patch_16_10 dpocs_patch_16_11 dpocs_patch_16_12 dpocs_patch_16_13 dpocs_patch_16_14 dpocs_patch_16_15 dpocs_patch_16_16 dpocs_patch_16_17 dpocs_patch_16_18 dpocs_patch_16_19 dpocs_patch_16_20 dpocs_patch_16_21 dpocs_patch_16_22 dpocs_patch_16_23 dpocs_patch_16_24 dpocs_patch_16_25 dpocs_patch_16_26 dpocs_patch_16_27 dpocs_patch_16_28 dpocs_patch_16_29 dpocs_patch_16_30 dpocs_patch_16_31 dpocs_patch_16_32 dpocs_patch_16_33 dpocs_patch_16_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx17','dpocs_patch_17_0 dpocs_patch_17_1 dpocs_patch_17_2 dpocs_patch_17_3 dpocs_patch_17_4 dpocs_patch_17_5 dpocs_patch_17_6 dpocs_patch_17_7 dpocs_patch_17_8 dpocs_patch_17_9 dpocs_patch_17_10 dpocs_patch_17_11 dpocs_patch_17_12 dpocs_patch_17_13 dpocs_patch_17_14 dpocs_patch_17_15 dpocs_patch_17_16 dpocs_patch_17_17 dpocs_patch_17_18 dpocs_patch_17_19 dpocs_patch_17_20 dpocs_patch_17_21 dpocs_patch_17_22 dpocs_patch_17_23 dpocs_patch_17_24 dpocs_patch_17_25 dpocs_patch_17_26 dpocs_patch_17_27 dpocs_patch_17_28 dpocs_patch_17_29 dpocs_patch_17_30 dpocs_patch_17_31 dpocs_patch_17_32 dpocs_patch_17_33 dpocs_patch_17_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx18','dpocs_patch_18_0 dpocs_patch_18_1 dpocs_patch_18_2 dpocs_patch_18_3 dpocs_patch_18_4 dpocs_patch_18_5 dpocs_patch_18_6 dpocs_patch_18_7 dpocs_patch_18_8 dpocs_patch_18_9 dpocs_patch_18_10 dpocs_patch_18_11 dpocs_patch_18_12 dpocs_patch_18_13 dpocs_patch_18_14 dpocs_patch_18_15 dpocs_patch_18_16 dpocs_patch_18_17 dpocs_patch_18_18 dpocs_patch_18_19 dpocs_patch_18_20 dpocs_patch_18_21 dpocs_patch_18_22 dpocs_patch_18_23 dpocs_patch_18_24 dpocs_patch_18_25 dpocs_patch_18_26 dpocs_patch_18_27 dpocs_patch_18_28 dpocs_patch_18_29 dpocs_patch_18_30 dpocs_patch_18_31 dpocs_patch_18_32 dpocs_patch_18_33 dpocs_patch_18_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dpocs_patch_imx19','dpocs_patch_19_0 dpocs_patch_19_1 dpocs_patch_19_2 dpocs_patch_19_3 dpocs_patch_19_4 dpocs_patch_19_5 dpocs_patch_19_6 dpocs_patch_19_7 dpocs_patch_19_8 dpocs_patch_19_9 dpocs_patch_19_10 dpocs_patch_19_11 dpocs_patch_19_12 dpocs_patch_19_13 dpocs_patch_19_14 dpocs_patch_19_15 dpocs_patch_19_16 dpocs_patch_19_17 dpocs_patch_19_18 dpocs_patch_19_19 dpocs_patch_19_20 dpocs_patch_19_21 dpocs_patch_19_22 dpocs_patch_19_23 dpocs_patch_19_24 dpocs_patch_19_25 dpocs_patch_19_26 dpocs_patch_19_27 dpocs_patch_19_28 dpocs_patch_19_29 dpocs_patch_19_30 dpocs_patch_19_31 dpocs_patch_19_32 dpocs_patch_19_33 dpocs_patch_19_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+
+Flow('dpocs_patch','dpocs_patch_imx0 dpocs_patch_imx1 dpocs_patch_imx2 dpocs_patch_imx3 dpocs_patch_imx4 dpocs_patch_imx5 dpocs_patch_imx6 dpocs_patch_imx7 dpocs_patch_imx8 dpocs_patch_imx9 dpocs_patch_imx10 dpocs_patch_imx11 dpocs_patch_imx12 dpocs_patch_imx13 dpocs_patch_imx14 dpocs_patch_imx15 dpocs_patch_imx16 dpocs_patch_imx17 dpocs_patch_imx18 dpocs_patch_imx19',
+     '''
+     cat ${SOURCES[0:19]} axis=7
+     ''')
+
+Flow('dpocs','dpocs_patch',
+     '''
+     put n6=1 n7=20 n8=35 n9=1 | 
+     patch5d inv=y weight=y verb=y
+     ''')
+
+#
+# merge the patches of mwni interpolated data
+#
+Flow('dmwni_patch_imx0','dmwni_patch_0_0 dmwni_patch_0_1 dmwni_patch_0_2 dmwni_patch_0_3 dmwni_patch_0_4 dmwni_patch_0_5 dmwni_patch_0_6 dmwni_patch_0_7 dmwni_patch_0_8 dmwni_patch_0_9 dmwni_patch_0_10 dmwni_patch_0_11 dmwni_patch_0_12 dmwni_patch_0_13 dmwni_patch_0_14 dmwni_patch_0_15 dmwni_patch_0_16 dmwni_patch_0_17 dmwni_patch_0_18 dmwni_patch_0_19 dmwni_patch_0_20 dmwni_patch_0_21 dmwni_patch_0_22 dmwni_patch_0_23 dmwni_patch_0_24 dmwni_patch_0_25 dmwni_patch_0_26 dmwni_patch_0_27 dmwni_patch_0_28 dmwni_patch_0_29 dmwni_patch_0_30 dmwni_patch_0_31 dmwni_patch_0_32 dmwni_patch_0_33 dmwni_patch_0_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx1','dmwni_patch_1_0 dmwni_patch_1_1 dmwni_patch_1_2 dmwni_patch_1_3 dmwni_patch_1_4 dmwni_patch_1_5 dmwni_patch_1_6 dmwni_patch_1_7 dmwni_patch_1_8 dmwni_patch_1_9 dmwni_patch_1_10 dmwni_patch_1_11 dmwni_patch_1_12 dmwni_patch_1_13 dmwni_patch_1_14 dmwni_patch_1_15 dmwni_patch_1_16 dmwni_patch_1_17 dmwni_patch_1_18 dmwni_patch_1_19 dmwni_patch_1_20 dmwni_patch_1_21 dmwni_patch_1_22 dmwni_patch_1_23 dmwni_patch_1_24 dmwni_patch_1_25 dmwni_patch_1_26 dmwni_patch_1_27 dmwni_patch_1_28 dmwni_patch_1_29 dmwni_patch_1_30 dmwni_patch_1_31 dmwni_patch_1_32 dmwni_patch_1_33 dmwni_patch_1_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx2','dmwni_patch_2_0 dmwni_patch_2_1 dmwni_patch_2_2 dmwni_patch_2_3 dmwni_patch_2_4 dmwni_patch_2_5 dmwni_patch_2_6 dmwni_patch_2_7 dmwni_patch_2_8 dmwni_patch_2_9 dmwni_patch_2_10 dmwni_patch_2_11 dmwni_patch_2_12 dmwni_patch_2_13 dmwni_patch_2_14 dmwni_patch_2_15 dmwni_patch_2_16 dmwni_patch_2_17 dmwni_patch_2_18 dmwni_patch_2_19 dmwni_patch_2_20 dmwni_patch_2_21 dmwni_patch_2_22 dmwni_patch_2_23 dmwni_patch_2_24 dmwni_patch_2_25 dmwni_patch_2_26 dmwni_patch_2_27 dmwni_patch_2_28 dmwni_patch_2_29 dmwni_patch_2_30 dmwni_patch_2_31 dmwni_patch_2_32 dmwni_patch_2_33 dmwni_patch_2_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx3','dmwni_patch_3_0 dmwni_patch_3_1 dmwni_patch_3_2 dmwni_patch_3_3 dmwni_patch_3_4 dmwni_patch_3_5 dmwni_patch_3_6 dmwni_patch_3_7 dmwni_patch_3_8 dmwni_patch_3_9 dmwni_patch_3_10 dmwni_patch_3_11 dmwni_patch_3_12 dmwni_patch_3_13 dmwni_patch_3_14 dmwni_patch_3_15 dmwni_patch_3_16 dmwni_patch_3_17 dmwni_patch_3_18 dmwni_patch_3_19 dmwni_patch_3_20 dmwni_patch_3_21 dmwni_patch_3_22 dmwni_patch_3_23 dmwni_patch_3_24 dmwni_patch_3_25 dmwni_patch_3_26 dmwni_patch_3_27 dmwni_patch_3_28 dmwni_patch_3_29 dmwni_patch_3_30 dmwni_patch_3_31 dmwni_patch_3_32 dmwni_patch_3_33 dmwni_patch_3_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx4','dmwni_patch_4_0 dmwni_patch_4_1 dmwni_patch_4_2 dmwni_patch_4_3 dmwni_patch_4_4 dmwni_patch_4_5 dmwni_patch_4_6 dmwni_patch_4_7 dmwni_patch_4_8 dmwni_patch_4_9 dmwni_patch_4_10 dmwni_patch_4_11 dmwni_patch_4_12 dmwni_patch_4_13 dmwni_patch_4_14 dmwni_patch_4_15 dmwni_patch_4_16 dmwni_patch_4_17 dmwni_patch_4_18 dmwni_patch_4_19 dmwni_patch_4_20 dmwni_patch_4_21 dmwni_patch_4_22 dmwni_patch_4_23 dmwni_patch_4_24 dmwni_patch_4_25 dmwni_patch_4_26 dmwni_patch_4_27 dmwni_patch_4_28 dmwni_patch_4_29 dmwni_patch_4_30 dmwni_patch_4_31 dmwni_patch_4_32 dmwni_patch_4_33 dmwni_patch_4_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx5','dmwni_patch_5_0 dmwni_patch_5_1 dmwni_patch_5_2 dmwni_patch_5_3 dmwni_patch_5_4 dmwni_patch_5_5 dmwni_patch_5_6 dmwni_patch_5_7 dmwni_patch_5_8 dmwni_patch_5_9 dmwni_patch_5_10 dmwni_patch_5_11 dmwni_patch_5_12 dmwni_patch_5_13 dmwni_patch_5_14 dmwni_patch_5_15 dmwni_patch_5_16 dmwni_patch_5_17 dmwni_patch_5_18 dmwni_patch_5_19 dmwni_patch_5_20 dmwni_patch_5_21 dmwni_patch_5_22 dmwni_patch_5_23 dmwni_patch_5_24 dmwni_patch_5_25 dmwni_patch_5_26 dmwni_patch_5_27 dmwni_patch_5_28 dmwni_patch_5_29 dmwni_patch_5_30 dmwni_patch_5_31 dmwni_patch_5_32 dmwni_patch_5_33 dmwni_patch_5_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx6','dmwni_patch_6_0 dmwni_patch_6_1 dmwni_patch_6_2 dmwni_patch_6_3 dmwni_patch_6_4 dmwni_patch_6_5 dmwni_patch_6_6 dmwni_patch_6_7 dmwni_patch_6_8 dmwni_patch_6_9 dmwni_patch_6_10 dmwni_patch_6_11 dmwni_patch_6_12 dmwni_patch_6_13 dmwni_patch_6_14 dmwni_patch_6_15 dmwni_patch_6_16 dmwni_patch_6_17 dmwni_patch_6_18 dmwni_patch_6_19 dmwni_patch_6_20 dmwni_patch_6_21 dmwni_patch_6_22 dmwni_patch_6_23 dmwni_patch_6_24 dmwni_patch_6_25 dmwni_patch_6_26 dmwni_patch_6_27 dmwni_patch_6_28 dmwni_patch_6_29 dmwni_patch_6_30 dmwni_patch_6_31 dmwni_patch_6_32 dmwni_patch_6_33 dmwni_patch_6_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx7','dmwni_patch_7_0 dmwni_patch_7_1 dmwni_patch_7_2 dmwni_patch_7_3 dmwni_patch_7_4 dmwni_patch_7_5 dmwni_patch_7_6 dmwni_patch_7_7 dmwni_patch_7_8 dmwni_patch_7_9 dmwni_patch_7_10 dmwni_patch_7_11 dmwni_patch_7_12 dmwni_patch_7_13 dmwni_patch_7_14 dmwni_patch_7_15 dmwni_patch_7_16 dmwni_patch_7_17 dmwni_patch_7_18 dmwni_patch_7_19 dmwni_patch_7_20 dmwni_patch_7_21 dmwni_patch_7_22 dmwni_patch_7_23 dmwni_patch_7_24 dmwni_patch_7_25 dmwni_patch_7_26 dmwni_patch_7_27 dmwni_patch_7_28 dmwni_patch_7_29 dmwni_patch_7_30 dmwni_patch_7_31 dmwni_patch_7_32 dmwni_patch_7_33 dmwni_patch_7_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx8','dmwni_patch_8_0 dmwni_patch_8_1 dmwni_patch_8_2 dmwni_patch_8_3 dmwni_patch_8_4 dmwni_patch_8_5 dmwni_patch_8_6 dmwni_patch_8_7 dmwni_patch_8_8 dmwni_patch_8_9 dmwni_patch_8_10 dmwni_patch_8_11 dmwni_patch_8_12 dmwni_patch_8_13 dmwni_patch_8_14 dmwni_patch_8_15 dmwni_patch_8_16 dmwni_patch_8_17 dmwni_patch_8_18 dmwni_patch_8_19 dmwni_patch_8_20 dmwni_patch_8_21 dmwni_patch_8_22 dmwni_patch_8_23 dmwni_patch_8_24 dmwni_patch_8_25 dmwni_patch_8_26 dmwni_patch_8_27 dmwni_patch_8_28 dmwni_patch_8_29 dmwni_patch_8_30 dmwni_patch_8_31 dmwni_patch_8_32 dmwni_patch_8_33 dmwni_patch_8_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx9','dmwni_patch_9_0 dmwni_patch_9_1 dmwni_patch_9_2 dmwni_patch_9_3 dmwni_patch_9_4 dmwni_patch_9_5 dmwni_patch_9_6 dmwni_patch_9_7 dmwni_patch_9_8 dmwni_patch_9_9 dmwni_patch_9_10 dmwni_patch_9_11 dmwni_patch_9_12 dmwni_patch_9_13 dmwni_patch_9_14 dmwni_patch_9_15 dmwni_patch_9_16 dmwni_patch_9_17 dmwni_patch_9_18 dmwni_patch_9_19 dmwni_patch_9_20 dmwni_patch_9_21 dmwni_patch_9_22 dmwni_patch_9_23 dmwni_patch_9_24 dmwni_patch_9_25 dmwni_patch_9_26 dmwni_patch_9_27 dmwni_patch_9_28 dmwni_patch_9_29 dmwni_patch_9_30 dmwni_patch_9_31 dmwni_patch_9_32 dmwni_patch_9_33 dmwni_patch_9_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx10','dmwni_patch_10_0 dmwni_patch_10_1 dmwni_patch_10_2 dmwni_patch_10_3 dmwni_patch_10_4 dmwni_patch_10_5 dmwni_patch_10_6 dmwni_patch_10_7 dmwni_patch_10_8 dmwni_patch_10_9 dmwni_patch_10_10 dmwni_patch_10_11 dmwni_patch_10_12 dmwni_patch_10_13 dmwni_patch_10_14 dmwni_patch_10_15 dmwni_patch_10_16 dmwni_patch_10_17 dmwni_patch_10_18 dmwni_patch_10_19 dmwni_patch_10_20 dmwni_patch_10_21 dmwni_patch_10_22 dmwni_patch_10_23 dmwni_patch_10_24 dmwni_patch_10_25 dmwni_patch_10_26 dmwni_patch_10_27 dmwni_patch_10_28 dmwni_patch_10_29 dmwni_patch_10_30 dmwni_patch_10_31 dmwni_patch_10_32 dmwni_patch_10_33 dmwni_patch_10_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx11','dmwni_patch_11_0 dmwni_patch_11_1 dmwni_patch_11_2 dmwni_patch_11_3 dmwni_patch_11_4 dmwni_patch_11_5 dmwni_patch_11_6 dmwni_patch_11_7 dmwni_patch_11_8 dmwni_patch_11_9 dmwni_patch_11_10 dmwni_patch_11_11 dmwni_patch_11_12 dmwni_patch_11_13 dmwni_patch_11_14 dmwni_patch_11_15 dmwni_patch_11_16 dmwni_patch_11_17 dmwni_patch_11_18 dmwni_patch_11_19 dmwni_patch_11_20 dmwni_patch_11_21 dmwni_patch_11_22 dmwni_patch_11_23 dmwni_patch_11_24 dmwni_patch_11_25 dmwni_patch_11_26 dmwni_patch_11_27 dmwni_patch_11_28 dmwni_patch_11_29 dmwni_patch_11_30 dmwni_patch_11_31 dmwni_patch_11_32 dmwni_patch_11_33 dmwni_patch_11_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx12','dmwni_patch_12_0 dmwni_patch_12_1 dmwni_patch_12_2 dmwni_patch_12_3 dmwni_patch_12_4 dmwni_patch_12_5 dmwni_patch_12_6 dmwni_patch_12_7 dmwni_patch_12_8 dmwni_patch_12_9 dmwni_patch_12_10 dmwni_patch_12_11 dmwni_patch_12_12 dmwni_patch_12_13 dmwni_patch_12_14 dmwni_patch_12_15 dmwni_patch_12_16 dmwni_patch_12_17 dmwni_patch_12_18 dmwni_patch_12_19 dmwni_patch_12_20 dmwni_patch_12_21 dmwni_patch_12_22 dmwni_patch_12_23 dmwni_patch_12_24 dmwni_patch_12_25 dmwni_patch_12_26 dmwni_patch_12_27 dmwni_patch_12_28 dmwni_patch_12_29 dmwni_patch_12_30 dmwni_patch_12_31 dmwni_patch_12_32 dmwni_patch_12_33 dmwni_patch_12_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx13','dmwni_patch_13_0 dmwni_patch_13_1 dmwni_patch_13_2 dmwni_patch_13_3 dmwni_patch_13_4 dmwni_patch_13_5 dmwni_patch_13_6 dmwni_patch_13_7 dmwni_patch_13_8 dmwni_patch_13_9 dmwni_patch_13_10 dmwni_patch_13_11 dmwni_patch_13_12 dmwni_patch_13_13 dmwni_patch_13_14 dmwni_patch_13_15 dmwni_patch_13_16 dmwni_patch_13_17 dmwni_patch_13_18 dmwni_patch_13_19 dmwni_patch_13_20 dmwni_patch_13_21 dmwni_patch_13_22 dmwni_patch_13_23 dmwni_patch_13_24 dmwni_patch_13_25 dmwni_patch_13_26 dmwni_patch_13_27 dmwni_patch_13_28 dmwni_patch_13_29 dmwni_patch_13_30 dmwni_patch_13_31 dmwni_patch_13_32 dmwni_patch_13_33 dmwni_patch_13_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx14','dmwni_patch_14_0 dmwni_patch_14_1 dmwni_patch_14_2 dmwni_patch_14_3 dmwni_patch_14_4 dmwni_patch_14_5 dmwni_patch_14_6 dmwni_patch_14_7 dmwni_patch_14_8 dmwni_patch_14_9 dmwni_patch_14_10 dmwni_patch_14_11 dmwni_patch_14_12 dmwni_patch_14_13 dmwni_patch_14_14 dmwni_patch_14_15 dmwni_patch_14_16 dmwni_patch_14_17 dmwni_patch_14_18 dmwni_patch_14_19 dmwni_patch_14_20 dmwni_patch_14_21 dmwni_patch_14_22 dmwni_patch_14_23 dmwni_patch_14_24 dmwni_patch_14_25 dmwni_patch_14_26 dmwni_patch_14_27 dmwni_patch_14_28 dmwni_patch_14_29 dmwni_patch_14_30 dmwni_patch_14_31 dmwni_patch_14_32 dmwni_patch_14_33 dmwni_patch_14_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx15','dmwni_patch_15_0 dmwni_patch_15_1 dmwni_patch_15_2 dmwni_patch_15_3 dmwni_patch_15_4 dmwni_patch_15_5 dmwni_patch_15_6 dmwni_patch_15_7 dmwni_patch_15_8 dmwni_patch_15_9 dmwni_patch_15_10 dmwni_patch_15_11 dmwni_patch_15_12 dmwni_patch_15_13 dmwni_patch_15_14 dmwni_patch_15_15 dmwni_patch_15_16 dmwni_patch_15_17 dmwni_patch_15_18 dmwni_patch_15_19 dmwni_patch_15_20 dmwni_patch_15_21 dmwni_patch_15_22 dmwni_patch_15_23 dmwni_patch_15_24 dmwni_patch_15_25 dmwni_patch_15_26 dmwni_patch_15_27 dmwni_patch_15_28 dmwni_patch_15_29 dmwni_patch_15_30 dmwni_patch_15_31 dmwni_patch_15_32 dmwni_patch_15_33 dmwni_patch_15_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx16','dmwni_patch_16_0 dmwni_patch_16_1 dmwni_patch_16_2 dmwni_patch_16_3 dmwni_patch_16_4 dmwni_patch_16_5 dmwni_patch_16_6 dmwni_patch_16_7 dmwni_patch_16_8 dmwni_patch_16_9 dmwni_patch_16_10 dmwni_patch_16_11 dmwni_patch_16_12 dmwni_patch_16_13 dmwni_patch_16_14 dmwni_patch_16_15 dmwni_patch_16_16 dmwni_patch_16_17 dmwni_patch_16_18 dmwni_patch_16_19 dmwni_patch_16_20 dmwni_patch_16_21 dmwni_patch_16_22 dmwni_patch_16_23 dmwni_patch_16_24 dmwni_patch_16_25 dmwni_patch_16_26 dmwni_patch_16_27 dmwni_patch_16_28 dmwni_patch_16_29 dmwni_patch_16_30 dmwni_patch_16_31 dmwni_patch_16_32 dmwni_patch_16_33 dmwni_patch_16_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx17','dmwni_patch_17_0 dmwni_patch_17_1 dmwni_patch_17_2 dmwni_patch_17_3 dmwni_patch_17_4 dmwni_patch_17_5 dmwni_patch_17_6 dmwni_patch_17_7 dmwni_patch_17_8 dmwni_patch_17_9 dmwni_patch_17_10 dmwni_patch_17_11 dmwni_patch_17_12 dmwni_patch_17_13 dmwni_patch_17_14 dmwni_patch_17_15 dmwni_patch_17_16 dmwni_patch_17_17 dmwni_patch_17_18 dmwni_patch_17_19 dmwni_patch_17_20 dmwni_patch_17_21 dmwni_patch_17_22 dmwni_patch_17_23 dmwni_patch_17_24 dmwni_patch_17_25 dmwni_patch_17_26 dmwni_patch_17_27 dmwni_patch_17_28 dmwni_patch_17_29 dmwni_patch_17_30 dmwni_patch_17_31 dmwni_patch_17_32 dmwni_patch_17_33 dmwni_patch_17_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx18','dmwni_patch_18_0 dmwni_patch_18_1 dmwni_patch_18_2 dmwni_patch_18_3 dmwni_patch_18_4 dmwni_patch_18_5 dmwni_patch_18_6 dmwni_patch_18_7 dmwni_patch_18_8 dmwni_patch_18_9 dmwni_patch_18_10 dmwni_patch_18_11 dmwni_patch_18_12 dmwni_patch_18_13 dmwni_patch_18_14 dmwni_patch_18_15 dmwni_patch_18_16 dmwni_patch_18_17 dmwni_patch_18_18 dmwni_patch_18_19 dmwni_patch_18_20 dmwni_patch_18_21 dmwni_patch_18_22 dmwni_patch_18_23 dmwni_patch_18_24 dmwni_patch_18_25 dmwni_patch_18_26 dmwni_patch_18_27 dmwni_patch_18_28 dmwni_patch_18_29 dmwni_patch_18_30 dmwni_patch_18_31 dmwni_patch_18_32 dmwni_patch_18_33 dmwni_patch_18_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dmwni_patch_imx19','dmwni_patch_19_0 dmwni_patch_19_1 dmwni_patch_19_2 dmwni_patch_19_3 dmwni_patch_19_4 dmwni_patch_19_5 dmwni_patch_19_6 dmwni_patch_19_7 dmwni_patch_19_8 dmwni_patch_19_9 dmwni_patch_19_10 dmwni_patch_19_11 dmwni_patch_19_12 dmwni_patch_19_13 dmwni_patch_19_14 dmwni_patch_19_15 dmwni_patch_19_16 dmwni_patch_19_17 dmwni_patch_19_18 dmwni_patch_19_19 dmwni_patch_19_20 dmwni_patch_19_21 dmwni_patch_19_22 dmwni_patch_19_23 dmwni_patch_19_24 dmwni_patch_19_25 dmwni_patch_19_26 dmwni_patch_19_27 dmwni_patch_19_28 dmwni_patch_19_29 dmwni_patch_19_30 dmwni_patch_19_31 dmwni_patch_19_32 dmwni_patch_19_33 dmwni_patch_19_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+
+Flow('dmwni_patch','dmwni_patch_imx0 dmwni_patch_imx1 dmwni_patch_imx2 dmwni_patch_imx3 dmwni_patch_imx4 dmwni_patch_imx5 dmwni_patch_imx6 dmwni_patch_imx7 dmwni_patch_imx8 dmwni_patch_imx9 dmwni_patch_imx10 dmwni_patch_imx11 dmwni_patch_imx12 dmwni_patch_imx13 dmwni_patch_imx14 dmwni_patch_imx15 dmwni_patch_imx16 dmwni_patch_imx17 dmwni_patch_imx18 dmwni_patch_imx19',
+     '''
+     cat ${SOURCES[0:19]} axis=7
+     ''')
+
+Flow('dmwni','dmwni_patch',
+     '''
+     put n6=1 n7=20 n8=35 n9=1 | 
+     patch5d inv=y weight=y verb=y
+     ''')
+
+#
+# merge the patches of seqsvd interpolated data
+#
+Flow('dseqsvd_patch_imx0','dseqsvd_patch_0_0 dseqsvd_patch_0_1 dseqsvd_patch_0_2 dseqsvd_patch_0_3 dseqsvd_patch_0_4 dseqsvd_patch_0_5 dseqsvd_patch_0_6 dseqsvd_patch_0_7 dseqsvd_patch_0_8 dseqsvd_patch_0_9 dseqsvd_patch_0_10 dseqsvd_patch_0_11 dseqsvd_patch_0_12 dseqsvd_patch_0_13 dseqsvd_patch_0_14 dseqsvd_patch_0_15 dseqsvd_patch_0_16 dseqsvd_patch_0_17 dseqsvd_patch_0_18 dseqsvd_patch_0_19 dseqsvd_patch_0_20 dseqsvd_patch_0_21 dseqsvd_patch_0_22 dseqsvd_patch_0_23 dseqsvd_patch_0_24 dseqsvd_patch_0_25 dseqsvd_patch_0_26 dseqsvd_patch_0_27 dseqsvd_patch_0_28 dseqsvd_patch_0_29 dseqsvd_patch_0_30 dseqsvd_patch_0_31 dseqsvd_patch_0_32 dseqsvd_patch_0_33 dseqsvd_patch_0_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx1','dseqsvd_patch_1_0 dseqsvd_patch_1_1 dseqsvd_patch_1_2 dseqsvd_patch_1_3 dseqsvd_patch_1_4 dseqsvd_patch_1_5 dseqsvd_patch_1_6 dseqsvd_patch_1_7 dseqsvd_patch_1_8 dseqsvd_patch_1_9 dseqsvd_patch_1_10 dseqsvd_patch_1_11 dseqsvd_patch_1_12 dseqsvd_patch_1_13 dseqsvd_patch_1_14 dseqsvd_patch_1_15 dseqsvd_patch_1_16 dseqsvd_patch_1_17 dseqsvd_patch_1_18 dseqsvd_patch_1_19 dseqsvd_patch_1_20 dseqsvd_patch_1_21 dseqsvd_patch_1_22 dseqsvd_patch_1_23 dseqsvd_patch_1_24 dseqsvd_patch_1_25 dseqsvd_patch_1_26 dseqsvd_patch_1_27 dseqsvd_patch_1_28 dseqsvd_patch_1_29 dseqsvd_patch_1_30 dseqsvd_patch_1_31 dseqsvd_patch_1_32 dseqsvd_patch_1_33 dseqsvd_patch_1_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx2','dseqsvd_patch_2_0 dseqsvd_patch_2_1 dseqsvd_patch_2_2 dseqsvd_patch_2_3 dseqsvd_patch_2_4 dseqsvd_patch_2_5 dseqsvd_patch_2_6 dseqsvd_patch_2_7 dseqsvd_patch_2_8 dseqsvd_patch_2_9 dseqsvd_patch_2_10 dseqsvd_patch_2_11 dseqsvd_patch_2_12 dseqsvd_patch_2_13 dseqsvd_patch_2_14 dseqsvd_patch_2_15 dseqsvd_patch_2_16 dseqsvd_patch_2_17 dseqsvd_patch_2_18 dseqsvd_patch_2_19 dseqsvd_patch_2_20 dseqsvd_patch_2_21 dseqsvd_patch_2_22 dseqsvd_patch_2_23 dseqsvd_patch_2_24 dseqsvd_patch_2_25 dseqsvd_patch_2_26 dseqsvd_patch_2_27 dseqsvd_patch_2_28 dseqsvd_patch_2_29 dseqsvd_patch_2_30 dseqsvd_patch_2_31 dseqsvd_patch_2_32 dseqsvd_patch_2_33 dseqsvd_patch_2_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx3','dseqsvd_patch_3_0 dseqsvd_patch_3_1 dseqsvd_patch_3_2 dseqsvd_patch_3_3 dseqsvd_patch_3_4 dseqsvd_patch_3_5 dseqsvd_patch_3_6 dseqsvd_patch_3_7 dseqsvd_patch_3_8 dseqsvd_patch_3_9 dseqsvd_patch_3_10 dseqsvd_patch_3_11 dseqsvd_patch_3_12 dseqsvd_patch_3_13 dseqsvd_patch_3_14 dseqsvd_patch_3_15 dseqsvd_patch_3_16 dseqsvd_patch_3_17 dseqsvd_patch_3_18 dseqsvd_patch_3_19 dseqsvd_patch_3_20 dseqsvd_patch_3_21 dseqsvd_patch_3_22 dseqsvd_patch_3_23 dseqsvd_patch_3_24 dseqsvd_patch_3_25 dseqsvd_patch_3_26 dseqsvd_patch_3_27 dseqsvd_patch_3_28 dseqsvd_patch_3_29 dseqsvd_patch_3_30 dseqsvd_patch_3_31 dseqsvd_patch_3_32 dseqsvd_patch_3_33 dseqsvd_patch_3_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx4','dseqsvd_patch_4_0 dseqsvd_patch_4_1 dseqsvd_patch_4_2 dseqsvd_patch_4_3 dseqsvd_patch_4_4 dseqsvd_patch_4_5 dseqsvd_patch_4_6 dseqsvd_patch_4_7 dseqsvd_patch_4_8 dseqsvd_patch_4_9 dseqsvd_patch_4_10 dseqsvd_patch_4_11 dseqsvd_patch_4_12 dseqsvd_patch_4_13 dseqsvd_patch_4_14 dseqsvd_patch_4_15 dseqsvd_patch_4_16 dseqsvd_patch_4_17 dseqsvd_patch_4_18 dseqsvd_patch_4_19 dseqsvd_patch_4_20 dseqsvd_patch_4_21 dseqsvd_patch_4_22 dseqsvd_patch_4_23 dseqsvd_patch_4_24 dseqsvd_patch_4_25 dseqsvd_patch_4_26 dseqsvd_patch_4_27 dseqsvd_patch_4_28 dseqsvd_patch_4_29 dseqsvd_patch_4_30 dseqsvd_patch_4_31 dseqsvd_patch_4_32 dseqsvd_patch_4_33 dseqsvd_patch_4_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx5','dseqsvd_patch_5_0 dseqsvd_patch_5_1 dseqsvd_patch_5_2 dseqsvd_patch_5_3 dseqsvd_patch_5_4 dseqsvd_patch_5_5 dseqsvd_patch_5_6 dseqsvd_patch_5_7 dseqsvd_patch_5_8 dseqsvd_patch_5_9 dseqsvd_patch_5_10 dseqsvd_patch_5_11 dseqsvd_patch_5_12 dseqsvd_patch_5_13 dseqsvd_patch_5_14 dseqsvd_patch_5_15 dseqsvd_patch_5_16 dseqsvd_patch_5_17 dseqsvd_patch_5_18 dseqsvd_patch_5_19 dseqsvd_patch_5_20 dseqsvd_patch_5_21 dseqsvd_patch_5_22 dseqsvd_patch_5_23 dseqsvd_patch_5_24 dseqsvd_patch_5_25 dseqsvd_patch_5_26 dseqsvd_patch_5_27 dseqsvd_patch_5_28 dseqsvd_patch_5_29 dseqsvd_patch_5_30 dseqsvd_patch_5_31 dseqsvd_patch_5_32 dseqsvd_patch_5_33 dseqsvd_patch_5_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx6','dseqsvd_patch_6_0 dseqsvd_patch_6_1 dseqsvd_patch_6_2 dseqsvd_patch_6_3 dseqsvd_patch_6_4 dseqsvd_patch_6_5 dseqsvd_patch_6_6 dseqsvd_patch_6_7 dseqsvd_patch_6_8 dseqsvd_patch_6_9 dseqsvd_patch_6_10 dseqsvd_patch_6_11 dseqsvd_patch_6_12 dseqsvd_patch_6_13 dseqsvd_patch_6_14 dseqsvd_patch_6_15 dseqsvd_patch_6_16 dseqsvd_patch_6_17 dseqsvd_patch_6_18 dseqsvd_patch_6_19 dseqsvd_patch_6_20 dseqsvd_patch_6_21 dseqsvd_patch_6_22 dseqsvd_patch_6_23 dseqsvd_patch_6_24 dseqsvd_patch_6_25 dseqsvd_patch_6_26 dseqsvd_patch_6_27 dseqsvd_patch_6_28 dseqsvd_patch_6_29 dseqsvd_patch_6_30 dseqsvd_patch_6_31 dseqsvd_patch_6_32 dseqsvd_patch_6_33 dseqsvd_patch_6_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx7','dseqsvd_patch_7_0 dseqsvd_patch_7_1 dseqsvd_patch_7_2 dseqsvd_patch_7_3 dseqsvd_patch_7_4 dseqsvd_patch_7_5 dseqsvd_patch_7_6 dseqsvd_patch_7_7 dseqsvd_patch_7_8 dseqsvd_patch_7_9 dseqsvd_patch_7_10 dseqsvd_patch_7_11 dseqsvd_patch_7_12 dseqsvd_patch_7_13 dseqsvd_patch_7_14 dseqsvd_patch_7_15 dseqsvd_patch_7_16 dseqsvd_patch_7_17 dseqsvd_patch_7_18 dseqsvd_patch_7_19 dseqsvd_patch_7_20 dseqsvd_patch_7_21 dseqsvd_patch_7_22 dseqsvd_patch_7_23 dseqsvd_patch_7_24 dseqsvd_patch_7_25 dseqsvd_patch_7_26 dseqsvd_patch_7_27 dseqsvd_patch_7_28 dseqsvd_patch_7_29 dseqsvd_patch_7_30 dseqsvd_patch_7_31 dseqsvd_patch_7_32 dseqsvd_patch_7_33 dseqsvd_patch_7_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx8','dseqsvd_patch_8_0 dseqsvd_patch_8_1 dseqsvd_patch_8_2 dseqsvd_patch_8_3 dseqsvd_patch_8_4 dseqsvd_patch_8_5 dseqsvd_patch_8_6 dseqsvd_patch_8_7 dseqsvd_patch_8_8 dseqsvd_patch_8_9 dseqsvd_patch_8_10 dseqsvd_patch_8_11 dseqsvd_patch_8_12 dseqsvd_patch_8_13 dseqsvd_patch_8_14 dseqsvd_patch_8_15 dseqsvd_patch_8_16 dseqsvd_patch_8_17 dseqsvd_patch_8_18 dseqsvd_patch_8_19 dseqsvd_patch_8_20 dseqsvd_patch_8_21 dseqsvd_patch_8_22 dseqsvd_patch_8_23 dseqsvd_patch_8_24 dseqsvd_patch_8_25 dseqsvd_patch_8_26 dseqsvd_patch_8_27 dseqsvd_patch_8_28 dseqsvd_patch_8_29 dseqsvd_patch_8_30 dseqsvd_patch_8_31 dseqsvd_patch_8_32 dseqsvd_patch_8_33 dseqsvd_patch_8_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx9','dseqsvd_patch_9_0 dseqsvd_patch_9_1 dseqsvd_patch_9_2 dseqsvd_patch_9_3 dseqsvd_patch_9_4 dseqsvd_patch_9_5 dseqsvd_patch_9_6 dseqsvd_patch_9_7 dseqsvd_patch_9_8 dseqsvd_patch_9_9 dseqsvd_patch_9_10 dseqsvd_patch_9_11 dseqsvd_patch_9_12 dseqsvd_patch_9_13 dseqsvd_patch_9_14 dseqsvd_patch_9_15 dseqsvd_patch_9_16 dseqsvd_patch_9_17 dseqsvd_patch_9_18 dseqsvd_patch_9_19 dseqsvd_patch_9_20 dseqsvd_patch_9_21 dseqsvd_patch_9_22 dseqsvd_patch_9_23 dseqsvd_patch_9_24 dseqsvd_patch_9_25 dseqsvd_patch_9_26 dseqsvd_patch_9_27 dseqsvd_patch_9_28 dseqsvd_patch_9_29 dseqsvd_patch_9_30 dseqsvd_patch_9_31 dseqsvd_patch_9_32 dseqsvd_patch_9_33 dseqsvd_patch_9_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx10','dseqsvd_patch_10_0 dseqsvd_patch_10_1 dseqsvd_patch_10_2 dseqsvd_patch_10_3 dseqsvd_patch_10_4 dseqsvd_patch_10_5 dseqsvd_patch_10_6 dseqsvd_patch_10_7 dseqsvd_patch_10_8 dseqsvd_patch_10_9 dseqsvd_patch_10_10 dseqsvd_patch_10_11 dseqsvd_patch_10_12 dseqsvd_patch_10_13 dseqsvd_patch_10_14 dseqsvd_patch_10_15 dseqsvd_patch_10_16 dseqsvd_patch_10_17 dseqsvd_patch_10_18 dseqsvd_patch_10_19 dseqsvd_patch_10_20 dseqsvd_patch_10_21 dseqsvd_patch_10_22 dseqsvd_patch_10_23 dseqsvd_patch_10_24 dseqsvd_patch_10_25 dseqsvd_patch_10_26 dseqsvd_patch_10_27 dseqsvd_patch_10_28 dseqsvd_patch_10_29 dseqsvd_patch_10_30 dseqsvd_patch_10_31 dseqsvd_patch_10_32 dseqsvd_patch_10_33 dseqsvd_patch_10_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx11','dseqsvd_patch_11_0 dseqsvd_patch_11_1 dseqsvd_patch_11_2 dseqsvd_patch_11_3 dseqsvd_patch_11_4 dseqsvd_patch_11_5 dseqsvd_patch_11_6 dseqsvd_patch_11_7 dseqsvd_patch_11_8 dseqsvd_patch_11_9 dseqsvd_patch_11_10 dseqsvd_patch_11_11 dseqsvd_patch_11_12 dseqsvd_patch_11_13 dseqsvd_patch_11_14 dseqsvd_patch_11_15 dseqsvd_patch_11_16 dseqsvd_patch_11_17 dseqsvd_patch_11_18 dseqsvd_patch_11_19 dseqsvd_patch_11_20 dseqsvd_patch_11_21 dseqsvd_patch_11_22 dseqsvd_patch_11_23 dseqsvd_patch_11_24 dseqsvd_patch_11_25 dseqsvd_patch_11_26 dseqsvd_patch_11_27 dseqsvd_patch_11_28 dseqsvd_patch_11_29 dseqsvd_patch_11_30 dseqsvd_patch_11_31 dseqsvd_patch_11_32 dseqsvd_patch_11_33 dseqsvd_patch_11_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx12','dseqsvd_patch_12_0 dseqsvd_patch_12_1 dseqsvd_patch_12_2 dseqsvd_patch_12_3 dseqsvd_patch_12_4 dseqsvd_patch_12_5 dseqsvd_patch_12_6 dseqsvd_patch_12_7 dseqsvd_patch_12_8 dseqsvd_patch_12_9 dseqsvd_patch_12_10 dseqsvd_patch_12_11 dseqsvd_patch_12_12 dseqsvd_patch_12_13 dseqsvd_patch_12_14 dseqsvd_patch_12_15 dseqsvd_patch_12_16 dseqsvd_patch_12_17 dseqsvd_patch_12_18 dseqsvd_patch_12_19 dseqsvd_patch_12_20 dseqsvd_patch_12_21 dseqsvd_patch_12_22 dseqsvd_patch_12_23 dseqsvd_patch_12_24 dseqsvd_patch_12_25 dseqsvd_patch_12_26 dseqsvd_patch_12_27 dseqsvd_patch_12_28 dseqsvd_patch_12_29 dseqsvd_patch_12_30 dseqsvd_patch_12_31 dseqsvd_patch_12_32 dseqsvd_patch_12_33 dseqsvd_patch_12_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx13','dseqsvd_patch_13_0 dseqsvd_patch_13_1 dseqsvd_patch_13_2 dseqsvd_patch_13_3 dseqsvd_patch_13_4 dseqsvd_patch_13_5 dseqsvd_patch_13_6 dseqsvd_patch_13_7 dseqsvd_patch_13_8 dseqsvd_patch_13_9 dseqsvd_patch_13_10 dseqsvd_patch_13_11 dseqsvd_patch_13_12 dseqsvd_patch_13_13 dseqsvd_patch_13_14 dseqsvd_patch_13_15 dseqsvd_patch_13_16 dseqsvd_patch_13_17 dseqsvd_patch_13_18 dseqsvd_patch_13_19 dseqsvd_patch_13_20 dseqsvd_patch_13_21 dseqsvd_patch_13_22 dseqsvd_patch_13_23 dseqsvd_patch_13_24 dseqsvd_patch_13_25 dseqsvd_patch_13_26 dseqsvd_patch_13_27 dseqsvd_patch_13_28 dseqsvd_patch_13_29 dseqsvd_patch_13_30 dseqsvd_patch_13_31 dseqsvd_patch_13_32 dseqsvd_patch_13_33 dseqsvd_patch_13_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx14','dseqsvd_patch_14_0 dseqsvd_patch_14_1 dseqsvd_patch_14_2 dseqsvd_patch_14_3 dseqsvd_patch_14_4 dseqsvd_patch_14_5 dseqsvd_patch_14_6 dseqsvd_patch_14_7 dseqsvd_patch_14_8 dseqsvd_patch_14_9 dseqsvd_patch_14_10 dseqsvd_patch_14_11 dseqsvd_patch_14_12 dseqsvd_patch_14_13 dseqsvd_patch_14_14 dseqsvd_patch_14_15 dseqsvd_patch_14_16 dseqsvd_patch_14_17 dseqsvd_patch_14_18 dseqsvd_patch_14_19 dseqsvd_patch_14_20 dseqsvd_patch_14_21 dseqsvd_patch_14_22 dseqsvd_patch_14_23 dseqsvd_patch_14_24 dseqsvd_patch_14_25 dseqsvd_patch_14_26 dseqsvd_patch_14_27 dseqsvd_patch_14_28 dseqsvd_patch_14_29 dseqsvd_patch_14_30 dseqsvd_patch_14_31 dseqsvd_patch_14_32 dseqsvd_patch_14_33 dseqsvd_patch_14_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx15','dseqsvd_patch_15_0 dseqsvd_patch_15_1 dseqsvd_patch_15_2 dseqsvd_patch_15_3 dseqsvd_patch_15_4 dseqsvd_patch_15_5 dseqsvd_patch_15_6 dseqsvd_patch_15_7 dseqsvd_patch_15_8 dseqsvd_patch_15_9 dseqsvd_patch_15_10 dseqsvd_patch_15_11 dseqsvd_patch_15_12 dseqsvd_patch_15_13 dseqsvd_patch_15_14 dseqsvd_patch_15_15 dseqsvd_patch_15_16 dseqsvd_patch_15_17 dseqsvd_patch_15_18 dseqsvd_patch_15_19 dseqsvd_patch_15_20 dseqsvd_patch_15_21 dseqsvd_patch_15_22 dseqsvd_patch_15_23 dseqsvd_patch_15_24 dseqsvd_patch_15_25 dseqsvd_patch_15_26 dseqsvd_patch_15_27 dseqsvd_patch_15_28 dseqsvd_patch_15_29 dseqsvd_patch_15_30 dseqsvd_patch_15_31 dseqsvd_patch_15_32 dseqsvd_patch_15_33 dseqsvd_patch_15_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx16','dseqsvd_patch_16_0 dseqsvd_patch_16_1 dseqsvd_patch_16_2 dseqsvd_patch_16_3 dseqsvd_patch_16_4 dseqsvd_patch_16_5 dseqsvd_patch_16_6 dseqsvd_patch_16_7 dseqsvd_patch_16_8 dseqsvd_patch_16_9 dseqsvd_patch_16_10 dseqsvd_patch_16_11 dseqsvd_patch_16_12 dseqsvd_patch_16_13 dseqsvd_patch_16_14 dseqsvd_patch_16_15 dseqsvd_patch_16_16 dseqsvd_patch_16_17 dseqsvd_patch_16_18 dseqsvd_patch_16_19 dseqsvd_patch_16_20 dseqsvd_patch_16_21 dseqsvd_patch_16_22 dseqsvd_patch_16_23 dseqsvd_patch_16_24 dseqsvd_patch_16_25 dseqsvd_patch_16_26 dseqsvd_patch_16_27 dseqsvd_patch_16_28 dseqsvd_patch_16_29 dseqsvd_patch_16_30 dseqsvd_patch_16_31 dseqsvd_patch_16_32 dseqsvd_patch_16_33 dseqsvd_patch_16_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx17','dseqsvd_patch_17_0 dseqsvd_patch_17_1 dseqsvd_patch_17_2 dseqsvd_patch_17_3 dseqsvd_patch_17_4 dseqsvd_patch_17_5 dseqsvd_patch_17_6 dseqsvd_patch_17_7 dseqsvd_patch_17_8 dseqsvd_patch_17_9 dseqsvd_patch_17_10 dseqsvd_patch_17_11 dseqsvd_patch_17_12 dseqsvd_patch_17_13 dseqsvd_patch_17_14 dseqsvd_patch_17_15 dseqsvd_patch_17_16 dseqsvd_patch_17_17 dseqsvd_patch_17_18 dseqsvd_patch_17_19 dseqsvd_patch_17_20 dseqsvd_patch_17_21 dseqsvd_patch_17_22 dseqsvd_patch_17_23 dseqsvd_patch_17_24 dseqsvd_patch_17_25 dseqsvd_patch_17_26 dseqsvd_patch_17_27 dseqsvd_patch_17_28 dseqsvd_patch_17_29 dseqsvd_patch_17_30 dseqsvd_patch_17_31 dseqsvd_patch_17_32 dseqsvd_patch_17_33 dseqsvd_patch_17_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx18','dseqsvd_patch_18_0 dseqsvd_patch_18_1 dseqsvd_patch_18_2 dseqsvd_patch_18_3 dseqsvd_patch_18_4 dseqsvd_patch_18_5 dseqsvd_patch_18_6 dseqsvd_patch_18_7 dseqsvd_patch_18_8 dseqsvd_patch_18_9 dseqsvd_patch_18_10 dseqsvd_patch_18_11 dseqsvd_patch_18_12 dseqsvd_patch_18_13 dseqsvd_patch_18_14 dseqsvd_patch_18_15 dseqsvd_patch_18_16 dseqsvd_patch_18_17 dseqsvd_patch_18_18 dseqsvd_patch_18_19 dseqsvd_patch_18_20 dseqsvd_patch_18_21 dseqsvd_patch_18_22 dseqsvd_patch_18_23 dseqsvd_patch_18_24 dseqsvd_patch_18_25 dseqsvd_patch_18_26 dseqsvd_patch_18_27 dseqsvd_patch_18_28 dseqsvd_patch_18_29 dseqsvd_patch_18_30 dseqsvd_patch_18_31 dseqsvd_patch_18_32 dseqsvd_patch_18_33 dseqsvd_patch_18_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+Flow('dseqsvd_patch_imx19','dseqsvd_patch_19_0 dseqsvd_patch_19_1 dseqsvd_patch_19_2 dseqsvd_patch_19_3 dseqsvd_patch_19_4 dseqsvd_patch_19_5 dseqsvd_patch_19_6 dseqsvd_patch_19_7 dseqsvd_patch_19_8 dseqsvd_patch_19_9 dseqsvd_patch_19_10 dseqsvd_patch_19_11 dseqsvd_patch_19_12 dseqsvd_patch_19_13 dseqsvd_patch_19_14 dseqsvd_patch_19_15 dseqsvd_patch_19_16 dseqsvd_patch_19_17 dseqsvd_patch_19_18 dseqsvd_patch_19_19 dseqsvd_patch_19_20 dseqsvd_patch_19_21 dseqsvd_patch_19_22 dseqsvd_patch_19_23 dseqsvd_patch_19_24 dseqsvd_patch_19_25 dseqsvd_patch_19_26 dseqsvd_patch_19_27 dseqsvd_patch_19_28 dseqsvd_patch_19_29 dseqsvd_patch_19_30 dseqsvd_patch_19_31 dseqsvd_patch_19_32 dseqsvd_patch_19_33 dseqsvd_patch_19_34',
+     '''
+     cat ${SOURCES[0:34]} axis=8
+     ''')
+
+Flow('dseqsvd_patch','dseqsvd_patch_imx0 dseqsvd_patch_imx1 dseqsvd_patch_imx2 dseqsvd_patch_imx3 dseqsvd_patch_imx4 dseqsvd_patch_imx5 dseqsvd_patch_imx6 dseqsvd_patch_imx7 dseqsvd_patch_imx8 dseqsvd_patch_imx9 dseqsvd_patch_imx10 dseqsvd_patch_imx11 dseqsvd_patch_imx12 dseqsvd_patch_imx13 dseqsvd_patch_imx14 dseqsvd_patch_imx15 dseqsvd_patch_imx16 dseqsvd_patch_imx17 dseqsvd_patch_imx18 dseqsvd_patch_imx19',
+     '''
+     cat ${SOURCES[0:19]} axis=7
+     ''')
+
+Flow('dseqsvd','dseqsvd_patch',
+     '''
+     put n6=1 n7=20 n8=35 n9=1 | 
+     patch5d inv=y weight=y verb=y
+     ''')
+
+#
+# Window an Offset Vector Tile (OVT) for QC
+#
+Flow('dorig_ovt','dorig','window f4=3 n4=1 f5=20 n5=1')
+Flow('dpocs_ovt','dpocs','window f4=3 n4=1 f5=20 n5=1')
+Flow('dmwni_ovt','dmwni','window f4=3 n4=1 f5=20 n5=1')
+Flow('dseqsvd_ovt','dseqsvd','window f4=3 n4=1 f5=20 n5=1')
+
+#
+# Stack for QC
+#
+Flow('dorig_stack','dorig','stack axis=5 | stack axis=4')
+Flow('dpocs_stack','dpocs','stack axis=5 | stack axis=4')
+Flow('dmwni_stack','dmwni','stack axis=5 | stack axis=4')
+Flow('dseqsvd_stack','dseqsvd','stack axis=5 | stack axis=4')
+
+#
+# Plot OVTs
+#
+Result('dorig_ovt',
+       '''
+       agc rect1=1000 | byte |
+       grey3 frame1=400 frame2=75 frame3=25 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="Input" 
+       ''')
+Result('dpocs_ovt',
+       '''
+       agc rect1=1000 | byte |
+       grey3 frame1=400 frame2=75 frame3=25 
+       screenratio=1 flat=n point1=0.7 point2=0.7 
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="POCS" 
+       ''')
+Result('dmwni_ovt',
+       '''
+       agc rect1=1000 | byte |
+       grey3 frame1=400 frame2=75 frame3=25 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="MWNI" 
+       ''')
+Result('dseqsvd_ovt',
+       '''
+       agc rect1=1000 | byte |
+       grey3 frame1=400 frame2=75 frame3=25 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="SEQSVD" 
+       ''')
+
+Result('dorig_ovt',
+       '''
+       agc rect1=1000 | byte |
+       grey3 frame1=400 frame2=75 frame3=25 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="Input" 
+       ''')
+Result('dpocs_ovt',
+       '''
+       agc rect1=1000 | byte |
+       grey3 frame1=400 frame2=75 frame3=25 
+       screenratio=1 flat=n point1=0.7 point2=0.7 
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="POCS" 
+       ''')
+Result('dmwni_ovt',
+       '''
+       agc rect1=1000 | byte |
+       grey3 frame1=400 frame2=75 frame3=25 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="MWNI" 
+       ''')
+Result('dseqsvd_ovt',
+       '''
+       agc rect1=1000 | byte |
+       grey3 frame1=400 frame2=75 frame3=25 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="SEQSVD" 
+       ''')
+
+#
+# Plot Stacks
+#
+Result('dorig_stack',
+       '''
+       byte |
+       grey3 frame1=775 frame2=51 frame3=51 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="Input" 
+       ''')
+Result('dpocs_stack',
+       '''
+       byte |
+       grey3 frame1=775 frame2=51 frame3=51 
+       screenratio=1 flat=n point1=0.7 point2=0.7 
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="POCS" 
+       ''')
+Result('dmwni_stack',
+       '''
+       byte |
+       grey3 frame1=775 frame2=51 frame3=51 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="MWNI" 
+       ''')
+Result('dseqsvd_stack',
+       '''
+       byte |
+       grey3 frame1=775 frame2=51 frame3=51 
+       screenratio=1 flat=n point1=0.7 point2=0.7
+       label3="Crossline" unit2=" " label2="Inline" unit3=" " title="SEQSVD" 
+       ''')
+
+End()
+

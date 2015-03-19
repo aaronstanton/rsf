@@ -1,0 +1,36 @@
+#!/bin/bash
+#PBS -l nodes=1:ppn=12
+#PBS -l mem=88gb
+#PBS -l walltime=4:00:00
+#PBS -m bea 
+#PBS -M aaron.stanton@ualberta.ca
+#PBS -N adjoint_marm2
+
+source ~/.bashrc
+cd $PBS_O_WORKDIR
+echo "Current working directory is `pwd`"
+
+echo "Node file: $PBS_NODEFILE :"
+echo "---------------------"
+cat $PBS_NODEFILE
+echo "---------------------"
+
+CORES=`/bin/awk 'END {print NR}' $PBS_NODEFILE`
+echo "Running on $CORES cores."
+
+# Set the number of threads that OpenMP can use
+export OMP_NUM_THREADS=${PBS_NUM_PPN}
+
+echo "Starting run at: `date`"
+
+mpiexec -n ${PBS_NUM_NODES} mpiewem adj=y H=y \
+     ux=ux.rsf uz=uz.rsf vp=vp_smooth.rsf vs=vs_smooth.rsf wav=wav.rsf \
+     mpp=mpp.rsf mps=mps.rsf \
+     verbose=y \
+     nz=802 oz=0 dz=1.249 \ 
+     nhx=101 dhx=3.747 ohx=-187.35 \
+     npx=201 dpx=0.01 opx=-1 \
+     gz=2 sz=2 \
+     fmin=0 fmax=100
+
+echo "finished with exit code $? at: `date`"

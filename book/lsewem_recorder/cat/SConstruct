@@ -1,0 +1,47 @@
+from rsf.proj import *
+
+Flow('r_',None,'math n1=1750 d1=2 o1=0 output=0',stdin=0)
+Flow('xr','r_','math output="x1"')
+offsets = []
+shots_x = []
+shots_z = []
+nsx = 34
+dsx = 100.0
+osx = 100.0
+for ishot in range(0,nsx):
+     sx = osx + ishot*dsx
+     shot_x = '../fdmod/ux_%d.rsf' % ishot
+     shots_x.append(shot_x)
+     shot_z = '../fdmod/uz_%d.rsf' % ishot
+     shots_z.append(shot_z)
+     offset = 'offset_%d.rsf' % ishot
+     offsets.append(offset)
+     Flow('offset_%d' %ishot,'xr','math output="input-%d"' %sx)
+
+Flow('W',offsets,
+     '''
+     cat axis=2 ${SOURCES[0:%d]} |
+     math output="sign(input)*1" |
+     spray axis=1 n=1500 d=0.001 o=0 |
+     put label1="t" unit1="s" 
+     label2="gx" unit2="m" 
+     n3=34 d3=100 o3=100 label3="sx" unit3="m" 
+     ''' % (nsx),stdin=0)
+Flow('ux',shots_x,
+     '''
+     cat axis=3 ${SOURCES[0:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m
+     ''' % (nsx,osx,dsx),stdin=0)
+Flow('uz',shots_z,
+     '''
+     cat axis=3 ${SOURCES[0:%d]} |
+     put o3=%d d3=%d label3="sx" unit3=m label2="gx" unit2=m
+     ''' % (nsx,osx,dsx),stdin=0)
+
+plotpar='color=e minval=-1e-2 maxval=1e-2 clip=1e-2'
+Plot('ux','window n3=1 f3=17 | grey %s' % plotpar)
+Plot('uz','window n3=1 f3=17 | grey %s' % plotpar)
+Result('W','window n3=1 f3=17 | grey %s' % plotpar)
+Result('u','ux uz','SideBySideAniso')
+
+End()

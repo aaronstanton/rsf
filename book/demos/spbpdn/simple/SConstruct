@@ -1,0 +1,83 @@
+from rsf.proj import *
+ 
+Flow('data',None,'''
+     sfspike n1=1000 n2=100 mag=-5,8 nsp=2 k1=350,850 k2=1,1 l1=350,850 l2=100,100 
+             p1=0,0 p2=1,-5 o1=0 o2=0 d1=0.004 d2=10 | 
+     sfricker1 frequency=30
+     ''')
+Plot('data','grey title=" " scalebar=y color=e')
+
+Flow('data_statics','data',
+     '''
+     static range=0.01 | noise range=0.5
+     ''')
+Plot('data_statics','grey title=" " scalebar=y color=e minval=-1 maxval=1 clip=1')
+
+Flow('data_FKOP0 cost01','data_statics',
+     '''
+     spbpdn operator=1 verbose=y iter=20 mode=0 lambda=250 maxeig=1 maxlag=0.02 cost=${TARGETS[1]}
+     ''')
+Plot('data_FKOP0','grey title=" " scalebar=y color=e minval=-1 maxval=1 clip=1')
+
+Flow('data_FKOP1 cost11','data_statics',
+     '''
+     spbpdn operator=1 verbose=y iter=20 mode=1 lambda=250 maxeig=1 maxlag=0.02 cost=${TARGETS[1]}
+     ''')
+Plot('data_FKOP1','grey title=" " scalebar=y color=e minval=-1 maxval=1 clip=1')
+
+Flow('data_RadonOP0 cost02','data_statics',
+     '''
+     spbpdn powermethod=n debug=n operator=2 np=201 pmin=-0.005 pmax=0.005 fmax=80 verbose=y iter=30 mode=0 lambda=2500 maxeig=7500 maxlag=0.02 cost=${TARGETS[1]}
+     ''')
+Plot('data_RadonOP0','grey title=" " scalebar=y color=e minval=-1 maxval=1 clip=1')
+
+Flow('data_RadonOP1 cost12','data_statics',
+     '''
+     spbpdn powermethod=n debug=n operator=2 np=201 pmin=-0.005 pmax=0.005 fmax=80 verbose=y iter=30 mode=1 lambda=2500 maxeig=7500 maxlag=0.02 cost=${TARGETS[1]}
+     ''')
+Plot('data_RadonOP1','grey title="output" scalebar=y color=e minval=-1 maxval=1 clip=1')
+
+Plot('cost11','graph title="FK Operator mode=1"')
+Plot('cost12','graph title="Radon Operator mode=1"')
+
+Result('results','data_statics data_FKOP0 data_FKOP1 data_RadonOP0 data_RadonOP1','SideBySideAniso')
+Result('cost','cost11 cost12','SideBySideAniso')
+
+Flow('data_FKOP0_AMP','data_FKOP0',
+     '''
+     fft1 | cabs | stack axis=2
+     ''')
+
+Flow('data_FKOP1_AMP','data_FKOP1',
+     '''
+     fft1 | cabs | stack axis=2
+     ''')
+
+
+Flow('data_RadonOP0_AMP','data_RadonOP0',
+     '''
+     fft1 | cabs | stack axis=2
+     ''')
+
+Flow('data_RadonOP1_AMP','data_RadonOP1',
+     '''
+     fft1 | cabs | stack axis=2
+     ''')
+
+Result('AMP','data_FKOP0_AMP data_FKOP1_AMP data_RadonOP0_AMP data_RadonOP1_AMP','''
+     cat axis=2 ${SOURCES[1:4]} | 
+     graph title="Amplitude Spectra" 
+     label1="Frequency" unit1="Hz" 
+     label2="Amplitude" unit2=" " plotcol=1,2,3,4 scalebar=y
+     ''' )
+
+Flow('data_RadonOP1b cost12b','data_statics',
+     '''
+     spbpdn powermethod=n debug=y operator=2 np=201 pmin=-0.005 pmax=0.005 fmax=80 verbose=y iter=30 mode=1 lambda=5000 maxeig=7500 maxlag=0.02 cost=${TARGETS[1]}
+     ''')
+Result('data_RadonOP1b','grey title="radon panel" scalebar=y color=j pclip=100')
+
+
+
+End()
+

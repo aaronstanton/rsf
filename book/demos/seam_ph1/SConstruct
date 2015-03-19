@@ -1,0 +1,39 @@
+from rsf.proj import *
+
+#dir='2d_model_subset',
+#          server='http://s3.amazonaws.com',
+#	  top='open.source.geoscience/open_data/seam_ph1_2d_classic')
+#2D_Model_Subset.pdf		Vp_Elastic_N23900.sgy
+#2D_Model_Subset_plots.pdf	Vs_Elastic_N23900.sgy
+#Den_Elastic_N23900.sgy
+
+# get model
+Fetch('Vp_Elastic_N23900.sgy',
+       server='http://s3.amazonaws.com',
+       top='open.source.geoscience/open_data/seam_ph1_2d_classic',
+       dir='2d_model_subset')
+Fetch('Vs_Elastic_N23900.sgy',
+       server='http://s3.amazonaws.com',
+       top='open.source.geoscience/open_data/seam_ph1_2d_classic',
+       dir='2d_model_subset')
+Fetch('Den_Elastic_N23900.sgy',
+       server='http://s3.amazonaws.com',
+       top='open.source.geoscience/open_data/seam_ph1_2d_classic',
+       dir='2d_model_subset')
+
+Flow(['vp','vp_tfile'],'Vp_Elastic_N23900.sgy',
+     '''
+     sfsegyread tfile=${TARGETS[1]} |
+     put d2=20 o2=0 d1=10 o1=0 label1=Depth unit1=m label2=X unit2=m
+     ''')
+Flow(['vs','vs_tfile'],'Vs_Elastic_N23900.sgy',
+     '''
+     sfsegyread tfile=${TARGETS[1]} |
+     put d2=20 o2=0 d1=10 o1=0 label1=Depth unit1=m label2=X unit2=m
+     ''')
+Flow(['den.rsf','den_tfile'],'Den_Elastic_N23900.sgy',
+     '''
+     sfsegyread tfile=${TARGETS[1]} |
+     put d2=20 o2=0 d1=10 o1=0 label1=Depth unit1=m label2=X unit2=m
+     ''')
+

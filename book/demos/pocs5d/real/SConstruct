@@ -1,0 +1,124 @@
+from rsf.proj import *
+import math
+ 
+# Convert to RSF
+#
+Flow('dtrue tdin','/u1/data/GOM_data/near_offset_section.su',
+     '''
+     segyread su=y suxdr=y tfile=${TARGETS[1]} 
+     ''') 
+               
+Plot('dtrue',
+     '''
+     window n2=500 f2=300 min1=1.5 max1=3 |
+     grey color=i label2="x1" unit2="m" title="True data" labelsz=10 titlesz=20 minval=-5 maxval=5 clip=5 
+     ''')
+
+# decimate traces
+Flow('ddec','dtrue',
+     '''
+     decimate mode=1 perc=50 seed=5
+     ''') 
+
+Plot('ddec',
+     '''
+     window n2=500 f2=300 min1=1.5 max1=3 |
+     grey color=i label2="x1" unit2="m" title="Decimated" labelsz=10 titlesz=20 minval=-5 maxval=5 clip=5 
+     ''')
+
+# POCS interpolation
+
+ot = 0
+dt = 0.004
+nt = 1751
+tmax = ot + dt*(nt-1)
+twindow_length = 100
+twindow_overlap = 10
+ntwindow = int(math.ceil((tmax-ot)/(dt*(twindow_length-twindow_overlap))))
+ox1 = 0
+dx1 = 1
+nx1 = 810
+x1max = ox1 + dx1*(nx1-1)
+x1window_length = 100
+x1window_overlap = 10
+nx1window = int(math.ceil((x1max-ox1) / (dx1*(x1window_length-x1window_overlap))))
+nwindow=ntwindow*nx1window-1
+
+windows=[]
+windows2=[]
+for itwindow in range(0,ntwindow):
+	mint = ot + dt*itwindow*(twindow_length-twindow_overlap)
+        maxt = mint + dt*(twindow_length-1)
+        if maxt >= tmax:
+        	maxt = tmax
+        for ix1window in range(0,nx1window):
+	      minx1 = ox1 + dx1*ix1window*(x1window_length-x1window_overlap)
+              maxx1 = minx1 + dx1*(x1window_length-1)
+              if maxx1 >= x1max:
+        	      maxx1 = x1max
+              Flow('d_%d_%d' % (itwindow,ix1window), 'ddec',
+             	   '''
+             	   window
+                   min1=%f  max1=%f 
+                   min2=%f  max2=%f 
+             	   ''' % (mint,maxt,minx1,maxx1))
+              Flow('d_pocs_%d_%d' % (itwindow,ix1window), 'd_%d_%d' %(itwindow,ix1window),
+             	   '''
+             	   pocs5d niter=200 p=1000
+                   verbose=y
+                   fmax=70
+             	   ''')
+              window = 'd_pocs_%d_%d' %(itwindow,ix1window)
+              windows.append(window)
+              Flow('d_pocs2_%d_%d' % (itwindow,ix1window), 'd_%d_%d' %(itwindow,ix1window),
+             	   '''
+             	   pocs5d niter=200 p=1 debias=y
+                   verbose=y
+                   fmax=70
+             	   ''')
+              window2 = 'd_pocs2_%d_%d' %(itwindow,ix1window)
+              windows2.append(window2)
+
+# merge the reconstructed windows together
+Flow('dpocs',windows,
+     '''
+     merge5d --readwrite=y
+     n1=1751 d1=0.004 o1=0    label1="Time"  unit1="s"    t1=%d
+     n2=810  d2=1     o2=0    label2="X1"    unit2=""     t2=%d
+     n3=1    d3=1     o3=0    label3="X2"    unit3=""     t3=0
+     n4=1    d4=1     o4=0    label4="X3"    unit4=""     t4=0
+     n5=1    d5=1     o5=0    label5="X4"    unit5=""     t5=0 
+     outfile=${TARGETS[0]}
+     ${SOURCES[0:%d]}
+     ''' % (twindow_overlap,x1window_overlap,nwindow),stdin=0,stdout=-1)
+Flow('dpocs2',windows2,
+     '''
+     merge5d --readwrite=y
+     n1=1751 d1=0.004 o1=0    label1="Time"  unit1="s"    t1=%d
+     n2=810  d2=1     o2=0    label2="X1"    unit2=""     t2=%d
+     n3=1    d3=1     o3=0    label3="X2"    unit3=""     t3=0
+     n4=1    d4=1     o4=0    label4="X3"    unit4=""     t4=0
+     n5=1    d5=1     o5=0    label5="X4"    unit5=""     t5=0 
+     outfile=${TARGETS[0]}
+     ${SOURCES[0:%d]}
+     ''' % (twindow_overlap,x1window_overlap,nwindow),stdin=0,stdout=-1)
+Result('dpocs',
+     '''
+     window n2=500 f2=300 min1=1.5 max1=3 |
+     grey color=i label2="x1" unit2="m" title="" labelsz=10 titlesz=20 minval=-5 maxval=5 clip=5 
+     ''')
+Result('dpocs2',
+     '''
+     window n2=500 f2=300 min1=1.5 max1=3 |
+     grey color=i label2="x1" unit2="m" title="" labelsz=10 titlesz=20 minval=-5 maxval=5 clip=5 
+     ''')
+#Plot('diff','dtrue dpocs',
+#     '''
+#     math x=${SOURCES[0]} y=${SOURCES[1]} output="x-y" |
+#     window n2=500 f2=300 min1=1.5 max1=3 |
+#     grey color=i label2="x1" unit2="m" title="Error" labelsz=10 titlesz=20 minval=-5 maxval=5 clip=5 
+#     ''')
+#Result('all','ddec dpocs dpocs2','SideBySideAniso')
+
+End()
+

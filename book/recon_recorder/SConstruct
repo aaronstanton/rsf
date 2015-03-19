@@ -1,0 +1,21 @@
+from rsf.tex import *
+
+Paper('slides',
+     lclass='cwpslides',
+     color='''
+     dtrue dtrue_fx dtrue_fk
+     ddec_rand ddec_rand_fx ddec_rand_fk
+     ddec_reg ddec_reg_fx ddec_reg_fk
+     ddec_rand_pocs ddec_rand_mwni ddec_rand_seqsvd
+     ddec_reg_pocs ddec_reg_mwni ddec_reg_seqsvd
+     dtrue_left_block dtrue_singular_block dtrue_right_block
+     ddec_rand_left_block ddec_rand_singular_block ddec_rand_right_block
+     ddec_reg_left_block ddec_reg_singular_block ddec_reg_right_block
+     dorig_ovt dorig_stack
+     dpocs_ovt dpocs_stack
+     dmwni_ovt dmwni_stack
+     dseqsvd_ovt dseqsvd_stack
+     ''',
+     use='multicol,color,overpic,listings,amsmath,amssymb,amsbsy,comment,textpos,epstopdf,epsfig')
+
+End()

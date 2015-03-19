@@ -1,0 +1,23 @@
+import os
+
+os.environ['OMP_NUM_THREADS'] = '8'
+
+from rsf.proj import *
+
+Flow('mpp_gather_filter','../adjoint/mpp.rsf',
+     '''
+     window n2=1 f2=350 |
+     sffkfilter axis=2 pa=-200 pb=-150 pc=150 pd=200
+     ''')
+
+Flow('mps_gather_filter','../adjoint/mps.rsf',
+     '''
+     window n2=1 f2=350 |
+     sffkfilter axis=2 pa=-200 pb=-150 pc=150 pd=200
+     ''')
+
+Plot('mpp_gather_filter','mpp_gather_filter','grey')
+Plot('mps_gather_filter','mps_gather_filter','grey')
+Result('m_gather_filter','mpp_gather_filter mps_gather_filter','SideBySideAniso')
+
+End()

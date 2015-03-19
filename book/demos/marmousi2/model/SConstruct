@@ -1,0 +1,63 @@
+from rsf.proj import *
+# Fetch Files from repository
+modelFiles=['vp_marmousi-ii.segy','vs_marmousi-ii.segy','density_marmousi-ii.segy']
+outputFiles=['vp_marmousi-ii','vs_marmousi-ii','density_marmousi-ii']
+for file in modelFiles:
+    Fetch(file,"marm2")
+# Convert Files to RSF
+counter=0
+for file in modelFiles:
+    if file is 'vp_marmousi-ii.segy' or file is 'vs_marmousi-ii.segy':
+        Flow(outputFiles[counter],file, ''' segyread tape=$SOURCE | put 
+            d1=.001249 d2=.001249 o1=0 o2=0 label1=Depth label2=Distance
+            unit1=km unit2=km''')
+    if file is 'density_marmousi-ii.segy':
+        Flow(outputFiles[counter],file, ''' segyread tape=$SOURCE | put 
+            d1=.001249 d2=.001249 o1=0 o2=0 label1=Depth label2=Distance
+            unit1=km unit2=km''')
+    counter = counter+1
+Flow('vp_raw','vp_marmousi-ii',
+     '''
+     put d1=1.249 d2=1.249 unit1="m" unit2="m" |
+     math output="input*1000" |
+     sinc o1=0 n1=700 d1=5 |
+     transp |
+     sinc o1=0 n1=1000 d1=12.32 |
+     transp |
+     window max1=2500 min2=5000 max2=10000
+     ''')
+Flow('vs_raw','vs_marmousi-ii',
+     '''
+     put d1=1.249 d2=1.249 unit1="m" unit2="m" |
+     math output="input*1000" |
+     sinc o1=0 n1=700 d1=5 |
+     transp |
+     sinc o1=0 n1=1000 d1=12.32 |
+     transp |
+     window max1=2500 min2=5000 max2=10000
+     ''')
+Flow('den_raw','density_marmousi-ii',
+     '''
+     put d1=1.249 d2=1.249 unit1="m" unit2="m" |
+     math output="input*1000" |
+     sinc o1=0 n1=700 d1=5 |
+     transp |
+     sinc o1=0 n1=1000 d1=12.32 |
+     transp |
+     window max1=2500 min2=5000 max2=10000
+     ''')
+Flow('vp','vp_raw',
+     '''
+     smooth rect=20 rect2=20
+     ''')
+Flow('vs','vs_raw',
+     '''
+     smooth rect=20 rect2=20
+     ''')
+Flow('den','den_raw',
+     '''
+     smooth rect=20 rect2=20
+     ''')
+
+End()
+

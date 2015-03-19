@@ -1,0 +1,176 @@
+from rsf.proj import *
+
+Flow('reflect',None,'''
+           sigmoid n1=500 n2=500 large=2500 d1=0.004 d2=10 |
+           put title="" label2="x" unit2="m" n3=1 d3=1 o3=0 | 
+           ricker1 frequency=30 |
+           spray axis=3 n=48 d=25 o=25 label="Offset" unit="m"
+           ''')
+
+Flow('vp',None,
+     '''
+     makevel n1=500 n2=500 v000=2500 dvdx1=1.5 dvdx2=0 
+     ''') 
+
+Flow('vs',None,
+     '''
+     makevel n1=500 n2=500 v000=1500 dvdx1=1.2 dvdx2=0 
+     ''') 
+
+Plot('vp',
+       '''
+       grey allpos=y mean=y scalebar=y
+       ''')
+
+Plot('vs',
+       '''
+       grey allpos=y mean=y scalebar=y
+       ''')
+
+Flow('d','reflect',
+     '''
+     pstm
+     adj=n
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=y
+     verbose=y
+     ''')
+
+Flow('d_dec','d',
+     '''
+     put n4=1 n5=1 |
+     decimate mode=2 inc2=1 inc3=3 inc4=1 inc5=1
+     ''')
+
+Result('d_dec',
+       '''
+       window n3=1 f3=40 | 
+       grey scalebar=y title=""
+       ''')
+
+Flow('reflect_adj','d_dec',
+     '''
+     pstm
+     adj=y
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=y
+     verbose=y
+     ''')
+
+Flow('reflect_inv misfit','d_dec',
+     '''
+     pstm
+     inv=y
+     itmax_internal=20
+     itmax_external=1
+     misfit=${TARGETS[1]}
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=y
+     verbose=y
+     ''')
+
+# Dot product test 
+#Flow('dot.test','d reflect',
+#    '''
+#     dottest sfpstm
+#     dat=${SOURCES[0]} 
+#     mod=${SOURCES[1]}
+#     vp=vp.rsf
+#     vs=vs.rsf
+#     aperture=4000
+#     ps=y
+#     verbose=n
+#     ''',stdin=0,stdout=-1)
+
+Flow('d_pred_inv','reflect_inv',
+     '''
+     pstm
+     adj=n
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=y
+     verbose=y
+     ''')
+
+Flow('d_mwni','d_dec',
+     '''
+     reg5d method=2 tw_length=200 fmax=125
+     ''')
+
+Flow('reflect_mwni','d_mwni',
+     '''
+     pstm
+     adj=y
+     vp=vp.rsf
+     vs=vs.rsf
+     aperture=4000
+     ps=y
+     verbose=y
+     ''')
+
+Plot('d',
+       '''
+       window n3=1 f3=40 | 
+       grey minval=-0.01 maxval=0.01 clip=0.01 scalebar=y title="(a)" label2="x" unit2="m" 
+       ''')
+
+Plot('d_dec',
+       '''
+       window n3=1 f3=40 | 
+       grey minval=-0.01 maxval=0.01 clip=0.01 scalebar=y title="(b)" label2="x" unit2="m" 
+       ''')
+
+Plot('d_mwni',
+       '''
+       window n3=1 f3=40 | 
+       grey minval=-0.01 maxval=0.01 clip=0.01 scalebar=y title="(c)" label2="x" unit2="m" 
+       ''')
+
+Plot('d_pred_inv',
+       '''
+       window n3=1 f3=40 | 
+       grey minval=-0.01 maxval=0.01 clip=0.01 scalebar=y title="(d)" label2="x" unit2="m" 
+       ''')
+
+Plot('reflect',
+       '''
+       window n3=1 f3=40 | 
+       grey minval=-0.01 maxval=0.01 clip=0.01 scalebar=y title="(a)" label2="x" unit2="m" 
+       ''')
+
+Plot('reflect_adj',
+       '''
+       window n3=1 f3=40 | 
+       grey minval=-0.01 maxval=0.01 clip=0.01 scalebar=y title="(b)" label2="x" unit2="m" 
+       ''')
+
+Plot('reflect_mwni',
+       '''
+       window n3=1 f3=40 | 
+       grey minval=-0.01 maxval=0.01 clip=0.01 scalebar=y title="(c)" label2="x" unit2="m" 
+       ''')
+
+Plot('reflect_inv',
+       '''
+       window n3=1 f3=40 | 
+       grey minval=-0.01 maxval=0.01 clip=0.01 scalebar=y title="(d)" label2="x" unit2="m" 
+       ''')
+
+Result('interp_regular','d d_dec d_mwni d_pred_inv','TwoRows')
+
+Result('reflect_regular','reflect reflect_adj reflect_mwni reflect_inv','TwoRows')
+
+Result('misfit',
+       '''
+       graph label1="Iteration number" title=" "
+       ''')
+
+End()
+
